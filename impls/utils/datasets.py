@@ -243,6 +243,13 @@ class GCDataset:
         batch['masks'] = 1.0 - successes
         batch['rewards'] = successes - (1.0 if self.config['gc_negative'] else 0.0)
 
+        value_temporal_dists = value_goal_idxs - idxs
+        actor_temporal_dists = actor_goal_idxs - idxs
+        batch['value_goal_discounted_returns'] = -value_temporal_dists * (
+            1 - self.config['discount'] ** value_temporal_dists) / (1 - self.config['discount'])
+        batch['actor_goal_discounted_returns'] = -actor_temporal_dists * (
+            1 - self.config['discount'] ** actor_temporal_dists) / (1 - self.config['discount'])
+
         if self.config['p_aug'] is not None and not evaluation:
             if np.random.rand() < self.config['p_aug']:
                 self.augment(batch, ['observations', 'next_observations', 'value_goals', 'actor_goals'])
