@@ -45,40 +45,68 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
                 phi = phi[None, ...]
                 psi = psi[None, ...]
             logits = jnp.einsum('eik,ejk->ije', phi, psi) / jnp.sqrt(phi.shape[-1])
+
+            # logits.shape is (B, B, e) with one term for positive pair and (B - 1) terms for negative pairs in each row.
+            I = jnp.eye(batch_size)
+
+            if self.config['contrastive_loss'] == 'forward_infonce':
+                def loss_fn(_logits):  # pylint: disable=invalid-name
+                    return (optax.softmax_cross_entropy(logits=_logits, labels=I)
+                            + self.config['logsumexp_penalty_coeff'] * jax.nn.logsumexp(_logits, axis=1) ** 2)
+
+                contrastive_loss = jax.vmap(loss_fn, in_axes=-1, out_axes=-1)(logits)
+            elif self.config['contrastive_loss'] == 'symmetric_infonce':
+                contrastive_loss = jax.vmap(
+                    lambda _logits: optax.softmax_cross_entropy(logits=_logits, labels=I),
+                    in_axes=-1,
+                    out_axes=-1,
+                )(logits) + jax.vmap(
+                    lambda _logits: optax.softmax_cross_entropy(logits=_logits, labels=I),
+                    in_axes=-1,
+                    out_axes=-1,
+                )(logits.transpose([1, 0, 2]))
+            else:
+                raise NotImplementedError
         elif self.config['critic_arch'] == 'mlp':
-            if module_name == 'critic':
-                actions = actions[:, None].repeat(batch_size, axis=1)
-            v = self.network.select(module_name)(
-                batch['observations'][:, None].repeat(batch_size, axis=1),
-                batch['value_goals'][None, :].repeat(batch_size, axis=0),
+            # if module_name == 'critic':
+            #     actions = actions[:, None].repeat(batch_size, axis=1)
+            # v = self.network.select(module_name)(
+            #     batch['observations'][:, None].repeat(batch_size, axis=1),
+            #     batch['value_goals'][None, :].repeat(batch_size, axis=0),
+            #     actions=actions,
+            #     params=grad_params,
+            # )
+            # if len(v.shape) == 2:  # Non-ensemble.
+            #     v = v[None, ...]
+            # logits = v.transpose([1, 2, 0])
+            pos_v = self.network.select(module_name)(
+                batch['observations'],
+                batch['value_goals'],
                 actions=actions,
                 params=grad_params,
             )
-            if len(v.shape) == 2:  # Non-ensemble.
-                v = v[None, ...]
-            logits = v.transpose([1, 2, 0])
+            neg_v = self.network.select(module_name)(
+                batch['observations'],
+                jnp.roll(batch['value_goals'], -1, axis=0),
+                actions=actions,
+                params=grad_params,
+            )
+            if len(pos_v.shape) == 1:  # Non-ensemble.
+                pos_v = pos_v[None, ...]
+                neg_v = neg_v[None, ...]
+            pos_v = pos_v.transpose([1, 0])
+            neg_v = neg_v.transpose([1, 0])
+            v = pos_v
+            logits = jnp.stack([pos_v, neg_v], axis=1)
 
-        # logits.shape is (B, B, e) with one term for positive pair and (B - 1) terms for negative pairs in each row.
-        I = jnp.eye(batch_size)
+            # logits.shape is (B, 2, e) with one term for positive pair and one terms for negative pairs in each row.
+            I = jnp.stack([jnp.ones(batch_size), jnp.zeros(batch_size)], axis=1)
 
-        if self.config['contrastive_loss'] == 'forward_infonce':
-            def loss_fn(_logits):  # pylint: disable=invalid-name
-                return (optax.softmax_cross_entropy(logits=_logits, labels=I)
-                        + self.config['logsumexp_penalty_coeff'] * jax.nn.logsumexp(_logits, axis=1) ** 2)
-
-            contrastive_loss = jax.vmap(loss_fn, in_axes=-1, out_axes=-1)(logits)
-        elif self.config['contrastive_loss'] == 'symmetric_infonce':
             contrastive_loss = jax.vmap(
-                lambda _logits: optax.softmax_cross_entropy(logits=_logits, labels=I),
-                in_axes=-1,
-                out_axes=-1,
-            )(logits) + jax.vmap(
-                lambda _logits: optax.softmax_cross_entropy(logits=_logits, labels=I),
-                in_axes=-1,
-                out_axes=-1,
-            )(logits.transpose([1, 0, 2]))
-        else:
-            raise NotImplementedError
+                lambda _logits: optax.sigmoid_binary_cross_entropy(_logits, I),
+                in_axes=-1, out_axes=-1
+            )(logits)
+
         contrastive_loss = jnp.mean(contrastive_loss)
 
         # Compute additional statistics.

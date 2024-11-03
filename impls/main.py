@@ -73,7 +73,7 @@ def main(_):
     random.seed(FLAGS.seed)
     np.random.seed(FLAGS.seed)
 
-    example_batch = train_dataset.sample(100)
+    example_batch = train_dataset.sample(1)
     if config['discrete']:
         # Fill with the maximum action to let the agent know the action space size.
         example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)
