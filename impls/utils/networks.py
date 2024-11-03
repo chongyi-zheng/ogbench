@@ -380,9 +380,9 @@ class GCBilinearValue(nn.Module):
 
         # v = (phi * psi / jnp.sqrt(self.latent_dim)).sum(axis=-1)
         if len(phi.shape) == 2:  # Non-ensemble.
-            phi = phi[None, ...]
-            psi = psi[None, ...]
-        v = jnp.einsum('eik,ejk->ije', phi, psi) / jnp.sqrt(self.latent_dim)
+            v = jnp.einsum('ik,jk->ij', phi, psi) / jnp.sqrt(self.latent_dim)
+        else:
+            v = jnp.einsum('eik,ejk->eij', phi, psi) / jnp.sqrt(self.latent_dim)
 
         if self.value_exp:
             v = jnp.exp(v)

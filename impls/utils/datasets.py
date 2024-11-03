@@ -243,8 +243,18 @@ class GCDataset:
         batch['masks'] = 1.0 - successes
         batch['rewards'] = successes - (1.0 if self.config['gc_negative'] else 0.0)
 
+        final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, idxs)]
+        final_state_dists = final_state_idxs - idxs
         value_temporal_dists = value_goal_idxs - idxs
+        value_temporal_dists = np.where(
+            (0 <= value_temporal_dists) & (value_temporal_dists <= final_state_dists),
+            value_temporal_dists, np.inf
+        )
         actor_temporal_dists = actor_goal_idxs - idxs
+        actor_temporal_dists = np.where(
+            (0 <= actor_temporal_dists) & (actor_temporal_dists <= final_state_dists),
+            actor_temporal_dists, np.inf
+        )
         batch['value_goal_discounted_returns'] = -value_temporal_dists * (
             1 - self.config['discount'] ** value_temporal_dists) / (1 - self.config['discount'])
         batch['actor_goal_discounted_returns'] = -actor_temporal_dists * (

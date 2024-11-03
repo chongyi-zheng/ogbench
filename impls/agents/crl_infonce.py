@@ -7,7 +7,10 @@ import ml_collections
 import optax
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, GCBilinearValue, GCDiscreteActor, GCDiscreteBilinearCritic
+from utils.networks import (
+    GCActor, GCBilinearValue, GCValue,
+    GCDiscreteActor, GCDiscreteBilinearCritic, GCDiscreteCritic
+)
 
 
 class CRLInfoNCEAgent(flax.struct.PyTreeNode):
@@ -29,17 +32,32 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
             actions = batch['actions']
         else:
             actions = None
-        v, phi, psi = self.network.select(module_name)(
-            batch['observations'],
-            batch['value_goals'],
-            actions=actions,
-            info=True,
-            params=grad_params,
-        )
-        if len(phi.shape) == 2:  # Non-ensemble.
-            phi = phi[None, ...]
-            psi = psi[None, ...]
-        logits = jnp.einsum('eik,ejk->ije', phi, psi) / jnp.sqrt(phi.shape[-1])
+
+        if self.config['critic_arch'] == 'bilinear':
+            v, phi, psi = self.network.select(module_name)(
+                batch['observations'],
+                batch['value_goals'],
+                actions=actions,
+                info=True,
+                params=grad_params,
+            )
+            if len(phi.shape) == 2:  # Non-ensemble.
+                phi = phi[None, ...]
+                psi = psi[None, ...]
+            logits = jnp.einsum('eik,ejk->ije', phi, psi) / jnp.sqrt(phi.shape[-1])
+        elif self.config['critic_arch'] == 'mlp':
+            if module_name == 'critic':
+                actions = actions[:, None].repeat(batch_size, axis=1)
+            v = self.network.select(module_name)(
+                batch['observations'][:, None].repeat(batch_size, axis=1),
+                batch['value_goals'][None, :].repeat(batch_size, axis=0),
+                actions=actions,
+                params=grad_params,
+            )
+            if len(v.shape) == 2:  # Non-ensemble.
+                v = v[None, ...]
+            logits = v.transpose([1, 2, 0])
+
         # logits.shape is (B, B, e) with one term for positive pair and (B - 1) terms for negative pairs in each row.
         I = jnp.eye(batch_size)
 
@@ -100,6 +118,8 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
             q1, q2 = value_transform(
                 self.network.select('critic')(batch['observations'], batch['actor_goals'], batch['actions'])
             )
+            if self.config['critic_arch'] == 'bilinear':
+                v, q1, q2 = jnp.diag(v), jnp.diag(q1), jnp.diag(q2)
             q = jnp.minimum(q1, q2)
             adv = q - v
 
@@ -137,6 +157,8 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
             q1, q2 = value_transform(
                 self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
             )
+            if self.config['critic_arch'] == 'bilinear':
+                q1, q2 = jnp.diag(q1), jnp.diag(q2)
             q = jnp.minimum(q1, q2)
 
             # Normalize Q values by the absolute mean to make the loss scale invariant.
@@ -235,50 +257,83 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
         else:
             action_dim = ex_actions.shape[-1]
 
+        # Critic architecture
+        assert config['critic_arch'] in ['bilinear', 'mlp']
+
         # Define encoders.
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
-            encoders['critic_state'] = encoder_module()
-            encoders['critic_goal'] = encoder_module()
             encoders['actor'] = GCEncoder(concat_encoder=encoder_module())
-            encoders['value_state'] = encoder_module()
-            encoders['value_goal'] = encoder_module()
+
+            if config['critic_arch'] == 'bilinear':
+                encoders['critic_state'] = encoder_module()
+                encoders['critic_goal'] = encoder_module()
+                encoders['value_state'] = encoder_module()
+                encoders['value_goal'] = encoder_module()
+            elif config['critic_arch'] == 'mlp':
+                encoders['value'] = GCEncoder(concat_encoder=encoder_module())
+                encoders['critic'] = GCEncoder(concat_encoder=encoder_module())
 
         # Define value and actor networks.
         if config['discrete']:
-            critic_def = GCDiscreteBilinearCritic(
-                hidden_dims=config['value_hidden_dims'],
-                latent_dim=config['latent_dim'],
-                layer_norm=config['layer_norm'],
-                ensemble=True,
-                value_exp=True,
-                state_encoder=encoders.get('critic_state'),
-                goal_encoder=encoders.get('critic_goal'),
-                action_dim=action_dim,
-            )
+            if config['critic_arch'] == 'bilinear':
+                critic_def = GCDiscreteBilinearCritic(
+                    hidden_dims=config['value_hidden_dims'],
+                    latent_dim=config['latent_dim'],
+                    layer_norm=config['layer_norm'],
+                    ensemble=True,
+                    value_exp=True,
+                    state_encoder=encoders.get('critic_state'),
+                    goal_encoder=encoders.get('critic_goal'),
+                    action_dim=action_dim,
+                )
+            elif config['critic_arch'] == 'mlp':
+                critic_def = GCDiscreteCritic(
+                    hidden_dims=config['value_hidden_dims'],
+                    layer_norm=config['layer_norm'],
+                    ensemble=True,
+                    gc_encoder=encoders.get('critic'),
+                    action_dim=action_dim,
+                )
         else:
-            critic_def = GCBilinearValue(
-                hidden_dims=config['value_hidden_dims'],
-                latent_dim=config['latent_dim'],
-                layer_norm=config['layer_norm'],
-                ensemble=True,
-                value_exp=True,
-                state_encoder=encoders.get('critic_state'),
-                goal_encoder=encoders.get('critic_goal'),
-            )
+            if config['critic_arch'] == 'bilinear':
+                critic_def = GCBilinearValue(
+                    hidden_dims=config['value_hidden_dims'],
+                    latent_dim=config['latent_dim'],
+                    layer_norm=config['layer_norm'],
+                    ensemble=True,
+                    value_exp=True,
+                    state_encoder=encoders.get('critic_state'),
+                    goal_encoder=encoders.get('critic_goal'),
+                )
+            elif config['critic_arch'] == 'mlp':
+                critic_def = GCValue(
+                    hidden_dims=config['value_hidden_dims'],
+                    layer_norm=config['layer_norm'],
+                    ensemble=True,
+                    gc_encoder=encoders.get('critic'),
+                )
 
         # Always train a separte V network.
         # AWR requires a separate V network to compute advantages (Q - V).
-        value_def = GCBilinearValue(
-            hidden_dims=config['value_hidden_dims'],
-            latent_dim=config['latent_dim'],
-            layer_norm=config['layer_norm'],
-            ensemble=False,
-            value_exp=True,
-            state_encoder=encoders.get('value_state'),
-            goal_encoder=encoders.get('value_goal'),
-        )
+        if config['critic_arch'] == 'bilinear':
+            value_def = GCBilinearValue(
+                hidden_dims=config['value_hidden_dims'],
+                latent_dim=config['latent_dim'],
+                layer_norm=config['layer_norm'],
+                ensemble=False,
+                value_exp=True,
+                state_encoder=encoders.get('value_state'),
+                goal_encoder=encoders.get('value_goal'),
+            )
+        elif config['critic_arch'] == 'mlp':
+            value_def = GCValue(
+                hidden_dims=config['value_hidden_dims'],
+                layer_norm=config['layer_norm'],
+                ensemble=False,
+                gc_encoder=encoders.get('value'),
+            )
 
         if config['discrete']:
             actor_def = GCDiscreteActor(
@@ -323,6 +378,7 @@ def get_config():
             latent_dim=512,  # Latent dimension for phi and psi.
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.
+            critic_arch="bilinear",  # Contrastive critic architecture ('bilinear' or 'mlp')
             contrastive_loss='symmetric_infonce',  # Contrastive loss type ('forward_infonce' or 'symmetric_infonce).
             logsumexp_penalty_coeff=0.01,  # Coefficient for the logsumexp regularization in forward InfoNCE loss.
             actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').

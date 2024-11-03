@@ -288,7 +288,7 @@ def get_config():
             tau=0.005,  # Target network update rate.
             expectile=0.9,  # IAC expectile.
             actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').
-            alpha=0.3,  # Temperature in AWR or BC coefficient in DDPG+BC.
+            alpha=1.0,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
