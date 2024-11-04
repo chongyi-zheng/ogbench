@@ -23,7 +23,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="gciac",
+        slurm_name="gcbc",
         slurm_time=int(1.0 * 60),  # minute
         slurm_partition=partition,
         slurm_nodes=1,
@@ -38,10 +38,10 @@ def main():
     # tuning alr / clr and repr_dim didn't help for sym_infonce
     with executor.batch():  # job array
         for env_name in ["pointmaze-medium-navigate-v0"]:
-            for seed in [0]:
-                exp_name = f"gciac_{env_name}_alpha=0.003"
+            for seed in [1]:
+                exp_name = f"gcbc_{env_name}_layer_norm=True_tanh_norm_log_prob_seed={seed}"
                 log_dir = os.path.expanduser(
-                    f"{log_root_dir}/exp_logs/ogbench_logs/gciac/{exp_name}/{seed}")
+                    f"{log_root_dir}/exp_logs/ogbench_logs/gcbc/{exp_name}/{seed}")
 
                 # change the log folder of slurm executor
                 submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -76,8 +76,8 @@ def main():
                         --enable_wandb=1 \
                         --env_name={env_name} \
                         --eval_episodes=50 \
-                        --agent=impls/agents/gciac.py \
-                        --agent.alpha=0.003 \
+                        --agent=impls/agents/gcbc.py \
+                        --agent.layer_norm=True \
                         --seed={seed} \
                         --save_dir={log_dir} \
                     2>&1 | tee {log_dir}/stream.log;

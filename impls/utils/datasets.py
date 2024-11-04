@@ -255,9 +255,9 @@ class GCDataset:
             (0 <= actor_temporal_dists) & (actor_temporal_dists <= final_state_dists),
             actor_temporal_dists, np.inf
         )
-        batch['value_goal_discounted_returns'] = -value_temporal_dists * (
+        batch['value_goal_discounted_returns'] = -(
             1 - self.config['discount'] ** value_temporal_dists) / (1 - self.config['discount'])
-        batch['actor_goal_discounted_returns'] = -actor_temporal_dists * (
+        batch['actor_goal_discounted_returns'] = -(
             1 - self.config['discount'] ** actor_temporal_dists) / (1 - self.config['discount'])
 
         if self.config['p_aug'] is not None and not evaluation:

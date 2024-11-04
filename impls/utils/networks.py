@@ -157,6 +157,7 @@ class GCActor(nn.Module):
 
     hidden_dims: Sequence[int]
     action_dim: int
+    layer_norm: bool = False
     log_std_min: Optional[float] = -5
     log_std_max: Optional[float] = 2
     tanh_squash: bool = False
@@ -166,7 +167,7 @@ class GCActor(nn.Module):
     gc_encoder: nn.Module = None
 
     def setup(self):
-        self.actor_net = MLP(self.hidden_dims, activate_final=True)
+        self.actor_net = MLP(self.hidden_dims, activate_final=True, layer_norm=self.layer_norm)
         self.mean_net = nn.Dense(self.action_dim, kernel_init=default_init(self.final_fc_init_scale))
         if self.state_dependent_std:
             self.log_std_net = nn.Dense(self.action_dim, kernel_init=default_init(self.final_fc_init_scale))
@@ -228,11 +229,12 @@ class GCDiscreteActor(nn.Module):
 
     hidden_dims: Sequence[int]
     action_dim: int
+    layer_norm: bool = False
     final_fc_init_scale: float = 1e-2
     gc_encoder: nn.Module = None
 
     def setup(self):
-        self.actor_net = MLP(self.hidden_dims, activate_final=True)
+        self.actor_net = MLP(self.hidden_dims, activate_final=True, layer_norm=self.layer_norm)
         self.logit_net = nn.Dense(self.action_dim, kernel_init=default_init(self.final_fc_init_scale))
 
     def __call__(
