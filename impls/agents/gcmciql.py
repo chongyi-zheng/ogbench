@@ -11,8 +11,8 @@ from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import GCActor, GCDiscreteActor, GCDiscreteCritic, GCValue
 
 
-class GCIACAgent(flax.struct.PyTreeNode):
-    """Goal-conditioned implicit actor critic (GCIAC) agent.
+class GCMCIQLAgent(flax.struct.PyTreeNode):
+    """Goal-conditioned monte carlo implicit Q-Learning (GCMCIQL) agent.
 
     This implementation supports both AWR (actor_loss='awr') and DDPG+BC (actor_loss='ddpgbc') for the actor loss.
     """
@@ -28,7 +28,7 @@ class GCIACAgent(flax.struct.PyTreeNode):
         return weight * (diff**2)
 
     def value_loss(self, batch, grad_params):
-        """Compute the IAC value loss."""
+        """Compute the MCIQL value loss."""
         # q1, q2 = self.network.select('target_critic')(batch['observations'], batch['value_goals'], batch['actions'])
         # q = jnp.minimum(q1, q2)
         v_target = batch['value_goal_discounted_returns']
@@ -43,7 +43,7 @@ class GCIACAgent(flax.struct.PyTreeNode):
         }
 
     def critic_loss(self, batch, grad_params):
-        """Compute the IAC critic loss."""
+        """Compute the MCIQL critic loss."""
         next_v = self.network.select('value')(batch['next_observations'], batch['value_goals'])
         q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v
 
@@ -278,7 +278,7 @@ def get_config():
     config = ml_collections.ConfigDict(
         dict(
             # Agent hyperparameters.
-            agent_name='gciac',  # Agent name.
+            agent_name='gcmciql',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
             actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
@@ -286,7 +286,7 @@ def get_config():
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
-            expectile=0.9,  # IAC expectile.
+            expectile=0.9,  # MCIQL expectile.
             actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').
             alpha=1.0,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.

@@ -407,7 +407,7 @@ def get_config():
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.
             critic_arch="bilinear",  # Contrastive critic architecture ('bilinear' or 'mlp')
-            contrastive_loss='symmetric_infonce',  # Contrastive loss type ('forward_infonce' or 'symmetric_infonce).
+            contrastive_loss='symmetric_infonce',  # Contrastive loss type ('forward_infonce', 'symmetric_infonce', or 'tre').
             logsumexp_penalty_coeff=0.01,  # Coefficient for the logsumexp regularization in forward InfoNCE loss.
             actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.

@@ -3,7 +3,7 @@ from agents.crl_infonce import CRLInfoNCEAgent
 from agents.gcbc import GCBCAgent
 from agents.gciql import GCIQLAgent
 from agents.gcsarsaql import GCSARSAQLAgent
-from agents.gciac import GCIACAgent
+from agents.gcmciql import GCMCIQLAgent
 from agents.gcivl import GCIVLAgent
 from agents.hiql import HIQLAgent
 from agents.qrl import QRLAgent
@@ -15,7 +15,7 @@ agents = dict(
     gcbc=GCBCAgent,
     gciql=GCIQLAgent,
     gcsarsaql=GCSARSAQLAgent,
-    gciac=GCIACAgent,
+    gcmciql=GCMCIQLAgent,
     gcivl=GCIVLAgent,
     hiql=HIQLAgent,
     qrl=QRLAgent,

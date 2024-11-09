@@ -23,7 +23,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="gciac",
+        slurm_name="gcmciql",
         slurm_time=int(1.0 * 60),  # minute
         slurm_partition=partition,
         slurm_nodes=1,
@@ -39,9 +39,9 @@ def main():
     with executor.batch():  # job array
         for env_name in ["pointmaze-medium-navigate-v0"]:
             for seed in [0]:
-                exp_name = f"gciac_{env_name}_alpha=0.003"
+                exp_name = f"gcmciql_{env_name}_alpha=0.003"
                 log_dir = os.path.expanduser(
-                    f"{log_root_dir}/exp_logs/ogbench_logs/gciac/{exp_name}/{seed}")
+                    f"{log_root_dir}/exp_logs/ogbench_logs/gcmciql/{exp_name}/{seed}")
 
                 # change the log folder of slurm executor
                 submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -76,7 +76,7 @@ def main():
                         --enable_wandb=1 \
                         --env_name={env_name} \
                         --eval_episodes=50 \
-                        --agent=impls/agents/gciac.py \
+                        --agent=impls/agents/gcmciql.py \
                         --agent.alpha=0.003 \
                         --seed={seed} \
                         --save_dir={log_dir} \
