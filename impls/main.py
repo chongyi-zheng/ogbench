@@ -12,6 +12,7 @@ from absl import app, flags
 from agents import agents
 from ml_collections import config_flags
 from utils.datasets import Dataset, GCDataset, HGCDataset
+from utils.wrappers import OfflineObservationNormalizer
 from utils.env_utils import make_env_and_datasets
 from utils.evaluation import evaluate
 from utils.flax_utils import restore_agent, save_agent
@@ -85,6 +86,12 @@ def main(_):
         example_batch['actions'],
         config,
     )
+
+    if config['normalize_observation']:
+        agent = OfflineObservationNormalizer.create(
+            agent,
+            train_dataset
+        )
 
     # Restore agent.
     if FLAGS.restore_path is not None:

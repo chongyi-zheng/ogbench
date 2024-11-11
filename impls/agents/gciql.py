@@ -286,6 +286,8 @@ class GCIQLAgent(flax.struct.PyTreeNode):
         elif config['critic_arch'] == 'mlp':
             value_def = GCValue(
                 hidden_dims=config['value_hidden_dims'],
+                network_type=config['network_type'],
+                num_residual_blocks=config['value_num_residual_blocks'],
                 layer_norm=config['layer_norm'],
                 ensemble=False,
                 gc_encoder=encoders.get('value'),
@@ -325,6 +327,8 @@ class GCIQLAgent(flax.struct.PyTreeNode):
             elif config['critic_arch'] == 'mlp':
                 critic_def = GCValue(
                     hidden_dims=config['value_hidden_dims'],
+                    network_type=config['network_type'],
+                    num_residual_blocks=config['value_num_residual_blocks'],
                     layer_norm=config['layer_norm'],
                     ensemble=True,
                     gc_encoder=encoders.get('critic'),
@@ -340,6 +344,8 @@ class GCIQLAgent(flax.struct.PyTreeNode):
             actor_def = GCActor(
                 hidden_dims=config['actor_hidden_dims'],
                 action_dim=action_dim,
+                network_type=config['network_type'],
+                num_residual_blocks=config['actor_num_residual_blocks'],
                 state_dependent_std=False,
                 const_std=config['const_std'],
                 gc_encoder=encoders.get('actor'),
@@ -370,10 +376,14 @@ def get_config():
         dict(
             # Agent hyperparameters.
             agent_name='gciql',  # Agent name.
+            normalize_observation=False,  # Whether to normalize observation s.t. each coordinate is centered with unit variance.
+            network_type='mlp',  # Network type of the actor and critic ('mlp' or 'simba')
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
             actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
+            actor_num_residual_blocks=1,  # Actor network number of residual blocks when using SimBa architecture.
+            value_num_residual_blocks=2,  # Critic network number of residual blocks when using SimBa architecture.
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.

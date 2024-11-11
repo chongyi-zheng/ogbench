@@ -60,6 +60,39 @@ class MLP(nn.Module):
         return x
 
 
+class SimBaMLP(nn.Module):
+    """Multi-layer perceptron with residual blocks from https://arxiv.org/pdf/2410.09754.
+
+        Attributes:
+            num_residual_blocks: Number of residual blocks.
+            hidden_dims: Hidden layer dimensions. (Only hidden_dims[0] and hidden_dims[-1] are used.)
+            layer_norm: Whether to apply layer normalization.
+        """
+
+    num_residual_blocks: int
+    hidden_dims: Sequence[int]
+    layer_norm: bool = False
+
+    @nn.compact
+    def __call__(self, x):
+        x = nn.Dense(self.hidden_dims[0], kernel_init=nn.initializers.orthogonal(1))(x)
+        for _ in range(self.num_residual_blocks):
+            res = x
+            if self.layer_norm:
+                x = nn.LayerNorm()(x)
+            x = nn.Dense(self.hidden_dims[0] * 4, kernel_init=nn.initializers.he_normal())(x)
+            x = nn.relu(x)
+            x = nn.Dense(self.hidden_dims[0], kernel_init=nn.initializers.he_normal())(x)
+            x = res + x
+
+        if self.layer_norm:
+            x = nn.LayerNorm()(x)
+
+        x = nn.Dense(self.hidden_dims[-1], kernel_init=nn.initializers.orthogonal(1))(x)
+
+        return x
+
+
 class LengthNormalize(nn.Module):
     """Length normalization layer.
 
@@ -144,6 +177,8 @@ class GCActor(nn.Module):
     """Goal-conditioned actor.
 
     Attributes:
+        network_type: Type of MLP network. ('mlp' or 'simba')
+        num_residual_blocks: Number of residual blocks.
         hidden_dims: Hidden layer dimensions.
         action_dim: Action dimension.
         log_std_min: Minimum value of log standard deviation.
@@ -157,6 +192,8 @@ class GCActor(nn.Module):
 
     hidden_dims: Sequence[int]
     action_dim: int
+    network_type: str = 'mlp'
+    num_residual_blocks: int = 1
     layer_norm: bool = False
     log_std_min: Optional[float] = -5
     log_std_max: Optional[float] = 2
@@ -167,7 +204,20 @@ class GCActor(nn.Module):
     gc_encoder: nn.Module = None
 
     def setup(self):
-        self.actor_net = MLP(self.hidden_dims, activate_final=True, layer_norm=self.layer_norm)
+        if self.network_type == 'mlp':
+            self.actor_net = MLP(
+                self.hidden_dims,
+                activate_final=True,
+                layer_norm=self.layer_norm
+            )
+
+        elif self.network_type == 'simba':
+            self.actor_net = SimBaMLP(
+                self.num_residual_blocks,
+                self.hidden_dims,
+                layer_norm=self.layer_norm
+            )
+
         self.mean_net = nn.Dense(self.action_dim, kernel_init=default_init(self.final_fc_init_scale))
         if self.state_dependent_std:
             self.log_std_net = nn.Dense(self.action_dim, kernel_init=default_init(self.final_fc_init_scale))
@@ -274,6 +324,8 @@ class GCValue(nn.Module):
     This module can be used for both value V(s, g) and critic Q(s, a, g) functions.
 
     Attributes:
+        network_type: Type of MLP network. ('mlp' or 'simba')
+        num_residual_blocks: Number of residual blocks.
         hidden_dims: Hidden layer dimensions.
         layer_norm: Whether to apply layer normalization.
         ensemble: Whether to ensemble the value function.
@@ -281,15 +333,33 @@ class GCValue(nn.Module):
     """
 
     hidden_dims: Sequence[int]
+    network_type: str = 'mlp'
+    num_residual_blocks: int = 1
     layer_norm: bool = True
     ensemble: bool = True
     gc_encoder: nn.Module = None
 
     def setup(self):
-        mlp_module = MLP
+        if self.network_type == 'mlp':
+            network_module = MLP
+        elif self.network_type == 'simba':
+            network_module = SimBaMLP
+
         if self.ensemble:
-            mlp_module = ensemblize(mlp_module, 2)
-        value_net = mlp_module((*self.hidden_dims, 1), activate_final=False, layer_norm=self.layer_norm)
+            network_module = ensemblize(network_module, 2)
+
+        if self.network_type == 'mlp':
+            value_net = network_module(
+                (*self.hidden_dims, 1),
+                activate_final=False,
+                layer_norm=self.layer_norm
+            )
+        elif self.network_type == 'simba':
+            value_net = network_module(
+                self.num_residual_blocks,
+                (*self.hidden_dims, 1),
+                layer_norm=self.layer_norm
+            )
 
         self.value_net = value_net
 
