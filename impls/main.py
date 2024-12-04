@@ -87,7 +87,7 @@ def main(_):
         config,
     )
 
-    if config['normalize_observation']:
+    if hasattr(config, 'normalize_observation') and config['normalize_observation']:
         agent = OfflineObservationNormalizer.create(
             agent,
             train_dataset

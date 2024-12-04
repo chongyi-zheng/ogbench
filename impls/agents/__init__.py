@@ -1,5 +1,6 @@
 from agents.crl import CRLAgent
 from agents.crl_infonce import CRLInfoNCEAgent
+from agents.td_infonce import TDInfoNCEAgent
 from agents.gcbc import GCBCAgent
 from agents.gciql import GCIQLAgent
 from agents.gcsarsaql import GCSARSAQLAgent
@@ -12,6 +13,7 @@ from agents.sac import SACAgent
 agents = dict(
     crl=CRLAgent,
     crl_infonce=CRLInfoNCEAgent,
+    td_infonce=TDInfoNCEAgent,
     gcbc=GCBCAgent,
     gciql=GCIQLAgent,
     gcsarsaql=GCSARSAQLAgent,

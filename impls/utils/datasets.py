@@ -80,6 +80,8 @@ class Dataset(FrozenDict):
         result = jax.tree_util.tree_map(lambda arr: arr[idxs], self._dict)
         if 'next_observations' not in result:
             result['next_observations'] = self._dict['observations'][np.minimum(idxs + 1, self.size - 1)]
+        if 'next_actions' not in result:
+            result['next_actions'] = self._dict['actions'][np.minimum(idxs + 1, self.size - 1)]
         return result
 
 
@@ -236,8 +238,17 @@ class GCDataset:
             self.config['actor_p_randomgoal'],
             self.config['actor_geom_sample'],
         )
+        # Sample random goals.
+        value_random_goal_idxs = self.sample_goals(
+            idxs,
+            0.0,  # p_curgoal
+            0.0,  # p_trajgoal
+            1.0,  # p_randomgoal
+            self.config['value_geom_sample'],
+        )
 
         batch['value_goals'] = self.get_observations(value_goal_idxs)
+        batch['value_random_goals'] = self.get_observations(value_random_goal_idxs)
         batch['actor_goals'] = self.get_observations(actor_goal_idxs)
         successes = (idxs == value_goal_idxs).astype(float)
         batch['masks'] = 1.0 - successes
