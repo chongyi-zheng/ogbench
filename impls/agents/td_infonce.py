@@ -46,14 +46,6 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             next_psi = next_psi[None, ...]
         next_logits = jnp.einsum('eik,ejk->ije', next_phi, next_psi) / jnp.sqrt(next_phi.shape[-1])
 
-        I = jnp.eye(batch_size)
-        loss1 = jax.vmap(
-            lambda _logits: optax.sigmoid_binary_cross_entropy(logits=_logits, labels=I),
-            in_axes=-1,
-            out_axes=-1,
-        )(next_logits)
-
-        # random goal logits
         _, random_phi, random_psi = self.network.select(module_name)(
             batch['observations'],
             batch['value_goals'],
@@ -66,8 +58,33 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             random_psi = random_psi[None, ...]
         random_logits = jnp.einsum('eik,ejk->ije', random_phi, random_psi) / jnp.sqrt(random_phi.shape[-1])
 
+        I = jnp.eye(batch_size)
+        next_logits = jax.vmap(
+            lambda logits1, logits2: I * logits1 + (1 - I) * logits2,
+            in_axes=-1,
+            out_axes=-1,
+        )(next_logits, random_logits)
+
+        loss1 = jax.vmap(
+            lambda _logits: optax.sigmoid_binary_cross_entropy(logits=_logits, labels=I),
+            in_axes=-1,
+            out_axes=-1,
+        )(next_logits)
+
+        # random goal logits
+        # _, random_phi, random_psi = self.network.select(module_name)(
+        #     batch['observations'],
+        #     batch['value_goals'],
+        #     actions=actions,
+        #     info=True,
+        #     params=grad_params,
+        # )
+        # if len(random_phi.shape) == 2:  # Non-ensemble.
+        #     random_phi = random_phi[None, ...]
+        #     random_psi = random_psi[None, ...]
+        # random_logits = jnp.einsum('eik,ejk->ije', random_phi, random_psi) / jnp.sqrt(random_phi.shape[-1])
+
         # importance sampling logits
-        # TODO (chongyi): use target parameters
         _, w_phi, w_psi = self.network.select('target_' + module_name)(
             batch['next_observations'],
             batch['value_goals'],
@@ -165,15 +182,23 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
                 q_actions = jnp.clip(dist.mode(), -1, 1)
             else:
                 q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
-            logits1, logits2 = value_transform(
-                self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
+            _, phi, psi = self.network.select('critic')(
+                batch['observations'],
+                batch['actor_goals'],
+                q_actions,
+                info=True,
             )
-            logits = jnp.minimum(logits1, logits2)
+            if len(phi.shape) == 2:  # Non-ensemble.
+                phi = phi[None, ...]
+                psi = psi[None, ...]
+            logits = jnp.einsum('eik,ejk->ije', phi, psi) / jnp.sqrt(phi.shape[-1])
+            logits = jnp.min(logits, axis=-1)
 
             # Normalize Q values by the absolute mean to make the loss scale invariant.
             I = jnp.eye(batch_size)
-            logits = logits / jax.lax.stop_gradient(jnp.abs(logits).mean() + 1e-6)
+            # logits = logits / jax.lax.stop_gradient(jnp.abs(logits).mean() + 1e-6)
             q_loss = optax.softmax_cross_entropy(logits=logits, labels=I)
+            # q_loss = -jnp.diag(logits - jax.nn.logsumexp(logits, axis=-1, keepdims=True))
             q_loss = q_loss.mean()
 
             log_prob = dist.log_prob(batch['actions'])
@@ -205,12 +230,9 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
-        if self.config['actor_loss'] == 'awr':
-            value_loss, value_info = self.critic_loss(batch, grad_params, 'value')
-            for k, v in value_info.items():
-                info[f'value/{k}'] = v
-        else:
-            value_loss = 0.0
+        value_loss, value_info = self.critic_loss(batch, grad_params, 'value')
+        for k, v in value_info.items():
+            info[f'value/{k}'] = v
 
         rng, actor_rng = jax.random.split(rng)
         actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
@@ -239,6 +261,7 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
         self.target_update(new_network, 'critic')
+        self.target_update(new_network, 'value')
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -316,8 +339,6 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
                 goal_encoder=encoders.get('critic_goal'),
             )
 
-        if config['actor_loss'] == 'awr':
-            # AWR requires a separate V network to compute advantages (Q - V).
             value_def = GCBilinearValue(
                 hidden_dims=config['value_hidden_dims'],
                 latent_dim=config['latent_dim'],
@@ -348,11 +369,10 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_goals, ex_actions)),
             actor=(actor_def, (ex_observations, ex_goals)),
         )
-        if config['actor_loss'] == 'awr':
-            network_info.update(
-                value=(value_def, (ex_observations, ex_goals)),
-                target_value=(copy.deepcopy(value_def), (ex_observations, ex_goals)),
-            )
+        network_info.update(
+            value=(value_def, (ex_observations, ex_goals)),
+            target_value=(copy.deepcopy(value_def), (ex_observations, ex_goals)),
+        )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
 
@@ -363,8 +383,7 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
 
         params = network_params
         params['modules_target_critic'] = params['modules_critic']
-        if config['actor_loss'] == 'awr':
-            params['modules_target_value'] = params['modules_value']
+        params['modules_target_value'] = params['modules_value']
 
         return cls(rng, network=network, config=flax.core.FrozenDict(**config))
 

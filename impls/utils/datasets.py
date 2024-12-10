@@ -189,6 +189,19 @@ class GCDataset:
         self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
         assert self.terminal_locs[-1] == self.size - 1
 
+        # Get max_episode_steps in the dataset
+        initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, np.arange(self.size), side='right') - 1]
+        final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, np.arange(self.size))]
+        self.max_episode_steps = int(np.max(final_state_idxs - initial_state_idxs + 1))
+
+        # Geometric distribution for future goal sampling
+        arange = np.arange(self.max_episode_steps)
+        is_future_mask = (arange[:, None] < arange[None]).astype(float)
+        discount = self.config['discount'] ** (arange[None] - arange[:, None] - 1).astype(float)
+
+        geometric_probs = is_future_mask * discount
+        self.geometric_probs = geometric_probs / geometric_probs.sum(axis=1, keepdims=True)
+
         # Assert probabilities sum to 1.
         assert np.isclose(
             self.config['value_p_curgoal'] + self.config['value_p_trajgoal'] + self.config['value_p_randomgoal'], 1.0
@@ -285,11 +298,26 @@ class GCDataset:
         random_goal_idxs = self.dataset.get_random_idxs(batch_size)
 
         # Goals from the same trajectory (excluding the current state, unless it is the final state).
+        initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
         final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, idxs)]
         if geom_sample:
             # Geometric sampling.
-            offsets = np.random.geometric(p=1 - self.config['discount'], size=batch_size)  # in [1, inf)
-            middle_goal_idxs = np.minimum(idxs + offsets, final_state_idxs)
+
+            # truncated geometric sampling.
+            # offsets = np.random.geometric(p=1 - self.config['discount'], size=batch_size)  # in [1, inf)
+            # middle_goal_idxs = np.minimum(idxs + offsets, final_state_idxs)
+
+            # renormalized geometric sampling.
+            current_timesteps = idxs - initial_state_idxs
+
+            # geometric goal relabeling
+            probs = self.geometric_probs[current_timesteps]
+            c = probs.cumsum(axis=1)
+            u = np.random.rand(len(c), 1)
+            future_timesteps = (u < c).argmax(axis=1)
+            offsets = future_timesteps - current_timesteps
+
+            middle_goal_idxs = idxs + offsets
         else:
             # Uniform sampling.
             distances = np.random.rand(batch_size)  # in [0, 1)

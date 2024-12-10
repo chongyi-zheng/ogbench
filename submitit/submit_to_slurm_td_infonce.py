@@ -39,7 +39,7 @@ def main():
     with executor.batch():  # job array
         for env_name in ["pointmaze-medium-navigate-v0"]:
             for seed in [0, 1]:
-                exp_name = f"td_infonce_{env_name}_seed={seed}_actor_traj_goal"
+                exp_name = f"td_infonce_{env_name}_mixture_next_logits_actor_future_goal"
                 log_dir = os.path.expanduser(
                     f"{log_root_dir}/exp_logs/ogbench_logs/td_infonce/{exp_name}/{seed}")
 
@@ -78,6 +78,8 @@ def main():
                         --eval_episodes=50 \
                         --agent=impls/agents/td_infonce.py \
                         --agent.alpha=0.03 \
+                        --agent.actor_p_trajgoal=1.0 \
+                        --agent.actor_p_randomgoal=0.0 \
                         --seed={seed} \
                         --save_dir={log_dir} \
                     2>&1 | tee {log_dir}/stream.log;
