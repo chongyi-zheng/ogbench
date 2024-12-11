@@ -146,7 +146,7 @@ def main():
     ax.set_title("Training data")
     fig.savefig("./gaussian_training_data.png")
 
-    # Initialize model
+    """Training model"""
     model = VDM()
     rng, rng1, rng2 = jax.random.split(rng, 3)
     init_inputs = [jnp.ones((1, 2)), jnp.zeros((1,))]
@@ -208,24 +208,6 @@ def main():
 
         return log_probs
 
-    # def data_decode(z_0_rescaled, gamma_0, vocab_size=256):
-    #     # Logits are exact if there are no dependencies between dimensions of x
-    #     x_vals = jnp.arange(0, vocab_size)[:, None]
-    #     x_vals = jnp.repeat(x_vals, z_0_rescaled.shape[-1], 1)
-    #     x_vals = normalize(x_vals).transpose([1, 0])[None, :, :]
-    #     inv_stdev = jnp.exp(-0.5 * gamma_0[..., None])
-    #     logits = -0.5 * jnp.square((z_0_rescaled[..., None] - x_vals) * inv_stdev)
-    #
-    #     logprobs = jax.nn.log_softmax(logits)
-    #     return logprobs
-    #
-    # def data_logprob(x, z_0_rescaled, gamma_0, vocab_size=256):
-    #     x = x.round().astype('int32')
-    #     x_onehot = jax.nn.one_hot(x, vocab_size)
-    #     logprobs = data_decode(z_0_rescaled, gamma_0)
-    #     logprob = jnp.sum(x_onehot * logprobs, axis=(1, 2))
-    #     return logprob
-
     # Define training step
     def loss_fn(params, x, rng, T_train=0):
         # gamma = lambda t: model.apply(params, t, method=VDM.gamma)
@@ -239,17 +221,9 @@ def main():
 
         # 1. RECONSTRUCTION LOSS
         rng, rng1 = jax.random.split(rng)
-        # eps_0 = jax.random.normal(rng1, shape=f.shape)
-        # z_0 = alpha_0 * f + sigma_0 * eps_0
         z_0 = encode(params, x, rng1)
-        # _, log_probs = decode(f, z_0, alpha_0, sigma_0)
         log_probs = decode_log_probs(params, z_0, x)
         loss_recon = -log_probs
-
-        # gamma_0 = model.apply(params, 0.0, method=VDM.gamma)
-        # alpha_0 = jnp.sqrt(jax.nn.sigmoid(-gamma_0))
-        # z_0_rescaled = z_0 / alpha_0
-        # loss_recon = -data_logprob(x, z_0_rescaled, gamma_0)
 
         # 2. LATENT LOSS
         # KL z1 with N(0,1) prior
@@ -296,13 +270,6 @@ def main():
             gamma_s = model.apply(params, s, method=VDM.gamma)
             loss_diff = 0.5 * T_train * jnp.expm1(gamma_t - gamma_s) * loss_diff_mse
 
-        # Compute loss in terms of bits per dimension
-        # rescale_to_bpd = 1. / (np.prod(x.shape[1:]) * np.log(2.))
-        # bpd_latent = jnp.mean(loss_klz) * rescale_to_bpd
-        # bpd_recon = jnp.mean(loss_recon) * rescale_to_bpd
-        # bpd_diff = jnp.mean(loss_diff) * rescale_to_bpd
-        # bpd = bpd_recon + bpd_latent + bpd_diff
-        # loss = bpd
         loss_recon = jnp.mean(loss_recon)
         loss_latent = jnp.mean(loss_klz)
         loss_diff = jnp.mean(loss_diff)
@@ -326,10 +293,10 @@ def main():
         params = optax.apply_updates(params, updates)
         return rng, optim_state, params, loss, metrics
 
-    # training loop (should take ~20 mins)
+    # training loop
     losses = []
     for i in tqdm.trange(num_train_steps):
-        # training_data = sample_data(num_training_data)
+        training_data = sample_data(num_training_data)
         rng, optim_state, params, loss, _metrics = train_step(rng, optim_state, params, training_data)
         losses.append(loss)
 
@@ -339,6 +306,7 @@ def main():
     fig.savefig("./vmd_loss.png")
     print("Finish training...")
 
+    """Evaluation"""
     # Plot the learned endpoints of the noise schedule
     print('gamma_0', model.apply(params, 0., method=VDM.gamma))
     print('gamma_1', model.apply(params, 1., method=VDM.gamma))
@@ -474,12 +442,89 @@ def main():
         fig.savefig(filename)
 
     plot_generative_process(diffusion_zs, denoising_zs, eval_data, sampled_x)
-    print()
 
-    # loss_diff, loss_klz, loss_recon = vdm.apply(unreplicate(pstore.params), ims, 0 * lbs, rngs={"sample": rng})
-    # losses = jax.tree_map(lambda x: np.mean(x) / (onp.prod(ims.shape[1:]) * np.log(2)),
-    #                       {"loss_diff": loss_diff, "loss_klz": loss_klz, "loss_recon": loss_recon})
-    # print(losses, "\n", sum(losses.values()))
+    # Estimate log likelihood
+    def compute_ground_truth_log_probs(x):
+        # mean = training_data.mean(axis=0)
+        # std = training_data.std(axis=0)
+
+        mean = np.ones(2) * 2
+        std = 2
+        log_probs = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + 2 * jnp.log(std) + (x - mean) ** 2 / std ** 2, axis=-1)
+
+        return log_probs
+
+    def compute_elbo(params, x, rng, num_diffusion_steps=0):
+        batch_size = x.shape[0]
+
+        # 1. RECONSTRUCTION LOSS
+        rng, rng1 = jax.random.split(rng)
+        z_0 = encode(params, x, rng1)
+        log_probs = decode_log_probs(params, z_0, x)
+        loss_recon = -log_probs
+
+        # 2. LATENT LOSS
+        # KL z1 with N(0,1) prior
+        gamma_1 = model.apply(params, 1.0, method=VDM.gamma)
+        sigma_1 = jnp.sqrt(jax.nn.sigmoid(gamma_1))
+        alpha_1 = jnp.sqrt(jax.nn.sigmoid(-gamma_1))
+
+        f = normalize(x)
+
+        loss_klz = 0.5 * jnp.sum((alpha_1 ** 2) * (f ** 2) + sigma_1 ** 2 - 2 * jnp.log(sigma_1) - 1., axis=1)
+
+        # 3. DIFFUSION LOSS
+        # sample time steps
+        rng, rng1 = jax.random.split(rng)
+        t = jax.random.uniform(rng1, shape=(batch_size,))
+
+        # discretize time steps if we're working with discrete time
+        if num_diffusion_steps > 0:
+            t = jnp.ceil(t * num_diffusion_steps) / num_diffusion_steps
+
+        # sample z_t
+        gamma_t = model.apply(params, t, method=VDM.gamma)
+        sigma_t = jnp.sqrt(jax.nn.sigmoid(gamma_t))
+        alpha_t = jnp.sqrt(jax.nn.sigmoid(-gamma_t))
+
+        rng, rng1 = jax.random.split(rng)
+        eps_t = jax.random.normal(rng1, shape=f.shape)
+        z_t = alpha_t[:, None] * f + sigma_t[:, None] * eps_t
+
+        # compute predicted noise
+        eps_t_hat = model.apply(params, z_t, gamma_t, method=VDM.score)
+        # compute MSE of predicted noise
+        loss_diff_mse = jnp.sum(jnp.square(eps_t - eps_t_hat), axis=1)
+
+        if num_diffusion_steps == 0:
+            # loss for infinite depth T, i.e. continuous time
+            gamma = lambda t: model.apply(params, t, method=VDM.gamma)
+
+            _, g_t_grad = jax.jvp(gamma, (t,), (jnp.ones_like(t),))
+            loss_diff = 0.5 * g_t_grad * loss_diff_mse
+        else:
+            # loss for finite depth T, i.e. discrete time
+            s = t - (1. / num_diffusion_steps)
+            gamma_s = model.apply(params, s, method=VDM.gamma)
+            loss_diff = 0.5 * num_diffusion_steps * jnp.expm1(gamma_t - gamma_s) * loss_diff_mse
+
+        # loss_recon = jnp.mean(loss_recon)
+        # loss_latent = jnp.mean(loss_klz)
+        # loss_diff = jnp.mean(loss_diff)
+        elbo = -(loss_recon + loss_klz + loss_diff)
+
+        return elbo
+
+    gt_log_probs = compute_ground_truth_log_probs(eval_data)
+    rng, rng1 = jax.random.split(rng)
+    elbo = compute_elbo(params, eval_data, rng)
+
+    mean_abs_error = jnp.mean(jnp.abs(gt_log_probs - elbo))
+
+    # from scipy.stats import spearmanr
+    # spearmanr(jax.nn.softmax(gt_log_probs), jax.nn.softmax(elbo))
+
+    print(mean_abs_error)
 
 
 if __name__ == "__main__":
