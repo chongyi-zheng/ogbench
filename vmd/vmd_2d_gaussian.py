@@ -126,16 +126,31 @@ def main():
     # x = 4 * (x + .25 * np.random.randn(N, 2) + 30)
     # x = x.astype('uint8')
 
-    mean = np.ones(2)
-    std = 2
-    training_data = mean + np.random.normal(size=[num_training_data, 2]) * std
-    eval_data = mean + np.random.normal(size=[num_eval_data, 2]) * std
+    # mean = np.ones(2) * 2
+    # std = 2
+    # training_data = mean + np.random.normal(size=[num_training_data, 2]) * std
+    # eval_data = mean + np.random.normal(size=[num_eval_data, 2]) * std
+
+    theta = np.sqrt(np.random.rand(num_training_data)) * 3 * np.pi
+    r_a = 2 * theta + np.pi
+    training_data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
+
+    theta = np.sqrt(np.random.rand(num_eval_data)) * 3 * np.pi
+    r_a = 2 * theta + np.pi
+    eval_data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
 
     # plot dataset
-    fig = plt.figure()
+    axis_lim = 25
+    fig = plt.figure(figsize=(4, 4))
+    ax = plt.gca()
     plt.scatter(training_data[:, 0], training_data[:, 1], alpha=0.5)
-    plt.title("Training data")
-    fig.savefig("./2d_gaussian_training_data.png")
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_xticks([-axis_lim, 0, axis_lim])
+    ax.set_yticks([-axis_lim, 0, axis_lim])
+    ax.set_xlim(-axis_lim, axis_lim)
+    ax.set_ylim(-axis_lim, axis_lim)
+    ax.set_title("Training data")
+    fig.savefig("./gaussian_training_data.png")
 
     # Initialize model
     model = VDM()
@@ -147,18 +162,53 @@ def main():
     optimizer = optax.adamw(learning_rate)
     optim_state = optimizer.init(params)
 
-    def encode(x):
+    def normalize(x):
         f = (x - training_data.mean(axis=0)) / training_data.std(axis=0)
 
         return f
 
-    def decode(f, z_0, alpha_0, sigma_0):
+    def unnormalize(f):
         x = f * training_data.std(axis=0) + training_data.std(axis=0)
+
+        return x
+
+    def encode(params, x, rng):
+        f = normalize(x)
+
+        gamma_0 = model.apply(params, 0.0, method=VDM.gamma)
+        sigma_0 = jnp.sqrt(jax.nn.sigmoid(gamma_0))
+        alpha_0 = jnp.sqrt(jax.nn.sigmoid(-gamma_0))
+
+        eps_0 = jax.random.normal(rng, shape=f.shape)
+        z_0 = alpha_0 * f + sigma_0 * eps_0
+
+        return z_0
+
+    def decode(params, z_0, rng):
+        gamma_0 = model.apply(params, 0.0, method=VDM.gamma)
+        sigma_0 = jnp.sqrt(jax.nn.sigmoid(gamma_0))
+        alpha_0 = jnp.sqrt(jax.nn.sigmoid(-gamma_0))
+
+        f = z_0 / alpha_0
+        eps_0 = jax.random.normal(rng, shape=f.shape)
+        sampled_f = z_0 / alpha_0 + sigma_0 / alpha_0 * eps_0
+
+        x = unnormalize(f)
+        sampled_x = unnormalize(sampled_f)
+
+        return x, sampled_x
+
+    def decode_log_probs(params, z_0, x):
+        f = normalize(x)
+
+        gamma_0 = model.apply(params, 0.0, method=VDM.gamma)
+        sigma_0 = jnp.sqrt(jax.nn.sigmoid(gamma_0))
+        alpha_0 = jnp.sqrt(jax.nn.sigmoid(-gamma_0))
 
         logits = z_0 / sigma_0 - alpha_0 / sigma_0 * f
         log_probs = -0.5 * jnp.sum(logits ** 2, axis=-1)
 
-        return x, log_probs
+        return log_probs
 
     # def data_decode(z_0_rescaled, gamma_0, vocab_size=256):
     #     # Logits are exact if there are no dependencies between dimensions of x
@@ -183,24 +233,29 @@ def main():
         # gamma = lambda t: model.apply(params, t, method=VDM.gamma)
         # gamma_0, gamma_1 = gamma(0.), gamma(1.)
 
-        gamma_0 = model.apply(params, 0.0, method=VDM.gamma)
-        gamma_1 = model.apply(params, 1.0, method=VDM.gamma)
-        sigma_0, sigma_1 = jnp.sqrt(jax.nn.sigmoid(gamma_0)), jnp.sqrt(jax.nn.sigmoid(gamma_1))
-        alpha_0, alpha_1 = jnp.sqrt(jax.nn.sigmoid(-gamma_0)), jnp.sqrt(jax.nn.sigmoid(-gamma_1))
+        # gamma_0 = model.apply(params, 0.0, method=VDM.gamma)
+        # gamma_1 = model.apply(params, 1.0, method=VDM.gamma)
+        # sigma_1 = jnp.sqrt(jax.nn.sigmoid(gamma_1))
+        # alpha_1 = jnp.sqrt(jax.nn.sigmoid(-gamma_1))
         batch_size = x.shape[0]
-
-        # encode
-        f = encode(x)
 
         # 1. RECONSTRUCTION LOSS
         rng, rng1 = jax.random.split(rng)
-        eps_0 = jax.random.normal(rng1, shape=f.shape)
-        z_0 = alpha_0 * f + sigma_0 * eps_0
-        _, log_probs = decode(f, z_0, alpha_0, sigma_0)
+        # eps_0 = jax.random.normal(rng1, shape=f.shape)
+        # z_0 = alpha_0 * f + sigma_0 * eps_0
+        z_0 = encode(params, x, rng1)
+        # _, log_probs = decode(f, z_0, alpha_0, sigma_0)
+        log_probs = decode_log_probs(params, z_0, x)
         loss_recon = -log_probs
 
         # 2. LATENT LOSS
         # KL z1 with N(0,1) prior
+        gamma_1 = model.apply(params, 1.0, method=VDM.gamma)
+        sigma_1 = jnp.sqrt(jax.nn.sigmoid(gamma_1))
+        alpha_1 = jnp.sqrt(jax.nn.sigmoid(-gamma_1))
+
+        f = normalize(x)
+
         loss_klz = 0.5 * jnp.sum((alpha_1 ** 2) * (f ** 2) + sigma_1 ** 2 - 2 * jnp.log(sigma_1) - 1., axis=1)
 
         # 3. DIFFUSION LOSS
@@ -218,13 +273,13 @@ def main():
         alpha_t = jnp.sqrt(jax.nn.sigmoid(-gamma_t))
 
         rng, rng1 = jax.random.split(rng)
-        eps = jax.random.normal(rng1, shape=f.shape)
-        z_t = alpha_t[:, None] * f + sigma_t[:, None] * eps
+        eps_t = jax.random.normal(rng1, shape=f.shape)
+        z_t = alpha_t[:, None] * f + sigma_t[:, None] * eps_t
 
         # compute predicted noise
-        eps_hat = model.apply(params, z_t, gamma_t, method=VDM.score)
+        eps_t_hat = model.apply(params, z_t, gamma_t, method=VDM.score)
         # compute MSE of predicted noise
-        loss_diff_mse = jnp.sum(jnp.square(eps - eps_hat), axis=1)
+        loss_diff_mse = jnp.sum(jnp.square(eps_t - eps_t_hat), axis=1)
 
         if T_train == 0:
             # loss for infinite depth T, i.e. continuous time
@@ -237,7 +292,6 @@ def main():
             s = t - (1. / T_train)
             gamma_s = model.apply(params, s, method=VDM.gamma)
             loss_diff = 0.5 * T_train * jnp.expm1(gamma_t - gamma_s) * loss_diff_mse
-
 
         # Compute loss in terms of bits per dimension
         # rescale_to_bpd = 1. / (np.prod(x.shape[1:]) * np.log(2.))
@@ -278,7 +332,7 @@ def main():
     fig = plt.figure()
     plt.plot(losses)
     plt.title("Loss")
-    fig.savefig("./2d_gaussian_losses.png")
+    fig.savefig("./vmd_loss.png")
     print("Finish training...")
 
     # Plot the learned endpoints of the noise schedule
@@ -286,81 +340,137 @@ def main():
     print('gamma_1', model.apply(params, 1., method=VDM.gamma))
 
     # Generate samples
-    def data_generate_x(z_0, gamma_0, rng):
-        var_0 = nn.sigmoid(gamma_0)
-        z_0_rescaled = z_0 / jnp.sqrt(1. - var_0)
-        logits = data_decode(z_0_rescaled, gamma_0)
-        samples = jax.random.categorical(rng, logits)
-        return samples
+    def diffusion_step(params, idx, x, rng, num_diffusion_steps):
+        """compute q(z_t | x)"""
+        batch_size = x.shape[0]
+        f = normalize(x)
 
-    # t_end is integer between 0 and T_sample
-    def sample_fn(rng, params, N_sample, T_sample):
+        t = idx / num_diffusion_steps
+        gamma_t = model.apply(params, t, method=VDM.gamma)
+        gamma_t = jnp.repeat(gamma_t, batch_size)
+        alpha_t = jnp.sqrt(jax.nn.sigmoid(-gamma_t))[:, None]
+        sigma_t = jnp.sqrt(jax.nn.sigmoid(gamma_t))[:, None]
+
+        eps_t = jax.random.normal(rng, shape=x.shape)
+        z_t = alpha_t * f + sigma_t * eps_t
+
+        return z_t
+
+    def denoising_step(params, idx, z_t, rng, num_diffusion_steps):
+        """compute p(z_s | z_t)"""
+        batch_size = z_t.shape[0]
+
+        t = (num_diffusion_steps - idx) / num_diffusion_steps
+        s = (num_diffusion_steps - idx - 1) / num_diffusion_steps
+
+        gamma_s = model.apply(params, s, method=VDM.gamma)
+        gamma_t = model.apply(params, t, method=VDM.gamma)
+        gamma_s = jnp.repeat(gamma_s, batch_size)
+        gamma_t = jnp.repeat(gamma_t, batch_size)
+
+        eps_t = jax.random.normal(rng, z_t.shape)
+        eps_t_hat = model.apply(params, z_t, gamma_t, method=VDM.score)
+        alpha_s, alpha_t = jnp.sqrt(jax.nn.sigmoid(-gamma_s)), jnp.sqrt(jax.nn.sigmoid(-gamma_t))
+        alpha_s, alpha_t = alpha_s[:, None], alpha_t[:, None]
+        sigma_s, sigma_t = jnp.sqrt(jax.nn.sigmoid(gamma_s)), jnp.sqrt(jax.nn.sigmoid(gamma_t))
+        sigma_s, sigma_t = sigma_s[:, None], sigma_t[:, None]
+        expm1 = jnp.expm1(gamma_s - gamma_t)
+        expm1 = expm1[:, None]
+
+        # (chongyi): equations (32) and (33) in the paper.
+        z_s = alpha_s / alpha_t * (z_t + sigma_t * expm1 * eps_t_hat) + \
+            sigma_s * jnp.sqrt(-expm1) * eps_t
+
+        pred_x = (z_t - sigma_t * eps_t_hat) / alpha_t
+
+        return z_s, pred_x
+
+    def sample_fn(params, x, rng, num_diffusion_steps=200):
         # sample z_0 from the diffusion model
         rng, rng1 = jax.random.split(rng)
-        z = [jax.random.normal(rng1, (N_sample, 2))]
-        x_pred = []
+        diffusion_zs = []
+        denoising_zs = [jax.random.normal(rng1, (x.shape[0], 2))]
+        pred_xs = []
 
-        for i in tqdm.trange(T_sample):
-            rng, rng1 = jax.random.split(rng)
-            _z, _x_pred = sample_step(i, T_sample, z[-1], rng1)
-            z.append(_z)
-            x_pred.append(_x_pred)
+        for idx in tqdm.trange(num_diffusion_steps):
+            rng, rng1, rng2 = jax.random.split(rng, num=3)
 
-        gamma_0 = model.apply(params, 0., method=VDM.gamma)
-        x_sample = data_generate_x(z[-1], gamma_0, rng)
+            diffusion_z = diffusion_step(params, idx, x, rng1, num_diffusion_steps)
+            denoising_z, pred_x = denoising_step(params, idx, denoising_zs[-1], rng2, num_diffusion_steps)
 
-        return z, x_pred, x_sample
+            diffusion_zs.append(diffusion_z)
+            denoising_zs.append(denoising_z)
+            pred_xs.append(pred_x)
 
-    def sample_step(i, T_sample, z_t, rng):
+        rng, rng1 = jax.random.split(rng)
+        diffusion_z = diffusion_step(params, num_diffusion_steps, x, rng1, num_diffusion_steps)
+        diffusion_zs.append(diffusion_z)
+        _, sampled_x = decode(params, denoising_zs[-1], rng)
 
-        eps = jax.random.normal(rng, z_t.shape)
+        diffusion_zs = jnp.asarray(diffusion_zs)
+        denoising_zs = jnp.asarray(denoising_zs)
+        pred_xs = jnp.asarray(pred_xs)
 
-        t = (T_sample - i) / T_sample
-        s = (T_sample - i - 1) / T_sample
-
-        gamma_s = model.apply(params, s, method=Model.gamma)
-        gamma_t = model.apply(params, t, method=Model.gamma)
-        gamma_s *= jnp.ones((z_t.shape[0],), gamma_t.dtype)
-        gamma_t *= jnp.ones((z_t.shape[0],), gamma_t.dtype)
-
-        eps_hat = model.apply(params, z_t, gamma_t, method=Model.score)
-        a = nn.sigmoid(-gamma_s)[:, None]
-        b = nn.sigmoid(-gamma_t)[:, None]
-        c = - jnp.expm1(gamma_s - gamma_t)[:, None]
-        sigma_t = jnp.sqrt(nn.sigmoid(gamma_t))[:, None]
-
-        # equations (32) and (33) in the paper.
-        z_s = jnp.sqrt(a / b) * (z_t - sigma_t * c * eps_hat) + \
-              jnp.sqrt((1. - a) * c) * eps
-
-        alpha_t = jnp.sqrt(1 - sigma_t)
-        x_pred = (z_t - sigma_t * eps_hat) / alpha_t
-
-        return z_s, x_pred
+        return diffusion_zs, denoising_zs, pred_xs, sampled_x
 
     rng, rng1 = jax.random.split(rng)
-    z, x_pred, _ = sample_fn(rng1, params, N_sample=1024, T_sample=200)
+    diffusion_zs, denoising_zs, _, sampled_x = sample_fn(params, eval_data, rng1)
 
     # Create square plot:
-    def plot(data, color='blue'):
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
+    def plot_generative_process(diffusion_zs, denoising_zs, x, sampled_x, num_timesteps=11, filename='./vmd_zs.png'):
+        fig, axes = plt.subplots(2, num_timesteps + 1)
+        fig.set_figheight(3 * 2)
+        fig.set_figwidth(3 * (num_timesteps + 1))
+
+        num_diffusion_steps = diffusion_zs.shape[0] - 1
+        axis_lim = 25
+        alpha = 0.5
+
+        ax = axes[0, 0]
+        ax.scatter(x[:, 0], x[:, 1])
         ax.set_aspect('equal', adjustable='box')
-        ax.set_xticks([-2, 0, 2])
-        ax.set_yticks([-2, 0, 2])
-        plt.scatter(data[:, 0], data[:, 1], alpha=0.1, c=color)
-        plt.xlim(-2, 2)
-        plt.ylim(-2, 2)
+        ax.set_xticks([-axis_lim, 0, axis_lim])
+        ax.set_yticks([-axis_lim, 0, axis_lim])
+        ax.set_xlim(-axis_lim, axis_lim)
+        ax.set_ylim(-axis_lim, axis_lim)
+        ax.set_title("$x$")
 
-    plot(z[199])
+        ax = axes[1, 0]
+        ax.scatter(sampled_x[:, 0], sampled_x[:, 1])
+        ax.set_aspect('equal', adjustable='box')
+        ax.set_xticks([-axis_lim, 0, axis_lim])
+        ax.set_yticks([-axis_lim, 0, axis_lim])
+        ax.set_xlim(-axis_lim, axis_lim)
+        ax.set_ylim(-axis_lim, axis_lim)
+        ax.set_title(r"$\hat{x}$")
 
-    def sample_q_t(rng, t, x):
-        f = data_encode(x)
-        gamma_t = model.apply(params, t, method=Model.gamma)
-        var_t = nn.sigmoid(gamma_t)[:, None]
-        eps = jax.random.normal(rng, shape=x.shape)
-        z_t = jnp.sqrt(1. - var_t) * f + jnp.sqrt(var_t) * eps
-        return z_t
+        axis_lim = 10
+        for timestep_idx, timestep in enumerate(np.linspace(0, 1, 11)):
+            t = int(timestep * num_diffusion_steps)
+
+            ax = axes[0, timestep_idx + 1]
+            ax.scatter(diffusion_zs[t, :, 0], diffusion_zs[t, :, 1], alpha=alpha)
+            ax.set_aspect('equal', adjustable='box')
+            ax.set_xticks([-axis_lim, 0, axis_lim])
+            ax.set_yticks([-axis_lim, 0, axis_lim])
+            ax.set_xlim(-axis_lim, axis_lim)
+            ax.set_ylim(-axis_lim, axis_lim)
+            ax.set_title(r"$q(z_t \mid x), t = {:0.1f}$".format(timestep))
+
+            ax = axes[1, timestep_idx + 1]
+            ax.scatter(denoising_zs[num_diffusion_steps - t, :, 0],
+                       denoising_zs[num_diffusion_steps - t, :, 1], alpha=alpha)
+            ax.set_aspect('equal', adjustable='box')
+            ax.set_xticks([-axis_lim, 0, axis_lim])
+            ax.set_yticks([-axis_lim, 0, axis_lim])
+            ax.set_xlim(-axis_lim, axis_lim)
+            ax.set_ylim(-axis_lim, axis_lim)
+            ax.set_title(r"$p(z_s \mid z_t), t = {:0.1f}$".format(timestep))
+
+        fig.savefig(filename)
+
+    plot_generative_process(diffusion_zs, denoising_zs, eval_data, sampled_x)
+    print()
 
     # loss_diff, loss_klz, loss_recon = vdm.apply(unreplicate(pstore.params), ims, 0 * lbs, rngs={"sample": rng})
     # losses = jax.tree_map(lambda x: np.mean(x) / (onp.prod(ims.shape[1:]) * np.log(2)),
