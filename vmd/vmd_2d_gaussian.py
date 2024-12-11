@@ -111,49 +111,30 @@ def main():
 
     # Optimization hyper-parameters
     learning_rate = 3e-4
-    num_train_steps = 20000  # nr of training steps
+    num_train_steps = 50_000  # nr of training steps
 
     rng = jax.random.PRNGKey(seed=np.random.randint(0, 2 ** 32))
     np.random.seed(np.random.randint(0, 2 ** 32))
 
     """Create datasets"""
-    # # Make 8-bit swirl dataset
-    # theta = np.sqrt(np.random.rand(N)) * 3 * np.pi  # np.linspace(0,2*pi,100)
-    # r_a = 2 * theta + np.pi
-    # x = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
-    # # We use 8 bits, to make this a bit similar to image data, which has 8-bit
-    # # color channels.
-    # x = 4 * (x + .25 * np.random.randn(N, 2) + 30)
-    # x = x.astype('uint8')
-
-    # mean = np.ones(2) * 2
-    # std = 2
-    # training_data = mean + np.random.normal(size=[num_training_data, 2]) * std
-    # eval_data = mean + np.random.normal(size=[num_eval_data, 2]) * std
-
     def sample_data(num_data):
-        theta = np.sqrt(np.random.rand(num_data)) * 3 * np.pi
-        r_a = 2 * theta + np.pi
-        data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
+        # 2d swirl data
+        # theta = np.sqrt(np.random.rand(num_data)) * 3 * np.pi
+        # r_a = 2 * theta + np.pi
+        # data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
+
+        # gaussian data
+        mean = np.ones(2) * 2
+        std = 2
+        data = mean + np.random.normal(size=[num_data, 2]) * std
 
         return data
 
-    # theta = np.sqrt(np.random.rand(num_training_data)) * 3 * np.pi
-    # r_a = 2 * theta + np.pi
-    # training_data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
-    # training_data = 4 * (training_data + .25 * np.random.randn(num_training_data, 2) + 30)
-    # training_data = training_data.astype('uint8')
-
-    # theta = np.sqrt(np.random.rand(num_eval_data)) * 3 * np.pi
-    # r_a = 2 * theta + np.pi
-    # eval_data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
-    # eval_data = 4 * (eval_data + .25 * np.random.randn(num_eval_data, 2) + 30)
-    # eval_data = eval_data.astype('uint8')
     training_data = sample_data(num_training_data)
     eval_data = sample_data(num_eval_data)
 
     # plot dataset
-    axis_lim = 25
+    axis_lim = 10
     fig = plt.figure(figsize=(4, 4))
     ax = plt.gca()
     plt.scatter(training_data[:, 0], training_data[:, 1], alpha=0.5)
@@ -173,6 +154,10 @@ def main():
 
     # initialize optimizer
     optimizer = optax.adamw(learning_rate)
+    # optimizer = optax.chain(
+    #     optax.scale_by_schedule(optax.cosine_decay_schedule(1, num_train_steps, 1e-4)),
+    #     optax.adamw(learning_rate),
+    # )
     optim_state = optimizer.init(params)
 
     def normalize(x):
@@ -181,7 +166,7 @@ def main():
         return f
 
     def unnormalize(f):
-        x = f * training_data.std(axis=0) + training_data.std(axis=0)
+        x = f * training_data.std(axis=0) + training_data.mean(axis=0)
 
         return x
 
@@ -442,7 +427,7 @@ def main():
         fig.set_figwidth(3 * (num_timesteps + 1))
 
         num_diffusion_steps = diffusion_zs.shape[0] - 1
-        axis_lim = 25
+        axis_lim = 10
         alpha = 0.5
 
         ax = axes[0, 0]
