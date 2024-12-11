@@ -110,11 +110,11 @@ def main():
     num_eval_data = 512
 
     # Optimization hyper-parameters
-    learning_rate = 3e-3
+    learning_rate = 3e-4
     num_train_steps = 20000  # nr of training steps
 
-    rng = jax.random.PRNGKey(seed=0)
-    np.random.seed(0)
+    rng = jax.random.PRNGKey(seed=np.random.randint(0, 2 ** 32))
+    np.random.seed(np.random.randint(0, 2 ** 32))
 
     """Create datasets"""
     # # Make 8-bit swirl dataset
@@ -131,13 +131,26 @@ def main():
     # training_data = mean + np.random.normal(size=[num_training_data, 2]) * std
     # eval_data = mean + np.random.normal(size=[num_eval_data, 2]) * std
 
-    theta = np.sqrt(np.random.rand(num_training_data)) * 3 * np.pi
-    r_a = 2 * theta + np.pi
-    training_data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
+    def sample_data(num_data):
+        theta = np.sqrt(np.random.rand(num_data)) * 3 * np.pi
+        r_a = 2 * theta + np.pi
+        data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
 
-    theta = np.sqrt(np.random.rand(num_eval_data)) * 3 * np.pi
-    r_a = 2 * theta + np.pi
-    eval_data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
+        return data
+
+    # theta = np.sqrt(np.random.rand(num_training_data)) * 3 * np.pi
+    # r_a = 2 * theta + np.pi
+    # training_data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
+    # training_data = 4 * (training_data + .25 * np.random.randn(num_training_data, 2) + 30)
+    # training_data = training_data.astype('uint8')
+
+    # theta = np.sqrt(np.random.rand(num_eval_data)) * 3 * np.pi
+    # r_a = 2 * theta + np.pi
+    # eval_data = np.array([np.cos(theta) * r_a, np.sin(theta) * r_a]).T
+    # eval_data = 4 * (eval_data + .25 * np.random.randn(num_eval_data, 2) + 30)
+    # eval_data = eval_data.astype('uint8')
+    training_data = sample_data(num_training_data)
+    eval_data = sample_data(num_eval_data)
 
     # plot dataset
     axis_lim = 25
@@ -214,13 +227,13 @@ def main():
     #     # Logits are exact if there are no dependencies between dimensions of x
     #     x_vals = jnp.arange(0, vocab_size)[:, None]
     #     x_vals = jnp.repeat(x_vals, z_0_rescaled.shape[-1], 1)
-    #     x_vals = data_encode(x_vals).transpose([1, 0])[None, :, :]
+    #     x_vals = normalize(x_vals).transpose([1, 0])[None, :, :]
     #     inv_stdev = jnp.exp(-0.5 * gamma_0[..., None])
     #     logits = -0.5 * jnp.square((z_0_rescaled[..., None] - x_vals) * inv_stdev)
     #
     #     logprobs = jax.nn.log_softmax(logits)
     #     return logprobs
-
+    #
     # def data_logprob(x, z_0_rescaled, gamma_0, vocab_size=256):
     #     x = x.round().astype('int32')
     #     x_onehot = jax.nn.one_hot(x, vocab_size)
@@ -247,6 +260,11 @@ def main():
         # _, log_probs = decode(f, z_0, alpha_0, sigma_0)
         log_probs = decode_log_probs(params, z_0, x)
         loss_recon = -log_probs
+
+        # gamma_0 = model.apply(params, 0.0, method=VDM.gamma)
+        # alpha_0 = jnp.sqrt(jax.nn.sigmoid(-gamma_0))
+        # z_0_rescaled = z_0 / alpha_0
+        # loss_recon = -data_logprob(x, z_0_rescaled, gamma_0)
 
         # 2. LATENT LOSS
         # KL z1 with N(0,1) prior
@@ -326,6 +344,7 @@ def main():
     # training loop (should take ~20 mins)
     losses = []
     for i in tqdm.trange(num_train_steps):
+        # training_data = sample_data(num_training_data)
         rng, optim_state, params, loss, _metrics = train_step(rng, optim_state, params, training_data)
         losses.append(loss)
 
@@ -444,7 +463,7 @@ def main():
         ax.set_ylim(-axis_lim, axis_lim)
         ax.set_title(r"$\hat{x}$")
 
-        axis_lim = 10
+        axis_lim = 3
         for timestep_idx, timestep in enumerate(np.linspace(0, 1, 11)):
             t = int(timestep * num_diffusion_steps)
 
