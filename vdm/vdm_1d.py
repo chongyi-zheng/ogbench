@@ -148,7 +148,7 @@ def main():
     # ax.set_ylim(-axis_lim, axis_lim)
     ax.set_xticks([0, 1])
     ax.set_title("Training data")
-    fig.savefig("./gaussian_training_data.png")
+    fig.savefig("./vdm_1d_training_data.png")
 
     """Training model"""
     model = VDM()
@@ -322,7 +322,7 @@ def main():
     fig = plt.figure()
     plt.plot(losses)
     plt.title("Loss")
-    fig.savefig("./vmd_loss.png")
+    fig.savefig("./vdm_1d_loss.png")
     print("Finish training...")
 
     """Evaluation"""
@@ -409,7 +409,7 @@ def main():
     diffusion_zs, denoising_zs, _, sampled_x = sample_fn(params, eval_data, rng1)
 
     # Create square plot:
-    def plot_generative_process(diffusion_zs, denoising_zs, x, sampled_x, num_timesteps=11, filename='./vmd_zs.png'):
+    def plot_generative_process(diffusion_zs, denoising_zs, x, sampled_x, num_timesteps=11, filename='./vdm_1d_zs.png'):
         fig, axes = plt.subplots(2, num_timesteps + 1)
         fig.set_figheight(3 * 2)
         fig.set_figwidth(3 * (num_timesteps + 1))

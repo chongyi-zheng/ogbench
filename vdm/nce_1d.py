@@ -140,15 +140,9 @@ def main():
     # plt.scatter(training_data, 0.0 * training_data, alpha=0.5)
     labels, counts = np.unique(training_data, return_counts=True)
     plt.bar(labels, counts, align='center')
-    # plt.hist(training_data)
-    # ax.set_aspect('equal', adjustable='box')
-    # ax.set_xticks([-axis_lim, 0, axis_lim])
-    # ax.set_yticks([-axis_lim, 0, axis_lim])
-    # ax.set_xlim(-axis_lim, axis_lim)
-    # ax.set_ylim(-axis_lim, axis_lim)
     ax.set_xticks([0, 1])
     ax.set_title("Training data")
-    fig.savefig("./gaussian_training_data.png")
+    fig.savefig("./nce_1d_training_data.png")
 
     """Training model"""
     model = VDM()
