@@ -36,7 +36,7 @@ def main():
     """Define hyper-parameters"""
     # Data hyper-parameters
     num_training_data = 100_000
-    num_eval_data = 5000
+    num_eval_data = 10_000
     batch_size = 10240
 
     # Optimization hyper-parameters
@@ -163,7 +163,7 @@ def main():
         return ratios
 
     eval_x = jnp.arange(2)
-    gt_log_probs = compute_ground_truth_log_probs(eval_x)
+    # gt_log_probs = compute_ground_truth_log_probs(eval_x)
     ratio_preds = compute_ratio_preditions(params, eval_x)
     prob_preds = ratio_preds * emp_noise_prob_x
     # prob_preds /= np.sum(prob_preds, keepdims=True)

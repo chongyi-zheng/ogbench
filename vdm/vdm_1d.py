@@ -107,7 +107,7 @@ def main():
     """Define hyper-parameters"""
     # Data hyper-parameters
     num_training_data = 100_000
-    num_eval_data = 5000
+    num_eval_data = 10_000
     batch_size = 10240
 
     # Optimization hyper-parameters
@@ -528,7 +528,7 @@ def main():
         return elbo
 
     eval_x = jnp.arange(2)
-    gt_log_probs = compute_ground_truth_log_probs(eval_x)
+    # gt_log_probs = compute_ground_truth_log_probs(eval_x)
     rng, rng1 = jax.random.split(rng)
     elbo = compute_elbo(params, eval_data, rng)
     elbo = jnp.array([
