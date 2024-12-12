@@ -155,6 +155,8 @@ def main():
     rng, rng1, rng2 = jax.random.split(rng, 3)
     init_inputs = [jnp.ones((1, 1)), jnp.zeros((1,))]
     params = model.init({"params": rng1, "sample": rng2}, *init_inputs)
+    num_params = sum(x.size for x in jax.tree.leaves(params))
+    print("Number of parameters: {}".format(num_params))  # 281091
 
     # initialize optimizer
     # optimizer = optax.adamw(learning_rate)
@@ -534,7 +536,7 @@ def main():
         jnp.sum(elbo[eval_data == 1]) / jnp.sum(eval_data == 1)
     ])
 
-    mean_abs_error = jnp.mean(jnp.abs(jax.nn.softmax(gt_log_probs) - jax.nn.softmax(elbo)))
+    mean_abs_error = jnp.mean(jnp.abs(emp_marginal_prob_x - jax.nn.softmax(elbo)))
 
     # from scipy.stats import spearmanr
     # spearmanr(jax.nn.softmax(gt_log_probs), jax.nn.softmax(elbo))
