@@ -22,9 +22,17 @@ class ScoreNetwork(nn.Module):
     init_gamma_1: float = 5.  # initial gamma_1
 
     def setup(self):
-        self.dense1 = nn.Dense(self.hidden_units)
-        self.dense2 = nn.Dense(self.hidden_units)
-        self.dense3 = nn.Dense(2)
+        self.mlp = nn.Sequential([
+            nn.Dense(self.hidden_units),
+            nn.swish,
+            nn.Dense(self.hidden_units),
+            nn.swish,
+            # nn.Dense(self.hidden_units),
+            # nn.swish,
+            # nn.Dense(self.hidden_units),
+            # nn.swish,
+            nn.Dense(2),
+        ])
         self.ff = Base2FourierFeatures()
 
     def __call__(self, x, z, gamma_t):
@@ -43,11 +51,9 @@ class ScoreNetwork(nn.Module):
         h = jnp.concatenate([h, h_ff], axis=-1)
 
         # Three dense layers
-        h = nn.swish(self.dense1(h))
-        h = nn.swish(self.dense2(h))
-        h = self.dense3(h)
+        eps = self.mlp(h)
 
-        return h
+        return eps
 
 
 class Base2FourierFeatures(nn.Module):
@@ -91,18 +97,23 @@ class Encoder(nn.Module):
     hidden_units: int = 512
 
     def setup(self):
-        self.dense1 = nn.Dense(self.hidden_units)
-        self.dense2 = nn.Dense(self.hidden_units)
-        self.dense3 = nn.Dense(2)
+        self.mlp = nn.Sequential([
+            nn.Dense(self.hidden_units),
+            nn.swish,
+            nn.Dense(self.hidden_units),
+            nn.swish,
+            nn.Dense(2),
+        ])
 
     def __call__(self, x, y):
         onehot_x = jax.nn.one_hot(x, num_classes=2, axis=-1)
         onehot_y = jax.nn.one_hot(y, num_classes=2, axis=-1)
         h = jnp.concatenate([onehot_x, onehot_y], axis=-1)
 
-        h = nn.swish(self.dense1(h))
-        h = nn.swish(self.dense2(h))
-        z = self.dense3(h)
+        # h = nn.swish(self.dense1(h))
+        # h = nn.swish(self.dense2(h))
+        # z = self.dense3(h)
+        z = self.mlp(h)
 
         return z
 
@@ -110,17 +121,25 @@ class Decoder(nn.Module):
     hidden_units: int = 512
 
     def setup(self):
-        self.dense1 = nn.Dense(self.hidden_units)
-        self.dense2 = nn.Dense(self.hidden_units)
-        self.dense3 = nn.Dense(2)
+        # self.dense1 = nn.Dense(self.hidden_units)
+        # self.dense2 = nn.Dense(self.hidden_units)
+        # self.dense3 = nn.Dense(2)
+        self.mlp = nn.Sequential([
+            nn.Dense(self.hidden_units),
+            nn.swish,
+            nn.Dense(self.hidden_units),
+            nn.swish,
+            nn.Dense(2),
+        ])
 
     def __call__(self, x, z):
         onehot_x = jax.nn.one_hot(x, num_classes=2, axis=-1)
         h = jnp.concatenate([onehot_x, z], axis=-1)
 
-        h = nn.swish(self.dense1(h))
-        h = nn.swish(self.dense2(h))
-        logits = self.dense3(h)
+        # h = nn.swish(self.dense1(h))
+        # h = nn.swish(self.dense2(h))
+        # logits = self.dense3(h)
+        logits = self.mlp(h)
 
         dist = distrax.Categorical(logits=logits)
 
@@ -155,7 +174,7 @@ def main():
     """Define hyper-parameters"""
     # Data hyper-parameters
     num_training_data = 100_000
-    num_eval_data = 10_000
+    num_eval_data = 100_000
     batch_size = 10240
 
     # Optimization hyper-parameters
@@ -193,22 +212,22 @@ def main():
     training_data = create_dataset(num_training_data)
     eval_data = create_dataset(num_eval_data)
 
-    emp_marginal_prob_x = np.array([
-        np.sum(training_data['x'] == 0) / num_training_data,
-        np.sum(training_data['x'] == 1) / num_training_data,
-    ])
+    # emp_marginal_prob_x = np.array([
+    #     np.sum(eval_data['x'] == 0) / num_eval_data,
+    #     np.sum(eval_data['x'] == 1) / num_eval_data,
+    # ])
 
     emp_cond_prob = jnp.array([
-        [np.sum(np.logical_and(training_data['x'] == 0, training_data['pos_y'] == 0)) / np.sum(training_data['x'] == 0),
-         np.sum(np.logical_and(training_data['x'] == 0, training_data['pos_y'] == 1)) / np.sum(training_data['x'] == 0)],
-        [np.sum(jnp.logical_and(training_data['x'] == 1, training_data['pos_y'] == 0)) / np.sum(training_data['x'] == 1),
-         np.sum(jnp.logical_and(training_data['x'] == 1, training_data['pos_y'] == 1)) / np.sum(training_data['x'] == 1)]
+        [np.sum(np.logical_and(eval_data['x'] == 0, eval_data['pos_y'] == 0)) / np.sum(eval_data['x'] == 0),
+         np.sum(np.logical_and(eval_data['x'] == 0, eval_data['pos_y'] == 1)) / np.sum(eval_data['x'] == 0)],
+        [np.sum(jnp.logical_and(eval_data['x'] == 1, eval_data['pos_y'] == 0)) / np.sum(eval_data['x'] == 1),
+         np.sum(jnp.logical_and(eval_data['x'] == 1, eval_data['pos_y'] == 1)) / np.sum(eval_data['x'] == 1)]
     ])
 
-    emp_marginal_prob_y = jnp.array([
-        np.sum(eval_data['neg_y'] == 0) / eval_data['neg_y'].shape[0],
-        np.sum(eval_data['neg_y'] == 1) / eval_data['neg_y'].shape[0]
-    ])
+    # emp_marginal_prob_y = jnp.array([
+    #     np.sum(eval_data['neg_y'] == 0) / eval_data['neg_y'].shape[0],
+    #     np.sum(eval_data['neg_y'] == 1) / eval_data['neg_y'].shape[0]
+    # ])
 
     # plot dataset
     fig, axes = plt.subplots(1, 3)
@@ -562,7 +581,7 @@ def main():
 
     mean_abs_error = jnp.mean(jnp.abs(emp_cond_prob - jax.nn.softmax(elbo, axis=-1)))
 
-    # mean_abs_err = 0.003398485481739044
+    # mean_abs_err = [0.006708811968564987, 0.0037220343947410583, 0.006453301757574081]
     print("mean_abs_err = {}".format(mean_abs_error))
 
 

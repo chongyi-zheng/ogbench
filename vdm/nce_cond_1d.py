@@ -41,7 +41,7 @@ def main():
     """Define hyper-parameters"""
     # Data hyper-parameters
     num_training_data = 100_000
-    num_eval_data = 10_000
+    num_eval_data = 100_000
     batch_size = 10240
 
     # Optimization hyper-parameters
@@ -80,19 +80,20 @@ def main():
     training_data = create_dataset(num_training_data)
     eval_data = create_dataset(num_eval_data)
 
-    emp_marginal_prob_x = np.array([
-        np.sum(training_data['x'] == 0) / num_training_data,
-        np.sum(training_data['x'] == 1) / num_training_data,
-    ])
+    # emp_marginal_prob_x = np.array([
+    #     np.sum(eval_data['x'] == 0) / num_eval_data,
+    #     np.sum(eval_data['x'] == 1) / num_eval_data,
+    # ])
 
     emp_cond_prob = jnp.array([
-        [np.sum(np.logical_and(training_data['x'] == 0, training_data['pos_y'] == 0)) / np.sum(training_data['x'] == 0),
-         np.sum(np.logical_and(training_data['x'] == 0, training_data['pos_y'] == 1)) / np.sum(
-             training_data['x'] == 0)],
-        [np.sum(jnp.logical_and(training_data['x'] == 1, training_data['pos_y'] == 0)) / np.sum(
-            training_data['x'] == 1),
-         np.sum(jnp.logical_and(training_data['x'] == 1, training_data['pos_y'] == 1)) / np.sum(
-             training_data['x'] == 1)]
+        [np.sum(np.logical_and(eval_data['x'] == 0, eval_data['pos_y'] == 0)) / np.sum(
+            eval_data['x'] == 0),
+         np.sum(np.logical_and(eval_data['x'] == 0, eval_data['pos_y'] == 1)) / np.sum(
+             eval_data['x'] == 0)],
+        [np.sum(jnp.logical_and(eval_data['x'] == 1, eval_data['pos_y'] == 0)) / np.sum(
+            eval_data['x'] == 1),
+         np.sum(jnp.logical_and(eval_data['x'] == 1, eval_data['pos_y'] == 1)) / np.sum(
+             eval_data['x'] == 1)]
     ])
 
     emp_marginal_prob_y = jnp.array([
@@ -210,7 +211,8 @@ def main():
 
     mean_abs_error = jnp.mean(jnp.abs(emp_cond_prob - prob_preds))
 
-    # marginal_prob_y = [0.95, 0.05], mean_abs_err = 0.016496554017066956
+    # marginal_prob_y = [0.5, 0.5], mean_abs_err = [0.004439566284418106, 0.0027222521603107452, 0.00451640784740448]
+    # marginal_prob_y = [0.95, 0.05], mean_abs_err = [0.014687277376651764, 0.017850525677204132, 0.02074280008673668]
     print("mean_abs_err = {}".format(mean_abs_error))
 
 
