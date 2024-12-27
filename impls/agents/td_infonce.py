@@ -12,7 +12,7 @@ from utils.networks import GCActor, GCBilinearValue, GCDiscreteActor, GCDiscrete
 
 
 class TDInfoNCEAgent(flax.struct.PyTreeNode):
-    """Temporal Difference InfoNCE (TD InfoNCE) agent.
+    """SARSA Temporal Difference InfoNCE (TD InfoNCE) agent.
 
     This implementation supports both AWR (actor_loss='awr') and DDPG+BC (actor_loss='ddpgbc') for the actor loss.
     TD InfoNCE with DDPG+BC only fits a Q function, while TD InfoNCE with AWR fits both Q and V functions to compute advantages.
@@ -22,7 +22,7 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
     network: Any
     config: Any = nonpytree_field()
 
-    def critic_loss(self, batch, grad_params, module_name='critic'):
+    def critic_loss(self, batch, grad_params, module_name='critic', rng=None):
         """Compute the contrastive value loss for the Q or V function."""
         batch_size = batch['observations'].shape[0]
 
@@ -34,7 +34,7 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             next_actions = None
 
         # next observation logits
-        v, next_phi, next_psi = self.network.select(module_name)(
+        next_v, next_phi, next_psi = self.network.select(module_name)(
             batch['observations'],
             batch['next_observations'],
             actions=actions,
@@ -46,7 +46,7 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             next_psi = next_psi[None, ...]
         next_logits = jnp.einsum('eik,ejk->ije', next_phi, next_psi) / jnp.sqrt(next_phi.shape[-1])
 
-        _, random_phi, random_psi = self.network.select(module_name)(
+        random_v, random_phi, random_psi = self.network.select(module_name)(
             batch['observations'],
             batch['value_goals'],
             actions=actions,
@@ -64,9 +64,14 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             in_axes=-1,
             out_axes=-1,
         )(next_logits, random_logits)
+        v = jax.vmap(
+            lambda v1, v2: I * v1 + (1 - I) * v2,
+            in_axes=0,
+            out_axes=0,
+        )(next_v, random_v)
 
         loss1 = jax.vmap(
-            lambda _logits: optax.sigmoid_binary_cross_entropy(logits=_logits, labels=I),
+            lambda _logits: optax.softmax_cross_entropy(logits=_logits, labels=I),
             in_axes=-1,
             out_axes=-1,
         )(next_logits)
@@ -102,7 +107,7 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
         # Note that we remove the multiplier N for w to balance
         # one term of loss1 with N terms of loss2 in each row.
         loss2 = jax.vmap(
-            lambda _logits: optax.sigmoid_binary_cross_entropy(logits=_logits, labels=w),
+            lambda _logits: optax.softmax_cross_entropy(logits=_logits, labels=w),
             in_axes=-1,
             out_axes=-1,
         )(random_logits)
@@ -182,25 +187,17 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
                 q_actions = jnp.clip(dist.mode(), -1, 1)
             else:
                 q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
-            _, phi, psi = self.network.select('critic')(
-                batch['observations'],
-                batch['actor_goals'],
-                q_actions,
-                info=True,
+            q1, q2 = value_transform(
+                self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
             )
-            if len(phi.shape) == 2:  # Non-ensemble.
-                phi = phi[None, ...]
-                psi = psi[None, ...]
-            logits = jnp.einsum('eik,ejk->ije', phi, psi) / jnp.sqrt(phi.shape[-1])
-            logits = jnp.min(logits, axis=-1)
+            q = jnp.minimum(q1, q2)
 
             # Normalize Q values by the absolute mean to make the loss scale invariant.
+            # q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
+            q = q / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
             I = jnp.eye(batch_size)
-            # logits = logits / jax.lax.stop_gradient(jnp.abs(logits).mean() + 1e-6)
-            q_loss = optax.softmax_cross_entropy(logits=logits, labels=I)
-            # q_loss = -jnp.diag(logits - jax.nn.logsumexp(logits, axis=-1, keepdims=True))
+            q_loss = optax.softmax_cross_entropy(logits=q, labels=I)
             q_loss = q_loss.mean()
-
             log_prob = dist.log_prob(batch['actions'])
 
             bc_loss = -(self.config['alpha'] * log_prob).mean()
@@ -211,8 +208,8 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
                 'actor_loss': actor_loss,
                 'q_loss': q_loss,
                 'bc_loss': bc_loss,
-                'q_mean': logits.mean(),
-                'q_abs_mean': jnp.abs(logits).mean(),
+                'q_mean': q.mean(),
+                'q_abs_mean': jnp.abs(q).mean(),
                 'bc_log_prob': log_prob.mean(),
                 'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
                 'std': jnp.mean(dist.scale_diag),
@@ -226,11 +223,13 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
         info = {}
         rng = rng if rng is not None else self.rng
 
-        critic_loss, critic_info = self.critic_loss(batch, grad_params, 'critic')
+        rng, critic_rng = jax.random.split(rng)
+        critic_loss, critic_info = self.critic_loss(batch, grad_params, 'critic', critic_rng)
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
-        value_loss, value_info = self.critic_loss(batch, grad_params, 'value')
+        rng, value_rng = jax.random.split(rng)
+        value_loss, value_info = self.critic_loss(batch, grad_params, 'value', value_rng)
         for k, v in value_info.items():
             info[f'value/{k}'] = v
 
@@ -312,9 +311,8 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             encoders['critic_state'] = encoder_module()
             encoders['critic_goal'] = encoder_module()
             encoders['actor'] = GCEncoder(concat_encoder=encoder_module())
-            if config['actor_loss'] == 'awr':
-                encoders['value_state'] = encoder_module()
-                encoders['value_goal'] = encoder_module()
+            encoders['value_state'] = encoder_module()
+            encoders['value_goal'] = encoder_module()
 
         # Define value and actor networks.
         if config['discrete']:

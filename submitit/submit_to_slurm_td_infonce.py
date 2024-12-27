@@ -78,8 +78,8 @@ def main():
                         --eval_episodes=50 \
                         --agent=impls/agents/td_infonce.py \
                         --agent.alpha=0.03 \
-                        --agent.actor_p_trajgoal=1.0 \
-                        --agent.actor_p_randomgoal=0.0 \
+                        --agent.actor_p_trajgoal=0.0 \
+                        --agent.actor_p_randomgoal=1.0 \
                         --seed={seed} \
                         --save_dir={log_dir} \
                     2>&1 | tee {log_dir}/stream.log;
