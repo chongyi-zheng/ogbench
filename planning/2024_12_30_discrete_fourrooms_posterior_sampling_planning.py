@@ -579,7 +579,7 @@ def main():
         ax.set_title(r"Analytical $\log\frac{p(g | s)}{p(g)}$ posterior" + "\nsampling planner + scripted policy")
 
     plt.tight_layout()
-    plt.savefig("./cem_posterior_sampling.png")
+    plt.savefig("./discrete_fourrooms_cem_posterior_sampling.png")
 
 
 if __name__ == "__main__":

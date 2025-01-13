@@ -48,12 +48,14 @@ config_flags.DEFINE_config_file('agent', 'agents/gciql.py', lock_config=False)
 def main(_):
     # Set up logger.
     exp_name = get_exp_name(FLAGS.seed)
-    if FLAGS.enable_wandb:
-        _, trigger_sync = setup_wandb(project='ogbench', group=FLAGS.wandb_run_group, name=exp_name, mode=FLAGS.wandb_mode)
-        FLAGS.save_dir = os.path.join(FLAGS.save_dir, FLAGS.wandb_run_group, exp_name)
-    else:
-        FLAGS.save_dir = os.path.join(FLAGS.save_dir, exp_name)
+    FLAGS.save_dir = os.path.join(FLAGS.save_dir, FLAGS.wandb_run_group, exp_name)
     os.makedirs(FLAGS.save_dir, exist_ok=True)
+    if FLAGS.enable_wandb:
+        _, trigger_sync = setup_wandb(
+            wandb_output_dir=FLAGS.save_dir,
+            project='ogbench', group=FLAGS.wandb_run_group, name=exp_name,
+            mode=FLAGS.wandb_mode
+        )
     flag_dict = get_flag_dict()
     with open(os.path.join(FLAGS.save_dir, 'flags.json'), 'w') as f:
         json.dump(flag_dict, f)

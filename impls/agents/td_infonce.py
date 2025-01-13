@@ -187,20 +187,31 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
                 q_actions = jnp.clip(dist.mode(), -1, 1)
             else:
                 q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
-            q1, q2 = value_transform(
-                self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
-            )
-            q = jnp.minimum(q1, q2)
+            # q1, q2 = value_transform(
+            #     self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
+            # )
+            # q = jnp.minimum(q1, q2)
+
+            _, phi, psi = self.network.select('critic')(
+                batch['observations'], batch['actor_goals'], q_actions, info=True)
+            if len(phi.shape) == 2:  # Non-ensemble.
+                phi = phi[None, ...]
+                psi = psi[None, ...]
+            q = jnp.einsum('eik,ejk->ije', phi, psi) / jnp.sqrt(phi.shape[-1])
+            q = jnp.min(q, axis=-1)
 
             # Normalize Q values by the absolute mean to make the loss scale invariant.
             # q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
-            q = q / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
+            # q = q / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
             I = jnp.eye(batch_size)
             q_loss = optax.softmax_cross_entropy(logits=q, labels=I)
             q_loss = q_loss.mean()
             log_prob = dist.log_prob(batch['actions'])
 
+            # MLE BC loss
             bc_loss = -(self.config['alpha'] * log_prob).mean()
+            # MSE BC loss
+            # bc_loss = self.config['alpha'] * ((batch['actions'] - q_actions) ** 2).mean()
 
             actor_loss = q_loss + bc_loss
 
@@ -330,6 +341,8 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             critic_def = GCBilinearValue(
                 hidden_dims=config['value_hidden_dims'],
                 latent_dim=config['latent_dim'],
+                network_type=config['network_type'],
+                num_residual_blocks=config['value_num_residual_blocks'],
                 layer_norm=config['layer_norm'],
                 ensemble=True,
                 value_exp=True,
@@ -340,6 +353,8 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             value_def = GCBilinearValue(
                 hidden_dims=config['value_hidden_dims'],
                 latent_dim=config['latent_dim'],
+                network_type=config['network_type'],
+                num_residual_blocks=config['value_num_residual_blocks'],
                 layer_norm=config['layer_norm'],
                 ensemble=False,
                 value_exp=True,
@@ -357,11 +372,12 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             actor_def = GCActor(
                 hidden_dims=config['actor_hidden_dims'],
                 action_dim=action_dim,
+                network_type=config['network_type'],
+                num_residual_blocks=config['actor_num_residual_blocks'],
                 state_dependent_std=False,
                 const_std=config['const_std'],
                 gc_encoder=encoders.get('actor'),
             )
-
         network_info = dict(
             critic=(critic_def, (ex_observations, ex_goals, ex_actions)),
             target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_goals, ex_actions)),
@@ -375,7 +391,13 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
         network_args = {k: v[1] for k, v in network_info.items()}
 
         network_def = ModuleDict(networks)
-        network_tx = optax.adam(learning_rate=config['lr'])
+
+        if config['use_lr_scheduler']:
+            schedule = optax.cosine_decay_schedule(config['lr'], config['lr_decay_steps'], alpha=config['lr_alpha'])
+            network_tx = optax.inject_hyperparams(optax.adam)(learning_rate=schedule)
+        else:
+            network_tx = optax.adam(learning_rate=config['lr'])
+
         network_params = network_def.init(init_rng, **network_args)['params']
         network = TrainState.create(network_def, network_params, tx=network_tx)
 
@@ -391,10 +413,17 @@ def get_config():
         dict(
             # Agent hyperparameters.
             agent_name='td_infonce',  # Agent name.
+            normalize_observation=False,  # Whether to normalize observation s.t. each coordinate is centered with unit variance.
+            network_type='mlp',  # Network type of the actor and critic ('mlp' or 'simba')
+            use_lr_scheduler=False,  # Whether to use learning rate scheduler.
             lr=3e-4,  # Learning rate.
+            lr_decay_steps=1_000_000,  # The number of steps to decay the learning rate.
+            lr_alpha=0.01,  # Minimum learning rate multiplier.
             batch_size=1024,  # Batch size.
             actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
+            actor_num_residual_blocks=1,  # Actor network number of residual blocks when using SimBa architecture.
+            value_num_residual_blocks=2,  # Critic network number of residual blocks when using SimBa architecture.
             latent_dim=512,  # Latent dimension for phi and psi.
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.

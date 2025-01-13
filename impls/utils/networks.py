@@ -414,6 +414,8 @@ class GCBilinearValue(nn.Module):
 
     hidden_dims: Sequence[int]
     latent_dim: int
+    network_type: str = 'mlp'
+    num_residual_blocks: int = 1
     layer_norm: bool = True
     ensemble: bool = True
     value_exp: bool = False
@@ -421,12 +423,34 @@ class GCBilinearValue(nn.Module):
     goal_encoder: nn.Module = None
 
     def setup(self) -> None:
-        mlp_module = MLP
-        if self.ensemble:
-            mlp_module = ensemblize(mlp_module, 2)
+        if self.network_type == 'mlp':
+            network_module = MLP
+        elif self.network_type == 'simba':
+            network_module = SimBaMLP
 
-        self.phi = mlp_module((*self.hidden_dims, self.latent_dim), activate_final=False, layer_norm=self.layer_norm)
-        self.psi = mlp_module((*self.hidden_dims, self.latent_dim), activate_final=False, layer_norm=self.layer_norm)
+        if self.ensemble:
+            network_module = ensemblize(network_module, 2)
+
+        if self.network_type == 'mlp':
+            self.phi = network_module(
+                (*self.hidden_dims, self.latent_dim),
+                activate_final=False, layer_norm=self.layer_norm
+            )
+            self.psi = network_module(
+                (*self.hidden_dims, self.latent_dim),
+                activate_final=False, layer_norm=self.layer_norm
+            )
+        elif self.network_type == 'simba':
+            self.phi = network_module(
+                self.num_residual_blocks,
+                (*self.hidden_dims, self.latent_dim),
+                layer_norm=self.layer_norm
+            )
+            self.psi = network_module(
+                self.num_residual_blocks,
+                (*self.hidden_dims, self.latent_dim),
+                layer_norm=self.layer_norm
+            )
 
     def __call__(self, observations, goals, actions=None, info=False):
         """Return the value/critic function.

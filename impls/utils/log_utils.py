@@ -62,6 +62,7 @@ def get_flag_dict():
 
 
 def setup_wandb(
+    wandb_output_dir=tempfile.mkdtemp(),
     entity=None,
     project='project',
     group=None,
@@ -69,7 +70,7 @@ def setup_wandb(
     mode='online',
 ):
     """Set up Weights & Biases for logging."""
-    wandb_output_dir = tempfile.mkdtemp()
+    # wandb_output_dir = tempfile.mkdtemp()
     tags = [group] if group is not None else None
 
     init_kwargs = dict(
