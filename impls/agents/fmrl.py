@@ -53,10 +53,12 @@ class FMRLAgent(flax.struct.PyTreeNode):
             actions=actions,
             params=grad_params,
         )
+        if len(vf_pred.shape) == 2:
+            vf_pred = vf_pred[None]
         
         gaussian_noise = jax.random.normal(noise_rng, shape=goals.shape)
         path_sample = self.cond_prob_path(x_0=gaussian_noise, x_1=goals, t=times)
-        cfm_loss = jnp.mean((vf_pred - path_sample.dx_t) ** 2)
+        cfm_loss = jnp.mean((vf_pred - path_sample.dx_t[None]) ** 2)
 
         return cfm_loss, {
             'cond_flow_matching_loss': cfm_loss,
@@ -70,7 +72,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             # 'logits': logits.mean(),
         }
 
-    def actor_loss(self, batch, grad_params, rng=None):
+    def actor_loss(self, batch, grad_params, rng):
         """Compute the actor loss (AWR or DDPG+BC)."""
         # Maximize log Q if actor_log_q is True (which is default).
         if self.config['actor_log_q']:
@@ -150,7 +152,11 @@ class FMRLAgent(flax.struct.PyTreeNode):
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
             log_prob = dist.log_prob(batch['actions'])
             bc_loss = -log_prob.mean()
-
+            
+            q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+            q = self.compute_log_likelihood(
+                batch['actor_goals'], batch['observations'], rng, actions=q_actions)
+            
             actor_loss = bc_loss
             return actor_loss, {
                 'actor_loss': actor_loss,
@@ -163,6 +169,82 @@ class FMRLAgent(flax.struct.PyTreeNode):
             }
         else:
             raise ValueError(f'Unsupported actor loss: {self.config["actor_loss"]}')
+
+    def compute_log_likelihood(self, goals, observations, rng, actions=None, module_name='critic'):
+        # compute Q (solving the continuity equation) using the Euler method
+        if module_name == 'critic':
+            assert actions is not None
+        
+        noisy_goals = goals
+        div_int = 0
+        num_flow_steps = self.config['num_flow_steps']
+        step_size = 1 / num_flow_steps
+        for i in range(num_flow_steps):
+            times = 1.0 - jnp.full((*noisy_goals.shape[:-1], ), i * step_size)
+            
+            def vf_func(x):
+                vf = self.network.select('critic')(
+                    x,
+                    times,
+                    observations,
+                    actions=actions,
+                )
+            
+                if len(vf.shape) == 2:
+                    vf = vf[None]
+                vf = vf.min(axis=0)
+            
+                return vf
+            
+            rng, div_rng = jax.random.split(rng)
+            z = jax.random.normal(div_rng, shape=noisy_goals.shape)
+            
+            # Compute velocity field and Hutchinson divergence estimator
+            # vf = self.network.select('critic')(
+            #     noisy_goals,
+            #     times,
+            #     observations,
+            #     actions=actions,
+            # )
+            # if len(vf.shape) == 2:
+            #     vf = vf[None]
+            # vf = vf.min(axis=0)
+            # vf = vf_func(noisy_goals)
+            vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals, ), (z, ))
+            
+            noisy_goals = noisy_goals - vf * step_size
+            
+            # Compute Hutchinson divergence estimator E[z^T D_x(ut) z]
+            # grad_vf = jax.vmap(jax.grad)(
+            #     self.network.select('critic')
+            # )()
+            # grad_vf = jax.grad(self.network.select('critic'))(
+            #     noisy_goals, 
+            #     times, 
+            #     observations, 
+            #     actions=actions
+            # )
+            # grad_vf_dot_z = jnp.einsum(
+            #     "ij,ij->i", jax.lax.collapse(grad_vf, 1), jax.lax.collapse(z, 1)
+            # )
+            # vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals, ), (z, ))
+            
+            # # Isolate the function from the weight matrix to the predictions
+            # f = lambda W: predict(W, b, inputs)
+
+            # key, subkey = random.split(key)
+            # v = random.normal(subkey, W.shape)
+
+            # # Push forward the vector `v` along `f` evaluated at `W`
+            # y, u = jvp(f, (W,), (v,))
+            
+            # grad_vf_dot_z = jax.vmap(jax.grad)(vf_dot_z)(noisy_goals)
+            div = jnp.einsum("ij,ij->i", jac_vf_dot_z, z)
+            div_int = div_int - div * step_size
+        guassian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noisy_goals ** 2, axis=-1)
+        log_prob = guassian_log_prob + div_int  # log p_1(g | s, a)
+    
+        return log_prob
 
     @jax.jit
     def total_loss(self, batch, grad_params, rng=None):
@@ -209,10 +291,20 @@ class FMRLAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the actor."""
+        num_candidates = self.config['num_behavioral_candidates']
+        observations = jnp.repeat(observations[None], num_candidates, axis=0)
+        goals = jnp.repeat(goals[None], num_candidates, axis=0)
+        
         dist = self.network.select('actor')(observations, goals, temperature=temperature)
-        actions = dist.sample(seed=seed)
+        seed, actor_seed, q_seed = jax.random.split(seed, 3)
+        actions = dist.sample(seed=actor_seed)
         if not self.config['discrete']:
             actions = jnp.clip(actions, -1, 1)
+        
+        qs = self.compute_log_likelihood(goals, observations, q_seed, actions=actions)
+        argmax_idxs = jnp.argmax(qs, axis=0)
+        actions = actions[argmax_idxs]
+        
         return actions
 
     @classmethod
@@ -318,7 +410,6 @@ class FMRLAgent(flax.struct.PyTreeNode):
         cond_prob_path = cond_prob_path_class[config['prob_path_class']](
             scheduler=scheduler_class[config['scheduler_class']]()
         )
-        ode_solver = ODESolver(cond_prob_path)
 
         return cls(rng, network=network, cond_prob_path=cond_prob_path, config=flax.core.FrozenDict(**config))
 
@@ -337,19 +428,21 @@ def get_config():
             discount=0.99,  # Discount factor.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CosineScheduler',  # Scheduler class name.
-            uncond_prob=0.2,  # Probability of training the marginal velocity field vs the guided velocity field.
-            actor_loss='ddpgbc',  # Actor loss type ('ddpgbc' or 'awr' or 'sfbc').
+            uncond_prob=0.0,  # Probability of training the marginal velocity field vs the guided velocity field.
+            num_flow_steps=20,  # Number of steps for solving ODEs using the Euler method.
+            actor_loss='sfbc',  # Actor loss type ('ddpgbc' or 'awr' or 'sfbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.
             actor_log_q=True,  # Whether to maximize log Q (True) or Q itself (False) in the actor loss.
             state_dependent_std=True,  # Whether to use state-dependent standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
+            num_behavioral_candidates=32,  # Number of behavioral candidates for SfBC.
             # Dataset hyperparameters.
             dataset_class='GCDataset',  # Dataset class name.
             value_p_curgoal=0.0,  # Probability of using the current state as the value goal.
             value_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the value goal.
             value_p_randomgoal=0.0,  # Probability of using a random state as the value goal.
-            value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
+            value_geom_sample=True,  # Whether to use geometric samling for future value goals.
             actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
             actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
             actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
