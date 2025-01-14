@@ -116,38 +116,38 @@ class AffineCondProbPath(flax.struct.PyTreeNode):
         return PathSample(x_t=x_t, dx_t=dx_t, x_1=x_1, x_0=x_0, t=t)
 
 
-class ODESolver(flax.struct.PyTreeNode):
-    velocity_field: nn.Module
+# class ODESolver(flax.struct.PyTreeNode):
+#     velocity_field: nn.Module
 
-    def sample(
-        self,
-        x_init: jnp.ndarray,
-        step_size: Optional[float],
-        method: str = "euler",
-        atol: float = 1e-5,
-        rtol: float = 1e-5,
-        time_grid: jnp.ndarray = jnp.asarray([0.0, 1.0]),
-        return_intermediates: bool = False,
-        enable_grad: bool = False,
-        **model_extras,
-    ) -> Union[jnp.ndarray, Sequence[jnp.ndarray]]:
-        pass
+#     def sample(
+#         self,
+#         x_init: jnp.ndarray,
+#         step_size: Optional[float],
+#         method: str = "euler",
+#         atol: float = 1e-5,
+#         rtol: float = 1e-5,
+#         time_grid: jnp.ndarray = jnp.asarray([0.0, 1.0]),
+#         return_intermediates: bool = False,
+#         enable_grad: bool = False,
+#         **model_extras,
+#     ) -> Union[jnp.ndarray, Sequence[jnp.ndarray]]:
+#         pass
 
-    def compute_likelihood(
-        self,
-        x_1: jnp.ndarray,
-        step_size: Optional[float],
-        method: str = "euler",
-        atol: float = 1e-5,
-        rtol: float = 1e-5,
-        time_grid: jnp.ndarray = jnp.asarray([1.0, 0.0]),
-        return_intermediates: bool = False,
-        exact_divergence: bool = False,
-        enable_grad: bool = False,
-        **model_extras,
-    ) -> Union[Tuple[jnp.ndarray, jnp.ndarray], Tuple[Sequence[jnp.ndarray], jnp.ndarray]]:
-        # TODO (chongyi)
-        pass
+#     def compute_likelihood(
+#         self,
+#         x_1: jnp.ndarray,
+#         step_size: Optional[float],
+#         method: str = "euler",
+#         atol: float = 1e-5,
+#         rtol: float = 1e-5,
+#         time_grid: jnp.ndarray = jnp.asarray([1.0, 0.0]),
+#         return_intermediates: bool = False,
+#         exact_divergence: bool = False,
+#         enable_grad: bool = False,
+#         **model_extras,
+#     ) -> Union[Tuple[jnp.ndarray, jnp.ndarray], Tuple[Sequence[jnp.ndarray], jnp.ndarray]]:
+#         # TODO (chongyi)
+#         pass
 
 
 

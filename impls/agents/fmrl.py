@@ -170,18 +170,67 @@ class FMRLAgent(flax.struct.PyTreeNode):
         else:
             raise ValueError(f'Unsupported actor loss: {self.config["actor_loss"]}')
 
+    # def compute_log_likelihood(self, goals, observations, rng, actions=None, module_name='critic'):
+    #     # compute Q (solving the continuity equation) using the Euler method
+    #     if module_name == 'critic':
+    #         assert actions is not None
+        
+    #     noisy_goals = goals
+    #     div_int = 0
+    #     num_flow_steps = self.config['num_flow_steps']
+    #     step_size = 1 / num_flow_steps
+    #     for i in range(num_flow_steps):
+    #         times = 1.0 - jnp.full((*noisy_goals.shape[:-1], ), i * step_size)
+            
+    #         def vf_func(x):
+    #             vf = self.network.select('critic')(
+    #                 x,
+    #                 times,
+    #                 observations,
+    #                 actions=actions,
+    #             )
+            
+    #             if len(vf.shape) == 2:
+    #                 vf = vf[None]
+    #             vf = vf.min(axis=0)
+            
+    #             return vf
+            
+    #         rng, div_rng = jax.random.split(rng)
+    #         z = jax.random.normal(div_rng, shape=noisy_goals.shape)
+            
+    #         # Compute velocity field and Hutchinson divergence estimator
+    #         vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals, ), (z, ))
+    #         div = jnp.einsum("ij,ij->i", jac_vf_dot_z, z)
+            
+    #         noisy_goals = noisy_goals - vf * step_size
+    #         div_int = div_int - div * step_size
+    #     guassian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noisy_goals ** 2, axis=-1)
+    #     log_prob = guassian_log_prob + div_int  # log p_1(g | s, a)
+    
+    #     return log_prob
+
     def compute_log_likelihood(self, goals, observations, rng, actions=None, module_name='critic'):
-        # compute Q (solving the continuity equation) using the Euler method
         if module_name == 'critic':
             assert actions is not None
-        
+
         noisy_goals = goals
-        div_int = 0
+        div_int = 0.0
         num_flow_steps = self.config['num_flow_steps']
-        step_size = 1 / num_flow_steps
-        for i in range(num_flow_steps):
-            times = 1.0 - jnp.full((*noisy_goals.shape[:-1], ), i * step_size)
+        step_size = 1.0 / num_flow_steps
+
+        # Define the body function to be scanned
+        def body_fn(carry, i):
+            """
+            carry: (noisy_goals, div_int, rng)
+            i: current step index
+            """
+            noisy_goals, div_int, rng = carry
             
+            # Time for this iteration
+            times = 1.0 - jnp.full(noisy_goals.shape[:-1], i * step_size)
+
+            # Define vf_func for jvp
             def vf_func(x):
                 vf = self.network.select('critic')(
                     x,
@@ -189,61 +238,39 @@ class FMRLAgent(flax.struct.PyTreeNode):
                     observations,
                     actions=actions,
                 )
-            
-                if len(vf.shape) == 2:
+                # If Q-value has shape [EnsembleSize, BatchSize], 
+                # take the min across the ensemble dimension:
+                if vf.ndim == 2:  
                     vf = vf[None]
                 vf = vf.min(axis=0)
-            
                 return vf
-            
+
+            # Split RNG and sample noise
             rng, div_rng = jax.random.split(rng)
             z = jax.random.normal(div_rng, shape=noisy_goals.shape)
-            
-            # Compute velocity field and Hutchinson divergence estimator
-            # vf = self.network.select('critic')(
-            #     noisy_goals,
-            #     times,
-            #     observations,
-            #     actions=actions,
-            # )
-            # if len(vf.shape) == 2:
-            #     vf = vf[None]
-            # vf = vf.min(axis=0)
-            # vf = vf_func(noisy_goals)
-            vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals, ), (z, ))
-            
-            noisy_goals = noisy_goals - vf * step_size
-            
-            # Compute Hutchinson divergence estimator E[z^T D_x(ut) z]
-            # grad_vf = jax.vmap(jax.grad)(
-            #     self.network.select('critic')
-            # )()
-            # grad_vf = jax.grad(self.network.select('critic'))(
-            #     noisy_goals, 
-            #     times, 
-            #     observations, 
-            #     actions=actions
-            # )
-            # grad_vf_dot_z = jnp.einsum(
-            #     "ij,ij->i", jax.lax.collapse(grad_vf, 1), jax.lax.collapse(z, 1)
-            # )
-            # vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals, ), (z, ))
-            
-            # # Isolate the function from the weight matrix to the predictions
-            # f = lambda W: predict(W, b, inputs)
 
-            # key, subkey = random.split(key)
-            # v = random.normal(subkey, W.shape)
-
-            # # Push forward the vector `v` along `f` evaluated at `W`
-            # y, u = jvp(f, (W,), (v,))
+            # Forward (vf) and linearization (jac_vf_dot_z) 
+            vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z,))
             
-            # grad_vf_dot_z = jax.vmap(jax.grad)(vf_dot_z)(noisy_goals)
+            # Hutchinson's trace estimator
+            # shape assumptions: jac_vf_dot_z, z both (B, D) => div is shape (B,)
             div = jnp.einsum("ij,ij->i", jac_vf_dot_z, z)
-            div_int = div_int - div * step_size
-        guassian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noisy_goals ** 2, axis=-1)
-        log_prob = guassian_log_prob + div_int  # log p_1(g | s, a)
-    
+            
+            # Update goals and divergence integral
+            new_noisy_goals = noisy_goals - vf * step_size
+            new_div_int = div_int - div * step_size
+
+            # Return updated carry and scan output
+            return (new_noisy_goals, new_div_int, rng), None
+
+        # Use lax.scan to iterate over num_flow_steps
+        (noisy_goals, div_int, rng), _ = jax.lax.scan(
+            body_fn, (noisy_goals, div_int, rng), jnp.arange(num_flow_steps))
+
+        # Finally, compute log_prob using the final noisy_goals and div_int
+        gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noisy_goals ** 2, axis=-1)
+        log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
+
         return log_prob
 
     @jax.jit
