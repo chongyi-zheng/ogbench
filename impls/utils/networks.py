@@ -1,5 +1,6 @@
 from typing import Any, Optional, Sequence
 
+import math
 import distrax
 import flax
 import flax.linen as nn
@@ -615,3 +616,109 @@ class GCIQEValue(nn.Module):
             return v, phi_s, phi_g
         else:
             return v
+
+
+class SinusoidalPosEmb(nn.Module):
+    emb_dim: int
+
+    def __call__(self, x):
+        half_dim = self.emb_dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = jnp.exp(jnp.arange(half_dim) * -emb)
+        emb = x[:, None] * emb[None, :]
+        emb = jnp.concatenate([jnp.sin(emb), jnp.cos(emb)], axis=-1)
+        return emb
+
+
+class GCFMVelocityField(nn.Module):
+    """Goal-conditioned flow matching velocity field function.
+
+    This module can be used for both value velocity field u(s, g) and critic velocity filed u(s, a, g) functions.
+
+    Attributes:
+        network_type: Type of MLP network. ('mlp')
+        hidden_dims: Hidden layer dimensions.
+        layer_norm: Whether to apply layer normalization.
+        ensemble: Whether to ensemble the value function.
+        gc_encoder: Optional GCEncoder module to encode the inputs.
+    """
+
+    output_dim: int
+    hidden_dims: Sequence[int]
+    network_type: str = 'mlp'
+    layer_norm: bool = True
+    ensemble: bool = True
+    state_encoder: nn.Module = None
+    goal_encoder: nn.Module = None
+
+    def setup(self):
+        if self.network_type == 'mlp':
+            network_module = MLP
+        else:
+            raise NotImplementedError
+
+        if self.ensemble:
+            network_module = ensemblize(network_module, 2)
+
+        if self.network_type == 'mlp':
+            time_net = MLP(
+                (self.hidden_dims[0], self.hidden_dims[0]),
+                activate_final=False,
+                layer_norm=self.layer_norm
+            )
+            cond_net = MLP(
+                (self.hidden_dims[0], self.hidden_dims[0]),
+                activate_final=False,
+                layer_norm=self.layer_norm
+            )
+            proj_net = MLP(
+                (self.hidden_dims[0], self.hidden_dims[0]),
+                activate_final=False,
+                layer_norm=self.layer_norm
+            )
+            velocity_field_net = network_module(
+                (*self.hidden_dims[1:], self.output_dim),
+                activate_final=False,
+                layer_norm=self.layer_norm
+            )
+        else:
+            raise NotImplementedError
+
+        self.time_embedding = SinusoidalPosEmb(emb_dim=self.hidden_dims[0])
+        self.time_net = time_net
+        self.cond_net = cond_net
+        self.proj_net = proj_net
+        self.velocity_field_net = velocity_field_net
+
+    def __call__(self, goals, times, observations, actions=None):
+        """Return the value/critic velocity field.
+
+        Args:
+            goals: Goals.
+            times: Times.
+            observations: Observations.
+            actions: Actions (Optional).
+        """
+        if self.goal_encoder is not None:
+            goals = self.goal_encoder(goals)
+        
+        if self.state_encoder is not None:
+            # This will be all nans if observations are all nan
+            observations = self.state_encoder(observations)
+
+        conds = observations
+        if actions is not None:
+            # This will be all nans if both observations and actions are all nan
+            conds = jnp.concatenate([conds, actions], axis=-1)
+        
+        times = self.time_embedding(times)
+        h = self.proj_net(goals) + self.time_net(times)
+        h = jax.lax.select(
+            jnp.logical_not(jnp.all(jnp.isnan(conds))),
+            h + self.cond_net(conds),
+            h
+        )
+
+        vf = self.velocity_field_net(h)
+
+        return vf
