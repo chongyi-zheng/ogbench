@@ -48,6 +48,18 @@ class PathSample:
     )
 
 
+class CondOTScheduler(flax.struct.PyTreeNode):
+    """CondOT Scheduler. (Linear Path)"""
+
+    def __call__(self, t: jnp.ndarray) -> SchedulerOutput:
+        return SchedulerOutput(
+            alpha_t=t,
+            sigma_t=1 - t,
+            d_alpha_t=jnp.ones_like(t),
+            d_sigma_t=-jnp.ones_like(t),
+        )
+
+
 class CosineScheduler(flax.struct.PyTreeNode):
     """Cosine Scheduler."""
 
@@ -156,5 +168,6 @@ cond_prob_path_class = dict(
 )
 
 scheduler_class = dict(
-    CosineScheduler=CosineScheduler
+    CondOTScheduler=CondOTScheduler,
+    CosineScheduler=CosineScheduler,
 )

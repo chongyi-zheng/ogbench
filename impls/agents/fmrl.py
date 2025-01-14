@@ -74,15 +74,6 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
     def actor_loss(self, batch, grad_params, rng):
         """Compute the actor loss (AWR or DDPG+BC)."""
-        # Maximize log Q if actor_log_q is True (which is default).
-        if self.config['actor_log_q']:
-
-            def value_transform(x):
-                return jnp.log(jnp.maximum(x, 1e-6))
-        else:
-
-            def value_transform(x):
-                return x
 
         if self.config['actor_loss'] == 'awr':
             # AWR loss.
@@ -215,7 +206,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             assert actions is not None
 
         noisy_goals = goals
-        div_int = 0.0
+        div_int = jnp.zeros(goals.shape[:-1])
         num_flow_steps = self.config['num_flow_steps']
         step_size = 1.0 / num_flow_steps
 
@@ -328,6 +319,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
         if not self.config['discrete']:
             actions = jnp.clip(actions, -1, 1)
         
+        # SfBC: selecting from behavioral candidates
         qs = self.compute_log_likelihood(goals, observations, q_seed, actions=actions)
         argmax_idxs = jnp.argmax(qs, axis=0)
         actions = actions[argmax_idxs]
@@ -454,12 +446,11 @@ def get_config():
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
-            scheduler_class='CosineScheduler',  # Scheduler class name.
+            scheduler_class='CondOTScheduler',  # Scheduler class name.
             uncond_prob=0.0,  # Probability of training the marginal velocity field vs the guided velocity field.
             num_flow_steps=20,  # Number of steps for solving ODEs using the Euler method.
             actor_loss='sfbc',  # Actor loss type ('ddpgbc' or 'awr' or 'sfbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.
-            actor_log_q=True,  # Whether to maximize log Q (True) or Q itself (False) in the actor loss.
             state_dependent_std=True,  # Whether to use state-dependent standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
