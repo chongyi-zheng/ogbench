@@ -275,10 +275,13 @@ class FMRLAgent(flax.struct.PyTreeNode):
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
-        rng, value_rng = jax.random.split(rng)
-        value_loss, value_info = self.flow_matching_loss(batch, grad_params, value_rng, 'value')
-        for k, v in value_info.items():
-            info[f'value/{k}'] = v
+        if self.config['actor_loss'] == 'awr':
+            rng, value_rng = jax.random.split(rng)
+            value_loss, value_info = self.contrastive_loss(batch, grad_params, 'value')
+            for k, v in value_info.items():
+                info[f'value/{k}'] = v
+        else:
+            value_loss = 0.0
 
         rng, actor_rng = jax.random.split(rng)
         actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
@@ -361,8 +364,9 @@ class FMRLAgent(flax.struct.PyTreeNode):
             encoders['critic_state'] = encoder_module()
             encoders['critic_goal'] = encoder_module()
             encoders['actor'] = GCEncoder(concat_encoder=encoder_module())
-            encoders['value_state'] = encoder_module()
-            encoders['value_goal'] = encoder_module()
+            if config['actor_loss'] == 'awr':
+                encoders['value_state'] = encoder_module()
+                encoders['value_goal'] = encoder_module()
 
         # Define value and actor networks.
         if config['discrete']:
@@ -388,6 +392,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 goal_encoder=encoders.get('critic_goal'),
             )
 
+        if config['actor_loss'] == 'awr':
             value_def = GCFMVelocityField(
                 output_dim=ex_goals.shape[-1],
                 hidden_dims=config['value_hidden_dims'],
@@ -415,9 +420,12 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
         network_info = dict(
             critic=(critic_def, (ex_goals, ex_times, ex_observations, ex_actions)),
-            value=(value_def, (ex_goals, ex_times, ex_observations)),
             actor=(actor_def, (ex_observations, ex_goals)),
         )
+        if config['actor_loss'] == 'awr':
+            network_info.update(
+                value=(value_def, (ex_goals, ex_times, ex_observations)),
+            )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
 

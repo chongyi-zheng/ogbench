@@ -304,20 +304,19 @@ class GCDataset:
             # Geometric sampling.
 
             # truncated geometric sampling.
-            # offsets = np.random.geometric(p=1 - self.config['discount'], size=batch_size)  # in [1, inf)
-            # middle_goal_idxs = np.minimum(idxs + offsets, final_state_idxs)
+            offsets = np.random.geometric(p=1 - self.config['discount'], size=batch_size)  # in [1, inf)
+            middle_goal_idxs = np.minimum(idxs + offsets, final_state_idxs)
 
             # renormalized geometric sampling.
-            current_timesteps = idxs - initial_state_idxs
-
-            # geometric goal relabeling
-            probs = self.geometric_probs[current_timesteps]
-            c = probs.cumsum(axis=1)
-            u = np.random.rand(len(c), 1)
-            future_timesteps = (u < c).argmax(axis=1)
-            offsets = future_timesteps - current_timesteps
-
-            middle_goal_idxs = idxs + offsets
+            # current_timesteps = idxs - initial_state_idxs
+            #
+            # probs = self.geometric_probs[current_timesteps]
+            # c = probs.cumsum(axis=1)
+            # u = np.random.rand(len(c), 1)
+            # future_timesteps = (u < c).argmax(axis=1)
+            # offsets = future_timesteps - current_timesteps
+            #
+            # middle_goal_idxs = idxs + offsets
         else:
             # Uniform sampling.
             distances = np.random.rand(batch_size)  # in [0, 1)
