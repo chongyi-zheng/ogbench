@@ -24,7 +24,7 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="fmrl",
-        slurm_time=int(4 * 60),  # minute
+        slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
@@ -37,7 +37,7 @@ def main():
     with executor.batch():  # job array
         for env_name in ["pointmaze-medium-navigate-v0"]:
             for actor_loss in ["sfbc"]:
-                for num_flow_steps in [20, 50]:
+                for num_flow_steps in [10, 20]:
                     for num_behavioral_candidates in [32, 64]:
                         for seed in [0, 1]:
                             exp_name = f"fmrl_{env_name}_actor_loss={actor_loss}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}"
