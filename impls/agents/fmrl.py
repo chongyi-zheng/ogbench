@@ -7,7 +7,7 @@ import ml_collections
 import optax
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, GCDiscreteActor, GCFMVelocityField
+from utils.networks import GCActor, GCDiscreteActor, GCFMVectorField, GCFMValue
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
@@ -23,11 +23,11 @@ class FMRLAgent(flax.struct.PyTreeNode):
     cond_prob_path: Any
     config: Any = nonpytree_field()
 
-    def flow_matching_loss(self, batch, grad_params, rng, module_name='critic'):
+    def critic_loss(self, batch, grad_params, rng, module_name='critic'):
         """Compute the contrastive value loss for the Q or V function."""
         batch_size = batch['observations'].shape[0]
 
-        rng, guidance_rng, time_rng, noise_rng = jax.random.split(rng, 4)
+        rng, guidance_rng, time_rng, path_rng, likelihood_rng = jax.random.split(rng, 5)
         use_guidance = (jax.random.uniform(guidance_rng) >= self.config['uncond_prob'])
         
         observations = jax.lax.select(
@@ -46,30 +46,43 @@ class FMRLAgent(flax.struct.PyTreeNode):
         goals = batch['value_goals']
         
         times = jax.random.uniform(time_rng, shape=(batch_size, ))
-        vf_pred = self.network.select(module_name)(
+        vf_pred = self.network.select(module_name + '_vf')(
             goals,
             times,
             observations,
             actions=actions,
             params=grad_params,
         )
-        if len(vf_pred.shape) == 2:
-            vf_pred = vf_pred[None]
-        
-        gaussian_noise = jax.random.normal(noise_rng, shape=goals.shape)
-        path_sample = self.cond_prob_path(x_0=gaussian_noise, x_1=goals, t=times)
-        cfm_loss = jnp.mean((vf_pred - path_sample.dx_t[None]) ** 2)
 
-        return cfm_loss, {
+        path_noise = jax.random.normal(path_rng, shape=vf_pred.shape)
+        path_sample = self.cond_prob_path(x_0=path_noise, x_1=goals[None], t=times[None])
+        cfm_loss = jnp.mean((vf_pred - path_sample.dx_t) ** 2)
+
+        # use a fixed noise to estimate divergence for each ODE solving step.
+        likelihood_noises = jax.random.normal(likelihood_rng, shape=goals.shape)
+        q = self.compute_log_likelihood(
+            goals, observations, likelihood_noises, actions=actions, module_name=module_name)
+
+        q_pred = self.network.select(module_name)(
+            goals,
+            likelihood_noises,
+            observations,
+            actions=actions,
+            params=grad_params,
+        )
+
+        distill_loss = jnp.mean((q - q_pred.squeeze(0)) ** 2)
+        critic_loss = cfm_loss + distill_loss
+
+        return critic_loss, {
             'cond_flow_matching_loss': cfm_loss,
-            # 'v_mean': v.mean(),
-            # 'v_max': v.max(),
-            # 'v_min': v.min(),
-            # 'binary_accuracy': jnp.mean((logits > 0) == I),
-            # 'categorical_accuracy': jnp.mean(correct),
-            # 'logits_pos': logits_pos,
-            # 'logits_neg': logits_neg,
-            # 'logits': logits.mean(),
+            'distillation_losss': distill_loss,
+            'v_mean': q.mean(),
+            'v_max': q.max(),
+            'v_min': q.min(),
+            'v_pred_mean': q_pred.mean(),
+            'v_pred_max': q_pred.max(),
+            'v_pred_min': q_pred.min(),
         }
 
     def actor_loss(self, batch, grad_params, rng):
@@ -139,14 +152,17 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 'std': jnp.mean(dist.scale_diag),
             }
         elif self.config['actor_loss'] == 'sfbc':
+            rng, actor_rng, likelihood_rng = jax.random.split(rng, 3)
+
             # BC loss.
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
             log_prob = dist.log_prob(batch['actions'])
             bc_loss = -log_prob.mean()
             
-            q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+            q_actions = jnp.clip(dist.sample(seed=actor_rng), -1, 1)
+            likelihood_noises = jax.random.normal(likelihood_rng, shape=batch['actor_goals'].shape)
             q = self.compute_log_likelihood(
-                batch['actor_goals'], batch['observations'], rng, actions=q_actions)
+                batch['actor_goals'], batch['observations'], likelihood_noises, actions=q_actions)
             
             actor_loss = bc_loss
             return actor_loss, {
@@ -201,9 +217,12 @@ class FMRLAgent(flax.struct.PyTreeNode):
     
     #     return log_prob
 
-    def compute_log_likelihood(self, goals, observations, rng, actions=None, module_name='critic'):
+    def compute_log_likelihood(self, goals, observations, noise, actions=None, module_name='critic'):
         if module_name == 'critic':
+            num_ensembles = self.config['num_ensembles_q']
             assert actions is not None
+        else:
+            num_ensembles = 1
 
         noisy_goals = goals
         div_int = jnp.zeros(goals.shape[:-1])
@@ -216,47 +235,49 @@ class FMRLAgent(flax.struct.PyTreeNode):
             carry: (noisy_goals, div_int, rng)
             i: current step index
             """
-            noisy_goals, div_int, rng = carry
+            noisy_goals, div_int = carry
             
             # Time for this iteration
             times = 1.0 - jnp.full(noisy_goals.shape[:-1], i * step_size)
 
             # Define vf_func for jvp
             def vf_func(x):
-                vf = self.network.select('critic')(
+                vf = self.network.select(module_name + '_vf')(
                     x,
                     times,
                     observations,
                     actions=actions,
                 )
-                # If Q-value has shape [EnsembleSize, BatchSize], 
-                # take the min across the ensemble dimension:
-                if vf.ndim == 2:  
-                    vf = vf[None]
-                vf = vf.min(axis=0)
-                return vf
+                # # If Q-value has shape [EnsembleSize, BatchSize],
+                # # take the min across the ensemble dimension:
+                # if vf.ndim == 2:
+                #     vf = vf[None]
+
+                return vf.reshape([-1, *vf.shape[2:]])
 
             # Split RNG and sample noise
-            rng, div_rng = jax.random.split(rng)
-            z = jax.random.normal(div_rng, shape=noisy_goals.shape)
+            # rng, div_rng = jax.random.split(rng)
+            # z = jax.random.normal(div_rng, shape=noisy_goals.shape)
 
-            # Forward (vf) and linearization (jac_vf_dot_z) 
-            vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z,))
-            
+            # Forward (vf) and linearization (jac_vf_dot_z)
+            vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (noise,))
+            vf = vf.reshape([num_ensembles, -1, *vf.shape[1:]])
+            jac_vf_dot_z = jac_vf_dot_z.reshape([num_ensembles, -1, *jac_vf_dot_z.shape[1:]])
+
             # Hutchinson's trace estimator
             # shape assumptions: jac_vf_dot_z, z both (B, D) => div is shape (B,)
-            div = jnp.einsum("ij,ij->i", jac_vf_dot_z, z)
+            div = jnp.einsum("eij,ij->ei", jac_vf_dot_z, noise)
             
-            # Update goals and divergence integral
-            new_noisy_goals = noisy_goals - vf * step_size
-            new_div_int = div_int - div * step_size
+            # Update goals and divergence integral. We need to consider Q ensemble here.
+            new_noisy_goals = jnp.min(noisy_goals[None] - vf * step_size, axis=0)
+            new_div_int = jnp.min(div_int[None] - div * step_size, axis=0)
 
             # Return updated carry and scan output
-            return (new_noisy_goals, new_div_int, rng), None
+            return (new_noisy_goals, new_div_int), None
 
         # Use lax.scan to iterate over num_flow_steps
-        (noisy_goals, div_int, rng), _ = jax.lax.scan(
-            body_fn, (noisy_goals, div_int, rng), jnp.arange(num_flow_steps))
+        (noisy_goals, div_int), _ = jax.lax.scan(
+            body_fn, (noisy_goals, div_int), jnp.arange(num_flow_steps))
 
         # Finally, compute log_prob using the final noisy_goals and div_int
         gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noisy_goals ** 2, axis=-1)
@@ -271,7 +292,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
         rng = rng if rng is not None else self.rng
 
         rng, critic_rng = jax.random.split(rng)
-        critic_loss, critic_info = self.flow_matching_loss(batch, grad_params, critic_rng, 'critic')
+        critic_loss, critic_info = self.critic_loss(batch, grad_params, critic_rng, 'critic')
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
@@ -305,6 +326,21 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
     @jax.jit
     def sample_actions(
+            self,
+            observations,
+            goals=None,
+            seed=None,
+            temperature=1.0,
+    ):
+        """Sample actions from the actor."""
+        dist = self.network.select('actor')(observations, goals, temperature=temperature)
+        actions = dist.sample(seed=seed)
+        if not self.config['discrete']:
+            actions = jnp.clip(actions, -1, 1)
+        return actions
+
+    @jax.jit
+    def sample_actions(
         self,
         observations,
         goals=None,
@@ -312,20 +348,25 @@ class FMRLAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the actor."""
-        num_candidates = self.config['num_behavioral_candidates']
-        observations = jnp.repeat(observations[None], num_candidates, axis=0)
-        goals = jnp.repeat(goals[None], num_candidates, axis=0)
+        if self.config['actor_loss'] == 'sfbc':
+            num_candidates = self.config['num_behavioral_candidates']
+            observations = jnp.repeat(observations[None], num_candidates, axis=0)
+            goals = jnp.repeat(goals[None], num_candidates, axis=0)
         
         dist = self.network.select('actor')(observations, goals, temperature=temperature)
-        seed, actor_seed, q_seed = jax.random.split(seed, 3)
+        seed, actor_seed = jax.random.split(seed)
         actions = dist.sample(seed=actor_seed)
         if not self.config['discrete']:
             actions = jnp.clip(actions, -1, 1)
-        
-        # SfBC: selecting from behavioral candidates
-        qs = self.compute_log_likelihood(goals, observations, q_seed, actions=actions)
-        argmax_idxs = jnp.argmax(qs, axis=0)
-        actions = actions[argmax_idxs]
+
+        if self.config['actor_loss'] == 'sfbc':
+            # SfBC: selecting from behavioral candidates
+            seed, noise_seed = jax.random.split(seed)
+            noises = jax.random.normal(noise_seed, shape=goals.shape)
+            q = self.network.select('critic')(goals, noises, observations, actions=actions)
+            q = q.min(axis=0)
+            argmax_idxs = jnp.argmax(q, axis=-1)
+            actions = actions[argmax_idxs]
         
         return actions
 
@@ -354,8 +395,9 @@ class FMRLAgent(flax.struct.PyTreeNode):
         else:
             action_dim = ex_actions.shape[-1]
         
-        rng, time_rng = jax.random.split(rng, 2)
+        rng, time_rng, noise_rng = jax.random.split(rng, 3)
         ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0], ))
+        ex_noises = jax.random.normal(noise_rng, shape=ex_observations.shape)
 
         # Define encoders.
         encoders = dict()
@@ -382,25 +424,37 @@ class FMRLAgent(flax.struct.PyTreeNode):
             # )
             raise NotImplementedError
         else:
-            critic_def = GCFMVelocityField(
-                output_dim=ex_goals.shape[-1],
+            critic_vf_def = GCFMVectorField(
+                vector_dim=ex_goals.shape[-1],
                 hidden_dims=config['value_hidden_dims'],
-                # latent_dim=config['latent_dim'],
                 layer_norm=config['layer_norm'],
-                ensemble=True,
+                num_ensembles=config['num_ensembles_q'],
+                state_encoder=encoders.get('critic_state'),
+                goal_encoder=encoders.get('critic_goal'),
+            )
+            critic_def = GCFMValue(
+                hidden_dims=config['value_hidden_dims'],
+                layer_norm=config['layer_norm'],
+                num_ensembles=1,
                 state_encoder=encoders.get('critic_state'),
                 goal_encoder=encoders.get('critic_goal'),
             )
 
         if config['actor_loss'] == 'awr':
-            value_def = GCFMVelocityField(
-                output_dim=ex_goals.shape[-1],
+            value_vf_def = GCFMVectorField(
+                vector_dim=ex_goals.shape[-1],
                 hidden_dims=config['value_hidden_dims'],
-                # latent_dim=config['latent_dim'],
                 layer_norm=config['layer_norm'],
-                ensemble=True,
-                state_encoder=encoders.get('critic_state'),
-                goal_encoder=encoders.get('critic_goal'),
+                num_ensembles=1,
+                state_encoder=encoders.get('value_state'),
+                goal_encoder=encoders.get('value_goal'),
+            )
+            value_def = GCFMValue(
+                hidden_dims=config['value_hidden_dims'],
+                layer_norm=config['layer_norm'],
+                num_ensembles=1,
+                state_encoder=encoders.get('value_state'),
+                goal_encoder=encoders.get('value_goal'),
             )
 
         if config['discrete']:
@@ -419,12 +473,14 @@ class FMRLAgent(flax.struct.PyTreeNode):
             )
 
         network_info = dict(
-            critic=(critic_def, (ex_goals, ex_times, ex_observations, ex_actions)),
+            critic_vf=(critic_vf_def, (ex_goals, ex_times, ex_observations, ex_actions)),
+            critic=(critic_def, (ex_goals, ex_noises, ex_observations, ex_actions)),
             actor=(actor_def, (ex_observations, ex_goals)),
         )
         if config['actor_loss'] == 'awr':
             network_info.update(
-                value=(value_def, (ex_goals, ex_times, ex_observations)),
+                value_vf=(value_vf_def, (ex_goals, ex_times, ex_observations)),
+                value=(value_def, (ex_goals, ex_noises, ex_observations)),
             )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
@@ -450,9 +506,9 @@ def get_config():
             batch_size=1024,  # Batch size.
             actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
-            # latent_dim=512,  # Latent dimension for phi and psi.
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.
+            num_ensembles_q=2,  # Number of ensemble for the critic.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             uncond_prob=0.0,  # Probability of training the marginal velocity field vs the guided velocity field.

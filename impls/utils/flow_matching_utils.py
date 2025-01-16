@@ -105,21 +105,22 @@ class AffineCondProbPath(flax.struct.PyTreeNode):
             PathSample: a conditional sample at :math:`X_t \sim p_t`.
         """
         assert (
-                len(t.shape) == 1
-        ), f"The time vector t must have shape [batch_size, ]. Got {t.shape}."
+            len(t.shape) == 2
+        ), f"The time vector t must have shape [1, batch_size]. Got {t.shape}."
         assert (
-                t.shape[0] == x_0.shape[0] == x_1.shape[0]
-        ), f"Time t dimension must match the batch size [{x_1.shape[0]}]. Got {t.shape}"
+            t.shape[1] == x_0.shape[1] == x_1.shape[1]
+        ), f"Time t dimension must match the batch size [{x_1.shape[1]}]. Got {t.shape}"
         assert (
-                x_0.shape == x_1.shape
-        ), f"Target data point x_1 and source data point x_) must have same shape. Got {x_1.shape} for x_1 and {x_0.shape} for x_0"
+            x_0.shape[1:] == x_1.shape[1:]
+        ), (f"Target data point x_1 and source data point x_0 must have same shape other than the ensemble dimension (dim = 0). "
+            f"Got {x_1.shape} for x_1 and {x_0.shape} for x_0")
 
         scheduler_output = self.scheduler(t)
 
-        alpha_t = jnp.expand_dims(scheduler_output.alpha_t, np.arange(1, len(x_1.shape)))
-        sigma_t = jnp.expand_dims(scheduler_output.sigma_t, np.arange(1, len(x_1.shape)))
-        d_alpha_t = jnp.expand_dims(scheduler_output.d_alpha_t, np.arange(1, len(x_1.shape)))
-        d_sigma_t = jnp.expand_dims(scheduler_output.d_sigma_t, np.arange(1, len(x_1.shape)))
+        alpha_t = jnp.expand_dims(scheduler_output.alpha_t, np.arange(2, len(x_1.shape)))
+        sigma_t = jnp.expand_dims(scheduler_output.sigma_t, np.arange(2, len(x_1.shape)))
+        d_alpha_t = jnp.expand_dims(scheduler_output.d_alpha_t, np.arange(2, len(x_1.shape)))
+        d_sigma_t = jnp.expand_dims(scheduler_output.d_sigma_t, np.arange(2, len(x_1.shape)))
 
         # construct xt ~ p_t(x|x1).
         x_t = sigma_t * x_0 + alpha_t * x_1

@@ -630,8 +630,8 @@ class SinusoidalPosEmb(nn.Module):
         return emb
 
 
-class GCFMVelocityField(nn.Module):
-    """Goal-conditioned flow matching velocity field function.
+class GCFMVectorField(nn.Module):
+    """Goal-conditioned flow matching vector field function.
 
     This module can be used for both value velocity field u(s, g) and critic velocity filed u(s, a, g) functions.
 
@@ -640,14 +640,15 @@ class GCFMVelocityField(nn.Module):
         hidden_dims: Hidden layer dimensions.
         layer_norm: Whether to apply layer normalization.
         ensemble: Whether to ensemble the value function.
-        gc_encoder: Optional GCEncoder module to encode the inputs.
+        state_encoder: Optional state encoder.
+        goal_encoder: Optional goal encoder.
     """
 
-    output_dim: int
+    vector_dim: int
     hidden_dims: Sequence[int]
     network_type: str = 'mlp'
     layer_norm: bool = True
-    ensemble: bool = True
+    num_ensembles: int = 1
     state_encoder: nn.Module = None
     goal_encoder: nn.Module = None
 
@@ -657,8 +658,7 @@ class GCFMVelocityField(nn.Module):
         else:
             raise NotImplementedError
 
-        if self.ensemble:
-            network_module = ensemblize(network_module, 2)
+        network_module = ensemblize(network_module, self.num_ensembles)
 
         if self.network_type == 'mlp':
             time_net = MLP(
@@ -677,7 +677,7 @@ class GCFMVelocityField(nn.Module):
                 layer_norm=self.layer_norm
             )
             velocity_field_net = network_module(
-                (*self.hidden_dims[1:], self.output_dim),
+                (*self.hidden_dims[1:], self.vector_dim),
                 activate_final=False,
                 layer_norm=self.layer_norm
             )
@@ -722,3 +722,77 @@ class GCFMVelocityField(nn.Module):
         vf = self.velocity_field_net(h)
 
         return vf
+
+class GCFMValue(nn.Module):
+    """Goal-conditioned flow matching value/critic function.
+
+    This module can be used for both value V(s, g) and critic Q(s, a, g) functions.
+    We typically use this module to distill the ODE solutions.
+
+    Attributes:
+        network_type: Type of MLP network. ('mlp' or 'simba')
+        hidden_dims: Hidden layer dimensions.
+        layer_norm: Whether to apply layer normalization.
+        ensemble: Whether to ensemble the value function.
+        state_encoder: Optional state encoder.
+        goal_encoder: Optional goal encoder.
+    """
+
+    hidden_dims: Sequence[int]
+    output_dim: int = 1
+    network_type: str = 'mlp'
+    layer_norm: bool = True
+    num_ensembles: int = 1
+    state_encoder: nn.Module = None
+    goal_encoder: nn.Module = None
+
+    def setup(self):
+        if self.network_type == 'mlp':
+            network_module = MLP
+        else:
+            raise NotImplementedError
+
+        network_module = ensemblize(network_module, self.num_ensembles)
+
+        if self.network_type == 'mlp':
+            value_net = network_module(
+                (*self.hidden_dims, self.output_dim),
+                activate_final=False,
+                layer_norm=self.layer_norm
+            )
+        else:
+            raise NotImplementedError
+
+        self.value_net = value_net
+
+    def __call__(self, goals, noises, observations, actions=None):
+        """Return the value/critic function.
+
+        Args:
+            observations: Observations.
+            goals: Goals (optional).
+            actions: Actions (optional).
+        """
+        if self.goal_encoder is not None:
+            goals = self.goal_encoder(goals)
+
+        if self.state_encoder is not None:
+            # This will be all nans if observations are all nan
+            observations = self.state_encoder(observations)
+
+        # TODO (chongyi): figure out the case when observations are all jnp.nan.
+        inputs = jnp.concatenate([goals, noises], axis=-1)
+        conds = observations
+        if actions is not None:
+            # This will be all nans if both observations and actions are all nan
+            conds = jnp.concatenate([conds, actions], axis=-1)
+        inputs = jnp.concatenate([inputs, conds], axis=-1)
+        # inputs = jax.lax.select(
+        #     jnp.logical_not(jnp.all(jnp.isnan(conds))),
+        #     jnp.concatenate([inputs, conds], axis=-1),
+        #     inputs
+        # )
+
+        v = self.value_net(inputs).squeeze(-1)
+
+        return v
