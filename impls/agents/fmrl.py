@@ -61,7 +61,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
         # use a fixed noise to estimate divergence for each ODE solving step.
         likelihood_noises = jax.random.normal(likelihood_rng, shape=goals.shape)
         q = self.compute_log_likelihood(
-            goals, observations, likelihood_noises, actions=actions, module_name=module_name)
+            goals, likelihood_noises, observations, actions=actions)
 
         if self.config['distill_likelihood']:
             q_pred = self.network.select(module_name)(
@@ -90,11 +90,23 @@ class FMRLAgent(flax.struct.PyTreeNode):
         """Compute the actor loss (AWR or DDPG+BC)."""
 
         if self.config['actor_loss'] == 'awr':
+            rng, v_rng, q_rng = jax.random.split(rng, 3)
+
+            v_noises = jax.random.normal(v_rng, shape=batch['actor_goals'].shape)
+            q_noises = jax.random.normal(q_rng, shape=batch['actor_goals'].shape)
+
             # AWR loss.
-            v = self.network.select('value')(batch['observations'], batch['actor_goals'])
-            q1, q2 = self.network.select('critic')(batch['observations'], batch['actor_goals'], batch['actions'])
-            q = jnp.minimum(q1, q2)
-            adv = q - v
+            if self.config['distill_likelihood']:
+                v = self.compute_log_likelihood(
+                    batch['actor_goals'], v_noises, batch['observations'])
+                q = self.compute_log_likelihood(
+                    batch['actor_goals'], q_noises, batch['observations'], actions=batch['actions'])
+            else:
+                v = self.network.select('value')(
+                    batch['actor_goals'], v_noises, batch['observations'])
+                q = self.network.select('critic')(
+                    batch['actor_goals'], q_noises, batch['observations'], actions=batch['actions'])
+            adv = q - v  # log p(g | s, a) - log p(g | s)
 
             exp_a = jnp.exp(adv * self.config['alpha'])
             exp_a = jnp.minimum(exp_a, 100.0)
@@ -157,9 +169,14 @@ class FMRLAgent(flax.struct.PyTreeNode):
             bc_loss = -log_prob.mean()
             
             q_actions = jnp.clip(dist.sample(seed=actor_rng), -1, 1)
-            likelihood_noises = jax.random.normal(likelihood_rng, shape=batch['actor_goals'].shape)
-            q = self.compute_log_likelihood(
-                batch['actor_goals'], batch['observations'], likelihood_noises, actions=q_actions)
+
+            noises = jax.random.normal(likelihood_rng, shape=batch['actor_goals'].shape)
+            if self.config['distill_likelihood']:
+                q = self.network.select('critic')(
+                    batch['actor_goals'], noises, batch['observations'], actions=q_actions)
+            else:
+                q = self.compute_log_likelihood(
+                    batch['actor_goals'], noises, batch['observations'], actions=q_actions)
             
             actor_loss = bc_loss
             return actor_loss, {
@@ -174,11 +191,12 @@ class FMRLAgent(flax.struct.PyTreeNode):
         else:
             raise ValueError(f'Unsupported actor loss: {self.config["actor_loss"]}')
 
-    def compute_log_likelihood(self, goals, observations, noise, actions=None, module_name='critic'):
-        if module_name == 'critic':
+    def compute_log_likelihood(self, goals, noises, observations, actions=None):
+        if actions is not None:
+            module_name = 'critic'
             num_ensembles = self.config['num_ensembles_q']
-            assert actions is not None
         else:
+            module_name = 'value'
             num_ensembles = 1
 
         noisy_goals = goals
@@ -213,13 +231,13 @@ class FMRLAgent(flax.struct.PyTreeNode):
             # z = jax.random.normal(div_rng, shape=noisy_goals.shape)
 
             # Forward (vf) and linearization (jac_vf_dot_z)
-            vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (noise,))
+            vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (noises, ))
             vf = vf.reshape([num_ensembles, -1, *vf.shape[1:]])
             jac_vf_dot_z = jac_vf_dot_z.reshape([num_ensembles, -1, *jac_vf_dot_z.shape[1:]])
 
             # Hutchinson's trace estimator
             # shape assumptions: jac_vf_dot_z, z both (B, D) => div is shape (B,)
-            div = jnp.einsum("eij,ij->ei", jac_vf_dot_z, noise)
+            div = jnp.einsum("eij,ij->ei", jac_vf_dot_z, noises)
             
             # Update goals and divergence integral. We need to consider Q ensemble here.
             new_noisy_goals = jnp.min(noisy_goals[None] - vf * step_size, axis=0)
@@ -251,7 +269,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
         if self.config['actor_loss'] == 'awr':
             rng, value_rng = jax.random.split(rng)
-            value_loss, value_info = self.contrastive_loss(batch, grad_params, 'value')
+            value_loss, value_info = self.critic_loss(batch, grad_params, value_rng, 'value')
             for k, v in value_info.items():
                 info[f'value/{k}'] = v
         else:
@@ -305,7 +323,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 q = self.network.select('critic')(goals, noises, observations, actions=actions)
                 q = q.min(axis=0)
             else:
-                q = self.compute_log_likelihood(goals, observations, noises, actions=actions)
+                q = self.compute_log_likelihood(goals, noises, observations, actions=actions)
             argmax_idxs = jnp.argmax(q, axis=-1)
             actions = actions[argmax_idxs]
         
