@@ -152,24 +152,24 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 'std': jnp.mean(dist.scale_diag),
             }
         elif self.config['actor_loss'] == 'sfbc':
-            rng, actor_rng, likelihood_rng = jax.random.split(rng, 3)
+            # rng, actor_rng, likelihood_rng = jax.random.split(rng, 3)
 
             # BC loss.
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
             log_prob = dist.log_prob(batch['actions'])
             bc_loss = -log_prob.mean()
             
-            q_actions = jnp.clip(dist.sample(seed=actor_rng), -1, 1)
-            likelihood_noises = jax.random.normal(likelihood_rng, shape=batch['actor_goals'].shape)
-            q = self.compute_log_likelihood(
-                batch['actor_goals'], batch['observations'], likelihood_noises, actions=q_actions)
+            # q_actions = jnp.clip(dist.sample(seed=actor_rng), -1, 1)
+            # likelihood_noises = jax.random.normal(likelihood_rng, shape=batch['actor_goals'].shape)
+            # q = self.compute_log_likelihood(
+            #     batch['actor_goals'], batch['observations'], likelihood_noises, actions=q_actions)
             
             actor_loss = bc_loss
             return actor_loss, {
                 'actor_loss': actor_loss,
                 'bc_loss': bc_loss,
-                'q_mean': q.mean(),
-                'q_abs_mean': jnp.abs(q).mean(),
+                # 'q_mean': q.mean(),
+                # 'q_abs_mean': jnp.abs(q).mean(),
                 'bc_log_prob': log_prob.mean(),
                 'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
                 'std': jnp.mean(dist.scale_diag),
