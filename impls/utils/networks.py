@@ -684,7 +684,7 @@ class GCFMVectorField(nn.Module):
         else:
             raise NotImplementedError
 
-        # self.time_embedding = SinusoidalPosEmb(emb_dim=self.hidden_dims[0])
+        self.time_embedding = SinusoidalPosEmb(emb_dim=2 * self.vector_dim)
         # self.time_net = time_net
         # self.cond_net = cond_net
         # self.proj_net = proj_net
@@ -711,14 +711,14 @@ class GCFMVectorField(nn.Module):
             # This will be all nans if both observations and actions are all nan
             conds = jnp.concatenate([conds, actions], axis=-1)
         
-        # times = self.time_embedding(times)
+        times = self.time_embedding(times)
         # h = self.proj_net(goals) + self.time_net(times)
         # h = jax.lax.select(
         #     jnp.logical_not(jnp.all(jnp.isnan(conds))),
         #     h + self.cond_net(conds),
         #     h
         # )
-        inputs = jnp.concatenate([goals, jnp.expand_dims(times, axis=-1), conds], axis=-1)
+        inputs = jnp.concatenate([goals, times, conds], axis=-1)
 
         vf = self.velocity_field_net(inputs)
 
@@ -767,7 +767,7 @@ class GCFMValue(nn.Module):
 
         self.value_net = value_net
 
-    def __call__(self, goals, noises, observations, actions=None):
+    def __call__(self, goals, observations, actions=None):
         """Return the value/critic function.
 
         Args:
@@ -787,7 +787,7 @@ class GCFMValue(nn.Module):
         if actions is not None:
             # This will be all nans if both observations and actions are all nan
             conds = jnp.concatenate([conds, actions], axis=-1)
-        inputs = jnp.concatenate([goals, noises, conds], axis=-1)
+        inputs = jnp.concatenate([goals, conds], axis=-1)
         # inputs = jax.lax.select(
         #     jnp.logical_not(jnp.all(jnp.isnan(conds))),
         #     jnp.concatenate([inputs, conds], axis=-1),

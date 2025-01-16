@@ -35,7 +35,7 @@ def main():
     )
 
     # sfbc hyperparameters: eval_temperature, num_flow_steps, num_behavioral_candidates, distill_likelihood
-    # awr hyperparameters: alpha, num_flow_steps, distill_likelihood
+    # awr hyperparameters: eval_temperature, alpha, num_flow_steps, distill_likelihood
     with executor.batch():  # job array
         for env_name in ["pointmaze-medium-navigate-v0"]:
             for actor_loss in ["sfbc"]:
@@ -45,7 +45,7 @@ def main():
                             for num_behavioral_candidates in [32, 64]:
                                 for distill_likelihood in [True, False]:
                                     for seed in [0, 1]:
-                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_distill_likelihood={distill_likelihood}"
+                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_distill_likelihood={distill_likelihood}_use_deterministic_distillation"
                                         log_dir = os.path.expanduser(
                                             f"{log_root_dir}/exp_logs/ogbench_logs/fmrl/{exp_name}/{seed}")
     
