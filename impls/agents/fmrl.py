@@ -229,7 +229,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
             # Split RNG and sample noise
             rng, div_rng = jax.random.split(rng)
-            z = jax.random.rademacher(div_rng, shape=noisy_goals.shape, dtype=rng)
+            z = jax.random.rademacher(div_rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
 
             # Forward (vf) and linearization (jac_vf_dot_z)
             vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z, ))
@@ -358,9 +358,8 @@ class FMRLAgent(flax.struct.PyTreeNode):
         else:
             action_dim = ex_actions.shape[-1]
         
-        rng, time_rng, noise_rng = jax.random.split(rng, 3)
+        rng, time_rng = jax.random.split(rng)
         ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0], ))
-        ex_noises = jax.random.normal(noise_rng, shape=ex_observations.shape)
 
         # Define encoders.
         encoders = dict()
@@ -437,13 +436,13 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
         network_info = dict(
             critic_vf=(critic_vf_def, (ex_goals, ex_times, ex_observations, ex_actions)),
-            critic=(critic_def, (ex_goals, ex_noises, ex_observations, ex_actions)),
+            critic=(critic_def, (ex_goals, ex_observations, ex_actions)),
             actor=(actor_def, (ex_observations, ex_goals)),
         )
         if config['actor_loss'] == 'awr':
             network_info.update(
                 value_vf=(value_vf_def, (ex_goals, ex_times, ex_observations)),
-                value=(value_def, (ex_goals, ex_noises, ex_observations)),
+                value=(value_def, (ex_goals, ex_observations)),
             )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
