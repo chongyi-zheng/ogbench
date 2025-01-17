@@ -83,6 +83,7 @@ def main():
                                                     --enable_wandb=1 \
                                                     --env_name={env_name} \
                                                     --eval_episodes=50 \
+                                                    --eval_on_cpu=0 \
                                                     --eval_temperature={eval_temperature} \
                                                     --agent=impls/agents/fmrl.py \
                                                     --agent.actor_loss={actor_loss} \

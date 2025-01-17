@@ -663,17 +663,17 @@ class GCFMVectorField(nn.Module):
 
         if self.network_type == 'mlp':
             time_net = MLP(
-                (self.hidden_dims[0]),
+                (self.hidden_dims[0],),
                 activate_final=False,
                 layer_norm=self.layer_norm
             )
             cond_net = MLP(
-                (self.hidden_dims[0]),
+                (self.hidden_dims[0],),
                 activate_final=False,
                 layer_norm=self.layer_norm
             )
             proj_net = MLP(
-                (self.hidden_dims[0]),
+                (self.hidden_dims[0],),
                 activate_final=False,
                 layer_norm=self.layer_norm
             )
