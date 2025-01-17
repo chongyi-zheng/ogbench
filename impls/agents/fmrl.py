@@ -216,30 +216,146 @@ class FMRLAgent(flax.struct.PyTreeNode):
             # Time for this iteration
             times = 1.0 - jnp.full(noisy_goals.shape[:-1], i * step_size)
 
-            # Define vf_func for jvp
-            def vf_func(x):
-                vf = self.network.select(module_name + '_vf')(
-                    x,
-                    times,
-                    observations,
-                    actions=actions,
-                )
+            if self.config['exact_divergence']:
+                def compute_exact_div(goals, times, observations, actions):
+                    def vf_func(goal, time, observation, action):
+                        goal = jnp.expand_dims(goal, 0)
+                        time = jnp.expand_dims(time, 0)
+                        observation = jnp.expand_dims(observation, 0)
+                        if action is not None:
+                            action = jnp.expand_dims(action, 0)
+                        vf = self.network.select(module_name + '_vf')(
+                            goal, time, observation, action)
 
-                return vf.reshape([-1, *vf.shape[2:]])
+                        return vf.reshape(-1)
 
-            # Split RNG and sample noise
-            rng, div_rng = jax.random.split(rng)
-            z = jax.random.rademacher(div_rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
+                    def div_func(goal, time, observation, action):
+                        jac = jax.jacrev(vf_func)(goal, time, observation, action)
+                        jac = jac.reshape([num_ensembles, goals.shape[-1], goals.shape[-1]])
 
-            # Forward (vf) and linearization (jac_vf_dot_z)
-            vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z, ))
-            vf = vf.reshape([num_ensembles, -1, *vf.shape[1:]])
-            jac_vf_dot_z = jac_vf_dot_z.reshape([num_ensembles, -1, *jac_vf_dot_z.shape[1:]])
+                        return jnp.trace(jac, axis1=-2, axis2=-1)
 
-            # Hutchinson's trace estimator
-            # shape assumptions: jac_vf_dot_z, z both (B, D) => div is shape (B,)
-            div = jnp.einsum("eij,ij->ei", jac_vf_dot_z, z)
-            
+                    vf = self.network.select(module_name + '_vf')(
+                        goals, times, observations, actions)
+
+                    if actions is not None:
+                        div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=1)(
+                            goals, times, observations, actions)
+                    else:
+                        div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=1)(
+                            goals, times, observations, actions)
+
+                    return vf, div
+
+                vf, div = compute_exact_div(noisy_goals, times, observations, actions)
+            else:
+                def compute_hutchinson_div(rng, goals, times, observations, actions):
+                    # Define vf_func for jvp
+                    def vf_func(x):
+                        vf = self.network.select(module_name + '_vf')(
+                            x,
+                            times,
+                            observations,
+                            actions=actions,
+                        )
+
+                        return vf.reshape([-1, *vf.shape[2:]])
+
+                    # Split RNG and sample noise
+                    z = jax.random.normal(rng, shape=goals.shape, dtype=goals.dtype)
+
+                    # Forward (vf) and linearization (jac_vf_dot_z)
+                    vf, jac_vf_dot_z = jax.jvp(vf_func, (goals,), (z, ))
+                    vf = vf.reshape([num_ensembles, -1, *vf.shape[1:]])
+                    jac_vf_dot_z = jac_vf_dot_z.reshape([num_ensembles, -1, *jac_vf_dot_z.shape[1:]])
+
+                    # Hutchinson's trace estimator
+                    # shape assumptions: jac_vf_dot_z, z both (B, D) => div is shape (B,)
+                    div = jnp.einsum("eij,ij->ei", jac_vf_dot_z, z)
+
+                    return vf, div
+
+                rng, div_rng = jax.random.split(rng)
+                vf, div = compute_hutchinson_div(rng, noisy_goals, times, observations, actions)
+
+            # exact divergence computation
+            # def div(x, key):
+            #     fi = lambda i, *y: f(jnp.stack(y))[i]
+            #     dfidxi = lambda i, y: jax.grad(fi, argnums=i + 1)(i, *y)
+            #     return sum(dfidxi(i, x) for i in range(x.shape[0]))
+            #     # Not sure why vmap doesn't work here.
+            #     # return jax.vmap(dfidxi, in_axes=(0, None))(jnp.arange(x.shape[0]), x)
+            #
+            # return jax.jit(div)
+
+            # def vf_batch_sum_func(goals, times, observations, actions, ensemble_idx, dim_idx):
+            #     vf = self.network.select(module_name + '_vf')(
+            #         goals, times, observations, actions=actions)
+            #     vf = vf[ensemble_idx, :, dim_idx]
+            #
+            #     # Sum over the batch: sum_{n = 1}^N vf_i(x_n)
+            #     vf_sum = jnp.sum(vf)
+            #     return vf_sum
+
+            # def compute_div1(goals, times, observations, actions):
+            #     # dfidxi = lambda i: jax.grad(vf_func_d)(noisy_goal, time, observation, action, i)[i]
+            #
+            #     # [∇_x vf_i(x_n)]_d, shape = (N, )
+            #     derivative_func = lambda e, d: jax.grad(
+            #         vf_batch_sum_func)(goals, times, observations, actions, e, d)[:, d]
+            #
+            #     # div_func = jax.vmap(derivative_func, in_axes=(None, ), )
+            #     # (N, D)
+            #     derivative_vec_func = lambda e: jax.vmap(
+            #         derivative_func, in_axes=(None, 0), out_axes=1)(e, jnp.arange(goals.shape[-1]))
+            #
+            #     derivatives = jax.vmap(derivative_vec_func)(jnp.arange(num_ensembles))
+            #     div = derivatives.sum(axis=-1)
+            #
+            #     return div
+
+            # def compute_div2(goals, times, observations, actions):
+            #     def vf_func(goal, time, observation, action):
+            #         goal = jnp.expand_dims(goal, 0)
+            #         time = jnp.expand_dims(time, 0)
+            #         observation = jnp.expand_dims(observation, 0)
+            #         if action is not None:
+            #             action = jnp.expand_dims(action, 0)
+            #         vf = self.network.select(module_name + '_vf')(
+            #             goal, time, observation, action)
+            #
+            #         return vf.reshape(-1)
+            #
+            #     def div_func(goal, time, observation, action):
+            #         jac = jax.jacrev(vf_func)(goal, time, observation, action)
+            #         jac = jac.reshape([num_ensembles, goals.shape[-1], goals.shape[-1]])
+            #
+            #         return jnp.trace(jac, axis1=-2, axis2=-1)
+            #
+            #     if actions is not None:
+            #         div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=1)(
+            #             goals, times, observations, actions)
+            #     else:
+            #         div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=1)(
+            #             goals, times, observations, actions)
+            #
+            #     return div
+
+            # import time
+
+            # print()
+            # start_time = time.time()
+            # new_div1 = compute_div1(noisy_goals, times, observations, actions)
+            # jax.block_until_ready(new_div1)
+            # end_time = time.time()
+            # print("new_div1 time = {}".format(end_time - start_time))
+
+            # start_time = time.time()
+            # new_div2 = compute_div2(noisy_goals, times, observations, actions)
+            # jax.block_until_ready(new_div2)
+            # end_time = time.time()
+            # print("new_div2 time = {}".format(end_time - start_time))
+
             # Update goals and divergence integral. We need to consider Q ensemble here.
             new_noisy_goals = jnp.min(noisy_goals[None] - vf * step_size, axis=0)
             new_div_int = jnp.min(div_int[None] - div * step_size, axis=0)
@@ -475,6 +591,7 @@ def get_config():
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             uncond_prob=0.0,  # Probability of training the marginal velocity field vs the guided velocity field.
             num_flow_steps=20,  # Number of steps for solving ODEs using the Euler method.
+            exact_divergence=False,  # Whether to compute the exact divergence or the Hutchinson's divergence estimator.
             distill_likelihood=False,  # Whether to distill the log-likelihood solutions.
             actor_loss='sfbc',  # Actor loss type ('ddpgbc' or 'awr' or 'sfbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.

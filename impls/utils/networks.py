@@ -625,7 +625,8 @@ class SinusoidalPosEmb(nn.Module):
         half_dim = self.emb_dim // 2
         emb = math.log(10000) / (half_dim - 1)
         emb = jnp.exp(jnp.arange(half_dim) * -emb)
-        emb = x[:, None] * emb[None, :]
+        # emb = x[:, None] * emb[None, :]
+        emb = x[..., None] * emb[None]
         emb = jnp.concatenate([jnp.sin(emb), jnp.cos(emb)], axis=-1)
         return emb
 
