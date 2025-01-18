@@ -70,14 +70,14 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 goals, observations, actions=actions, params=grad_params)
             q_pred = q_pred.min(axis=0)
 
-            distill_loss = jnp.mean((q - q_pred) ** 2)
+            distill_loss = jnp.mean((jax.lax.stop_gradient(q) - q_pred) ** 2)
         else:
             distill_loss = 0.0
         critic_loss = cfm_loss + distill_loss
 
         return critic_loss, {
             'cond_flow_matching_loss': cfm_loss,
-            'distillation_losss': distill_loss,
+            'distillation_loss': distill_loss,
             'v_mean': q.mean(),
             'v_max': q.max(),
             'v_min': q.min(),

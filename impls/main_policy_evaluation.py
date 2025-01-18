@@ -34,11 +34,8 @@ flags.DEFINE_integer('log_interval', 5000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 100000, 'Evaluation interval.')
 flags.DEFINE_integer('save_interval', 1000000, 'Saving interval.')
 
-flags.DEFINE_integer('eval_tasks', None, 'Number of tasks to evaluate (None for all).')
-flags.DEFINE_integer('eval_episodes', 20, 'Number of episodes for each task.')
-flags.DEFINE_float('eval_temperature', 0, 'Actor temperature for evaluation.')
-flags.DEFINE_float('eval_gaussian', None, 'Action Gaussian noise for evaluation.')
-flags.DEFINE_integer('video_episodes', 1, 'Number of video episodes for each task.')
+flags.DEFINE_integer('eval_transitions', 50_000, 'Number of episodes for each task.')
+flags.DEFINE_integer('vis_', 1, 'Number of video episodes for each task.')
 flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
 flags.DEFINE_integer('eval_on_cpu', 1, 'Whether to evaluate on CPU.')
 
@@ -77,11 +74,15 @@ def main(_):
     np.random.seed(FLAGS.seed)
 
     example_batch = train_dataset.sample(1)
+    if config['discrete']:
+        # Fill with the maximum action to let the agent know the action space size.
+        example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)
 
     estimator_class = estimators[config['estimator_name']]
     estimator = estimator_class.create(
         FLAGS.seed,
         example_batch['observations'],
+        example_batch['actions'],
         config,
     )
 
@@ -129,38 +130,47 @@ def main(_):
                 eval_estimator = jax.device_put(estimator, device=jax.devices('cpu')[0])
             else:
                 eval_estimator = estimator
-            renders = []
-            eval_metrics = {}
-            overall_metrics = defaultdict(list)
-            task_infos = env.unwrapped.task_infos if hasattr(env.unwrapped, 'task_infos') else env.task_infos
-            num_tasks = FLAGS.eval_tasks if FLAGS.eval_tasks is not None else len(task_infos)
-            for task_id in tqdm.trange(1, num_tasks + 1):
-                task_name = task_infos[task_id - 1]['task_name']
-                eval_info, trajs, cur_renders = evaluate_policy_evaluation(
-                    estimator=eval_estimator,
-                    env=env,
-                    task_id=task_id,
-                    config=config,
-                    num_eval_episodes=FLAGS.eval_episodes,
-                    num_video_episodes=FLAGS.video_episodes,
-                    video_frame_skip=FLAGS.video_frame_skip,
-                    eval_temperature=FLAGS.eval_temperature,
-                    eval_gaussian=FLAGS.eval_gaussian,
-                )
-                renders.extend(cur_renders)
-                metric_names = ['success']
-                eval_metrics.update(
-                    {f'evaluation/{task_name}_{k}': v for k, v in eval_info.items() if k in metric_names}
-                )
-                for k, v in eval_info.items():
-                    if k in metric_names:
-                        overall_metrics[k].append(v)
-            for k, v in overall_metrics.items():
-                eval_metrics[f'evaluation/overall_{k}'] = np.mean(v)
 
-            if FLAGS.video_episodes > 0:
-                video = get_wandb_video(renders=renders, n_cols=num_tasks)
-                eval_metrics['video'] = video
+            dataset = val_dataset if val_dataset is not None else train_dataset
+            metric_names = ['binary_q_acc', 'binary_v_acc']
+            eval_metrics = {}
+            eval_info = evaluate_policy_evaluation(eval_estimator, dataset)
+            eval_metrics.update(
+                {f'evaluation/{k}': v for k, v in eval_info.items() if k in metric_names}
+            )
+
+            # renders = []
+            # eval_metrics = {}
+            # overall_metrics = defaultdict(list)
+            # task_infos = env.unwrapped.task_infos if hasattr(env.unwrapped, 'task_infos') else env.task_infos
+            # num_tasks = FLAGS.eval_tasks if FLAGS.eval_tasks is not None else len(task_infos)
+            # for task_id in tqdm.trange(1, num_tasks + 1):
+            #     task_name = task_infos[task_id - 1]['task_name']
+            #     eval_info, trajs, cur_renders = evaluate_policy_evaluation(
+            #         estimator=eval_estimator,
+            #         env=env,
+            #         task_id=task_id,
+            #         config=config,
+            #         num_eval_episodes=FLAGS.eval_episodes,
+            #         num_video_episodes=FLAGS.video_episodes,
+            #         video_frame_skip=FLAGS.video_frame_skip,
+            #         eval_temperature=FLAGS.eval_temperature,
+            #         eval_gaussian=FLAGS.eval_gaussian,
+            #     )
+            #     renders.extend(cur_renders)
+            #     metric_names = ['success']
+            #     eval_metrics.update(
+            #         {f'evaluation/{task_name}_{k}': v for k, v in eval_info.items() if k in metric_names}
+            #     )
+            #     for k, v in eval_info.items():
+            #         if k in metric_names:
+            #             overall_metrics[k].append(v)
+            # for k, v in overall_metrics.items():
+            #     eval_metrics[f'evaluation/overall_{k}'] = np.mean(v)
+
+            # if FLAGS.video_episodes > 0:
+            #     video = get_wandb_video(renders=renders, n_cols=num_tasks)
+            #     eval_metrics['video'] = video
 
             if FLAGS.enable_wandb:
                 wandb.log(eval_metrics, step=i)
@@ -172,7 +182,7 @@ def main(_):
 
         # Save agent.
         if i % FLAGS.save_interval == 0:
-            save_agent(agent, FLAGS.save_dir, i)
+            save_agent(estimator, FLAGS.save_dir, i)
 
     train_logger.close()
     eval_logger.close()

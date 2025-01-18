@@ -119,66 +119,68 @@ def evaluate(
 
 def evaluate_policy_evaluation(
     estimator,
-    env,
-    task_id=None,
-    config=None,
-    num_eval_episodes=50,
-    num_video_episodes=0,
-    video_frame_skip=3,
-    eval_temperature=0,
-    eval_gaussian=None,
+    dataset,
+    num_eval_transitions=10_000,
+    # config=None,
+    # num_eval_episodes=50,
+    # num_video_episodes=0,
+    # video_frame_skip=3,
+    # eval_temperature=0,
 ):
-    actor_fn = supply_rng(agent.sample_actions, rng=jax.random.PRNGKey(np.random.randint(0, 2 ** 32)))
-    trajs = []
-    stats = defaultdict(list)
+    # actor_fn = supply_rng(agent.sample_actions, rng=jax.random.PRNGKey(np.random.randint(0, 2 ** 32)))
+    # trajs = []
+    # stats = defaultdict(list)
+    batch = dataset.sample(num_eval_transitions)
 
-    renders = []
-    for i in trange(num_eval_episodes + num_video_episodes):
-        traj = defaultdict(list)
-        should_render = i >= num_eval_episodes
+    rng = jax.random.PRNGKey(np.random.randint(0, 2 ** 32))
+    rng, seed = jax.random.split(rng)
+    stats = estimator.evaluate_estimation(batch, seed=seed)
 
-        observation, info = env.reset(options=dict(task_id=task_id, render_goal=should_render))
-        goal = info.get('goal')
-        goal_frame = info.get('goal_rendered')
-        done = False
-        step = 0
-        render = []
-        while not done:
-            action = actor_fn(observations=observation, goals=goal, temperature=eval_temperature)
-            action = np.array(action)
-            if not config.get('discrete'):
-                if eval_gaussian is not None:
-                    action = np.random.normal(action, eval_gaussian)
-                action = np.clip(action, -1, 1)
-
-            next_observation, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
-            step += 1
-
-            if should_render and (step % video_frame_skip == 0 or done):
-                frame = env.render().copy()
-                if goal_frame is not None:
-                    render.append(np.concatenate([goal_frame, frame], axis=0))
-                else:
-                    render.append(frame)
-
-            transition = dict(
-                observation=observation,
-                next_observation=next_observation,
-                action=action,
-                reward=reward,
-                done=done,
-                info=info,
-            )
-            add_to(traj, transition)
-            observation = next_observation
-        if i < num_eval_episodes:
-            add_to(stats, flatten(info))
-            trajs.append(traj)
-        else:
-            renders.append(np.array(render))
+    # renders = []
+    # for i in trange(num_eval_episodes + num_video_episodes):
+    #     traj = defaultdict(list)
+    #     should_render = i >= num_eval_episodes
+    #
+    #     observation, info = env.reset(options=dict(task_id=task_id, render_goal=should_render))
+    #     goal = info.get('goal')
+    #     goal_frame = info.get('goal_rendered')
+    #     done = False
+    #     step = 0
+    #     render = []
+    #     while not done:
+    #         action = actor_fn(observations=observation, goals=goal, temperature=eval_temperature)
+    #         action = np.array(action)
+    #         # if not config.get('discrete'):
+    #         #     action = np.clip(action, -1, 1)
+    #
+    #         next_observation, reward, terminated, truncated, info = env.step(action)
+    #         done = terminated or truncated
+    #         step += 1
+    #
+    #         if should_render and (step % video_frame_skip == 0 or done):
+    #             frame = env.render().copy()
+    #             if goal_frame is not None:
+    #                 render.append(np.concatenate([goal_frame, frame], axis=0))
+    #             else:
+    #                 render.append(frame)
+    #
+    #         transition = dict(
+    #             observation=observation,
+    #             next_observation=next_observation,
+    #             action=action,
+    #             reward=reward,
+    #             done=done,
+    #             info=info,
+    #         )
+    #         add_to(traj, transition)
+    #         observation = next_observation
+    #     if i < num_eval_episodes:
+    #         add_to(stats, flatten(info))
+    #         trajs.append(traj)
+    #     else:
+    #         renders.append(np.array(render))
 
     for k, v in stats.items():
-        stats[k] = np.mean(v)
+        stats[k] = np.asarray(v)
 
-    return stats, trajs, renders
+    return stats

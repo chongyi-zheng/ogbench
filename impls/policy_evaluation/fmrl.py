@@ -66,14 +66,14 @@ class FMRLEstimator(flax.struct.PyTreeNode):
                 goals, observations, actions=actions, params=grad_params)
             q_pred = q_pred.min(axis=0)
 
-            distill_loss = jnp.mean((q - q_pred) ** 2)
+            distill_loss = jnp.mean((jax.lax.stop_gradient(q) - q_pred) ** 2)
         else:
             distill_loss = 0.0
         critic_loss = cfm_loss + distill_loss
 
         return critic_loss, {
             'cond_flow_matching_loss': cfm_loss,
-            'distillation_losss': distill_loss,
+            'distillation_loss': distill_loss,
             'v_mean': q.mean(),
             'v_max': q.max(),
             'v_min': q.min(),
@@ -213,11 +213,57 @@ class FMRLEstimator(flax.struct.PyTreeNode):
 
         return self.replace(network=new_network, rng=new_rng), info
 
+    @jax.jit
+    def evaluate_estimation(
+        self,
+        batch,
+        seed=None,
+    ):
+        """evaluate the discounted state occupancy measure estimation."""
+        observations = batch['observations']
+        actions = batch['actions']
+        random_observations = jnp.roll(observations, 1, axis=0)
+        random_actions = jnp.roll(actions, 1, axis=0)
+
+        # we compute the accuracy of predicting goals from the same trajectory.
+        assert (self.config['value_p_trajgoal'] == 1.0) or (self.config['actor_p_trajgoal'] == 1.0)
+        if self.config['value_p_trajgoal'] == 1.0:
+            goals = batch['value_goals']
+        else:
+            goals = batch['actor_goals']
+
+        seed, q_seed, q_random_seed = jax.random.split(seed, 3)
+        q = self.compute_log_likelihood(
+            goals, observations,
+            q_seed, actions=actions,
+        )
+        q_random = self.compute_log_likelihood(
+            goals, random_observations,
+            q_random_seed, actions=random_actions,
+        )
+
+        seed, v_seed, v_random_seed = jax.random.split(seed, 3)
+        v = self.compute_log_likelihood(
+            goals, observations, v_seed)
+        v_random = self.compute_log_likelihood(
+            goals, random_observations, v_random_seed)
+
+        # log p(g | s, a) > log p(g | s_rand, a_rand)
+        binary_q_acc = jnp.mean(q > q_random)
+        # log p(g | s) > log p(g | s_rand)
+        binary_v_acc = jnp.mean(v > v_random)
+
+        return {
+            'binary_q_acc': binary_q_acc,
+            'binary_v_acc': binary_v_acc,
+        }
+
     @classmethod
     def create(
             cls,
             seed,
             ex_observations,
+            ex_actions,
             config,
     ):
         """Create a new estimator.
@@ -233,6 +279,10 @@ class FMRLEstimator(flax.struct.PyTreeNode):
 
         ex_goals = ex_observations
         ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],))
+        if config['discrete']:
+            action_dim = ex_actions.max() + 1
+        else:
+            action_dim = ex_actions.shape[-1]
 
         # Define encoders.
         encoders = dict()
@@ -244,21 +294,34 @@ class FMRLEstimator(flax.struct.PyTreeNode):
             encoders['value_goal'] = encoder_module()
 
         # Define value and actor networks.
-        critic_vf_def = GCFMVectorField(
-            vector_dim=ex_goals.shape[-1],
-            hidden_dims=config['value_hidden_dims'],
-            layer_norm=config['layer_norm'],
-            num_ensembles=config['num_ensembles_q'],
-            state_encoder=encoders.get('critic_state'),
-            goal_encoder=encoders.get('critic_goal'),
-        )
-        critic_def = GCFMValue(
-            hidden_dims=config['value_hidden_dims'],
-            layer_norm=config['layer_norm'],
-            num_ensembles=1,
-            state_encoder=encoders.get('critic_state'),
-            goal_encoder=encoders.get('critic_goal'),
-        )
+        if config['discrete']:
+            # critic_def = GCDiscreteBilinearCritic(
+            #     hidden_dims=config['value_hidden_dims'],
+            #     latent_dim=config['latent_dim'],
+            #     layer_norm=config['layer_norm'],
+            #     ensemble=True,
+            #     value_exp=True,
+            #     state_encoder=encoders.get('critic_state'),
+            #     goal_encoder=encoders.get('critic_goal'),
+            #     action_dim=action_dim,
+            # )
+            raise NotImplementedError
+        else:
+            critic_vf_def = GCFMVectorField(
+                vector_dim=ex_goals.shape[-1],
+                hidden_dims=config['value_hidden_dims'],
+                layer_norm=config['layer_norm'],
+                num_ensembles=config['num_ensembles_q'],
+                state_encoder=encoders.get('critic_state'),
+                goal_encoder=encoders.get('critic_goal'),
+            )
+            critic_def = GCFMValue(
+                hidden_dims=config['value_hidden_dims'],
+                layer_norm=config['layer_norm'],
+                num_ensembles=1,
+                state_encoder=encoders.get('critic_state'),
+                goal_encoder=encoders.get('critic_goal'),
+            )
 
         value_vf_def = GCFMVectorField(
             vector_dim=ex_goals.shape[-1],
@@ -314,6 +377,7 @@ def get_config():
             num_flow_steps=20,  # Number of steps for solving ODEs using the Euler method.
             exact_divergence=False,  # Whether to compute the exact divergence or the Hutchinson's divergence estimator.
             distill_likelihood=False,  # Whether to distill the log-likelihood solutions.
+            discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             num_behavioral_candidates=32,  # Number of behavioral candidates for SfBC.
             # Dataset hyperparameters.
