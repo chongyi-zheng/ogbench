@@ -14,9 +14,9 @@ from ml_collections import config_flags
 from utils.datasets import Dataset, GCDataset, HGCDataset
 from utils.wrappers import OfflineObservationNormalizer
 from utils.env_utils import make_env_and_datasets
-from utils.evaluation import evaluate_policy_evaluation
+from utils.evaluation import evaluate_policy_evaluation, evaluate_heatmaps
 from utils.flax_utils import restore_agent, save_agent
-from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb
+from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_heatmaps, setup_wandb
 
 FLAGS = flags.FLAGS
 
@@ -34,9 +34,8 @@ flags.DEFINE_integer('log_interval', 5000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 100000, 'Evaluation interval.')
 flags.DEFINE_integer('save_interval', 1000000, 'Saving interval.')
 
-flags.DEFINE_integer('eval_transitions', 50_000, 'Number of episodes for each task.')
-flags.DEFINE_integer('vis_', 1, 'Number of video episodes for each task.')
-flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
+flags.DEFINE_integer('eval_transitions', 50_000, 'Number of transitions for evaluating accuracies.')
+flags.DEFINE_integer('visualize_heatmaps', 8, 'Number of estimation heatmaps.')
 flags.DEFINE_integer('eval_on_cpu', 1, 'Whether to evaluate on CPU.')
 
 config_flags.DEFINE_config_file('estimator', 'policy_evaluation/gciql.py', lock_config=False)
@@ -171,6 +170,18 @@ def main(_):
             # if FLAGS.video_episodes > 0:
             #     video = get_wandb_video(renders=renders, n_cols=num_tasks)
             #     eval_metrics['video'] = video
+            if FLAGS.visualize_heatmaps > 0:
+                value_info, env_info, = evaluate_heatmaps(
+                    eval_estimator,
+                    dataset,
+                    env,
+                    FLAGS.visualize_heatmaps,
+                )
+
+                heatmap = get_wandb_heatmaps(
+                    value_info, env_info)
+
+                eval_metrics['heatmap'] = heatmap
 
             if FLAGS.enable_wandb:
                 wandb.log(eval_metrics, step=i)

@@ -1,4 +1,5 @@
 from collections import defaultdict
+import xml.etree.ElementTree as ET
 
 import jax
 import numpy as np
@@ -121,11 +122,6 @@ def evaluate_policy_evaluation(
     estimator,
     dataset,
     num_eval_transitions=10_000,
-    # config=None,
-    # num_eval_episodes=50,
-    # num_video_episodes=0,
-    # video_frame_skip=3,
-    # eval_temperature=0,
 ):
     # actor_fn = supply_rng(agent.sample_actions, rng=jax.random.PRNGKey(np.random.randint(0, 2 ** 32)))
     # trajs = []
@@ -184,3 +180,63 @@ def evaluate_policy_evaluation(
         stats[k] = np.asarray(v)
 
     return stats
+
+
+def evaluate_heatmaps(
+        estimator,
+        dataset,
+        env,
+        num_heatmaps,
+        num_grid_x=50,
+        num_grid_y=50,
+):
+    unwrapped_env = env.unwrapped
+    tree = ET.parse(unwrapped_env.fullpath)
+    worldbody = tree.find('.//worldbody')
+
+    wall_positions = []
+    wall_sizes = []
+    for element in worldbody.findall(".//geom[@material='wall']"):
+        pos = [float(s) for s in element.get('pos').split(' ')][:2]
+        size = [float(s) for s in element.get('size').split(' ')][:2]
+
+        wall_positions.append(pos)
+        wall_sizes.append(size)
+
+    wall_positions = np.array(wall_positions)
+    wall_sizes = np.array(wall_sizes)
+    world_ranges = np.array([wall_positions.min(axis=0), wall_positions.max(axis=0)]).T
+
+    env_info = {
+        'wall_positions': wall_positions,
+        'wall_sizes': wall_sizes,
+        'world_ranges': world_ranges,
+    }
+
+    grid_x = np.linspace(*world_ranges[0], num_grid_x)
+    grid_y = np.linspace(*world_ranges[1], num_grid_y)
+
+    mesh_x, mesh_y = np.array(np.meshgrid(grid_x, grid_y))
+    mesh_grid_xys = np.stack([mesh_x, mesh_y], axis=-1)
+
+    batch = dataset.sample(num_heatmaps)
+    rng = jax.random.PRNGKey(np.random.randint(0, 2 ** 32))
+    rng, seed = jax.random.split(rng)
+
+    observations = batch['observations'][:, None].repeat(
+        num_grid_x * num_grid_y, axis=1).reshape(
+        [-1, env.observation_space.shape[-1]])
+    goals = mesh_grid_xys[None].repeat(num_heatmaps, axis=0).reshape(
+        [-1, env.observation_space.shape[-1]])
+    values = estimator.compute_values(observations, goals, seed=seed)
+    values = values.reshape(num_heatmaps, num_grid_x, num_grid_y)
+
+    value_info = {
+        'observations': batch['observations'],
+        'mesh_grid_xys': mesh_grid_xys,
+        'mesh_x': mesh_x,
+        'mesh_y': mesh_y,
+        'values': values
+    }
+
+    return value_info, env_info

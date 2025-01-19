@@ -258,6 +258,20 @@ class FMRLEstimator(flax.struct.PyTreeNode):
             'binary_v_acc': binary_v_acc,
         }
 
+    @jax.jit
+    def compute_values(
+        self,
+        observations,
+        goals=None,
+        seed=None,
+    ):
+        seed, v_seed = jax.random.split(seed)
+        v = self.compute_log_likelihood(
+            goals, observations, v_seed)
+
+        return v
+
+
     @classmethod
     def create(
             cls,
@@ -379,7 +393,6 @@ def get_config():
             distill_likelihood=False,  # Whether to distill the log-likelihood solutions.
             discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
-            num_behavioral_candidates=32,  # Number of behavioral candidates for SfBC.
             # Dataset hyperparameters.
             dataset_class='GCDataset',  # Dataset class name.
             value_p_curgoal=0.0,  # Probability of using the current state as the value goal.
