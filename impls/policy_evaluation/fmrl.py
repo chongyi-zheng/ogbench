@@ -219,7 +219,6 @@ class FMRLEstimator(flax.struct.PyTreeNode):
         batch,
         seed=None,
     ):
-        """evaluate the discounted state occupancy measure estimation."""
         observations = batch['observations']
         actions = batch['actions']
         random_observations = jnp.roll(observations, 1, axis=0)

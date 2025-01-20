@@ -9,7 +9,7 @@ from policy_evaluation.fmrl import FMRLEstimator
 # from agents.hiql import HIQLAgent
 # from agents.qrl import QRLAgent
 # from agents.sac import SACAgent
-# from agents.td_infonce import TDInfoNCEAgent
+from policy_evaluation.td_infonce import TDInfoNCEEstimator
 
 estimators = dict(
     crl=CRLEstimator,
@@ -23,5 +23,5 @@ estimators = dict(
     # hiql=HIQLAgent,
     # qrl=QRLAgent,
     # sac=SACAgent,
-    # td_infonce=TDInfoNCEAgent,
+    td_infonce=TDInfoNCEEstimator,
 )
