@@ -1,4 +1,4 @@
-# from agents.crl import CRLAgent
+from policy_evaluation.crl import CRLEstimator
 # from agents.crl_infonce import CRLInfoNCEAgent
 from policy_evaluation.fmrl import FMRLEstimator
 # from agents.gcbc import GCBCAgent
@@ -12,7 +12,7 @@ from policy_evaluation.fmrl import FMRLEstimator
 # from agents.td_infonce import TDInfoNCEAgent
 
 estimators = dict(
-    # crl=CRLAgent,
+    crl=CRLEstimator,
     # crl_infonce=CRLInfoNCEAgent,
     fmrl=FMRLEstimator,
     # gcbc=GCBCAgent,

@@ -56,7 +56,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
         path_noise = jax.random.normal(path_rng, shape=vf_pred.shape)
         path_sample = self.cond_prob_path(x_0=path_noise, x_1=goals[None], t=times[None])
-        cfm_loss = jnp.mean((vf_pred - path_sample.dx_t) ** 2)
+        cfm_loss = jnp.pow(vf_pred - path_sample.dx_t, 2).mean()
 
         # use a fixed noise to estimate divergence for each ODE solving step.
         # likelihood_noises = jax.random.normal(likelihood_rng, shape=goals.shape)
