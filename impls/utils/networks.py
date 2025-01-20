@@ -662,21 +662,21 @@ class GCFMVectorField(nn.Module):
         network_module = ensemblize(network_module, self.num_ensembles)
 
         if self.network_type == 'mlp':
-            time_net = MLP(
-                (self.hidden_dims[0],),
-                activate_final=False,
-                layer_norm=self.layer_norm
-            )
-            cond_net = MLP(
-                (self.hidden_dims[0],),
-                activate_final=False,
-                layer_norm=self.layer_norm
-            )
-            proj_net = MLP(
-                (self.hidden_dims[0],),
-                activate_final=False,
-                layer_norm=self.layer_norm
-            )
+            # time_net = MLP(
+            #     (self.hidden_dims[0],),
+            #     activate_final=False,
+            #     layer_norm=self.layer_norm
+            # )
+            # cond_net = MLP(
+            #     (self.hidden_dims[0],),
+            #     activate_final=False,
+            #     layer_norm=self.layer_norm
+            # )
+            # proj_net = MLP(
+            #     (self.hidden_dims[0],),
+            #     activate_final=False,
+            #     layer_norm=self.layer_norm
+            # )
             velocity_field_net = network_module(
                 (*self.hidden_dims, self.vector_dim),
                 activate_final=False,
@@ -686,22 +686,22 @@ class GCFMVectorField(nn.Module):
             raise NotImplementedError
 
         self.time_embedding = SinusoidalPosEmb(emb_dim=2 * self.vector_dim)
-        self.time_net = time_net
-        self.cond_net = cond_net
-        self.proj_net = proj_net
+        # self.time_net = time_net
+        # self.cond_net = cond_net
+        # self.proj_net = proj_net
         self.velocity_field_net = velocity_field_net
 
-    def __call__(self, goals, times, observations, actions=None):
+    def __call__(self, noisy_goals, times, observations, actions=None):
         """Return the value/critic velocity field.
 
         Args:
-            goals: Goals.
+            noisy_goals: Noisy goals.
             times: Times.
             observations: Observations.
             actions: Actions (Optional).
         """
         if self.goal_encoder is not None:
-            goals = self.goal_encoder(goals)
+            noisy_goals = self.goal_encoder(noisy_goals)
         
         if self.state_encoder is not None:
             # This will be all nans if observations are all nan
@@ -713,15 +713,16 @@ class GCFMVectorField(nn.Module):
             conds = jnp.concatenate([conds, actions], axis=-1)
         
         times = self.time_embedding(times)
-        h = self.proj_net(goals) + self.time_net(times)
-        h = jax.lax.select(
-            jnp.logical_not(jnp.all(jnp.isnan(conds))),
-            h + self.cond_net(conds),
-            h
-        )
-        # inputs = jnp.concatenate([goals, times, conds], axis=-1)
+        # h = self.proj_net(noisy_goals) + self.time_net(times)
+        # h = jax.lax.select(
+        #     jnp.logical_not(jnp.all(jnp.isnan(conds))),
+        #     h + self.cond_net(conds),
+        #     h
+        # )
+        inputs = jnp.concatenate([noisy_goals, times, conds], axis=-1)
 
-        vf = self.velocity_field_net(h)
+        # vf = self.velocity_field_net(h)
+        vf = self.velocity_field_net(inputs)
 
         return vf
 
