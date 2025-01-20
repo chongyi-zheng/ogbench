@@ -82,7 +82,7 @@ def main():
                                     --eval_on_cpu=0 \
                                     --visualize_heatmaps=0 \
                                     --save_interval=200_000 \
-                                    --estimator=policy_evaluation/fmrl.py
+                                    --estimator=policy_evaluation/fmrl.py \
                                     --estimator.num_flow_steps={num_flow_steps} \
                                     --estimator.exact_divergence={exact_divergence} \
                                     --estimator.distill_likelihood={distill_likelihood} \
