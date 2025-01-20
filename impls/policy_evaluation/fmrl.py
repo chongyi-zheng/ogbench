@@ -41,18 +41,17 @@ class FMRLEstimator(flax.struct.PyTreeNode):
             actions = None
         goals = batch['value_goals']
 
-        times = jax.random.uniform(time_rng, shape=(batch_size,))
+        times = jax.random.uniform(time_rng, shape=(batch_size, ))
+        noises = jax.random.normal(path_rng, shape=goals.shape)
+        path_sample = self.cond_prob_path(x_0=noises, x_1=goals, t=times)
         vf_pred = self.network.select(module_name + '_vf')(
-            goals,
+            path_sample.x_t,
             times,
             observations,
             actions=actions,
             params=grad_params,
         )
-
-        path_noise = jax.random.normal(path_rng, shape=vf_pred.shape)
-        path_sample = self.cond_prob_path(x_0=path_noise, x_1=goals[None], t=times[None])
-        cfm_loss = jnp.mean((vf_pred - path_sample.dx_t) ** 2)
+        cfm_loss = jnp.pow(vf_pred - path_sample.dx_t[None], 2).mean()
 
         # use a fixed noise to estimate divergence for each ODE solving step.
         # likelihood_noises = jax.random.normal(likelihood_rng, shape=goals.shape)
@@ -66,10 +65,10 @@ class FMRLEstimator(flax.struct.PyTreeNode):
                 goals, observations, actions=actions, params=grad_params)
             q_pred = q_pred.min(axis=0)
 
-            distill_loss = jnp.mean((jax.lax.stop_gradient(q) - q_pred) ** 2)
+            distill_loss = jnp.mean((q - q_pred) ** 2)
         else:
             distill_loss = 0.0
-        critic_loss = cfm_loss + distill_loss
+        critic_loss = cfm_loss + self.config['distill_coeff'] * distill_loss
 
         return critic_loss, {
             'cond_flow_matching_loss': cfm_loss,
@@ -104,43 +103,43 @@ class FMRLEstimator(flax.struct.PyTreeNode):
             times = 1.0 - jnp.full(noisy_goals.shape[:-1], i * step_size)
 
             if self.config['exact_divergence']:
-                def compute_exact_div(goals, times, observations, actions):
-                    def vf_func(goal, time, observation, action):
-                        goal = jnp.expand_dims(goal, 0)
+                def compute_exact_div(noisy_goals, times, observations, actions):
+                    def vf_func(noisy_goal, time, observation, action):
+                        noisy_goal = jnp.expand_dims(noisy_goal, 0)
                         time = jnp.expand_dims(time, 0)
                         observation = jnp.expand_dims(observation, 0)
                         if action is not None:
                             action = jnp.expand_dims(action, 0)
                         vf = self.network.select(module_name + '_vf')(
-                            goal, time, observation, action)
+                            noisy_goal, time, observation, action).squeeze(1)
 
                         return vf.reshape(-1)
 
-                    def div_func(goal, time, observation, action):
-                        jac = jax.jacrev(vf_func)(goal, time, observation, action)
-                        jac = jac.reshape([num_ensembles, goals.shape[-1], goals.shape[-1]])
+                    def div_func(noisy_goal, time, observation, action):
+                        jac = jax.jacrev(vf_func)(noisy_goal, time, observation, action)
+                        jac = jac.reshape([num_ensembles, noisy_goal.shape[-1], noisy_goal.shape[-1]])
 
                         return jnp.trace(jac, axis1=-2, axis2=-1)
 
                     vf = self.network.select(module_name + '_vf')(
-                        goals, times, observations, actions)
+                        noisy_goals, times, observations, actions)
 
                     if actions is not None:
                         div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=1)(
-                            goals, times, observations, actions)
+                            noisy_goals, times, observations, actions)
                     else:
                         div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=1)(
-                            goals, times, observations, actions)
+                            noisy_goals, times, observations, actions)
 
                     return vf, div
 
                 vf, div = compute_exact_div(noisy_goals, times, observations, actions)
             else:
-                def compute_hutchinson_div(rng, goals, times, observations, actions):
+                def compute_hutchinson_div(noisy_goals, times, observations, actions, rng):
                     # Define vf_func for jvp
-                    def vf_func(x):
+                    def vf_func(goals):
                         vf = self.network.select(module_name + '_vf')(
-                            x,
+                            goals,
                             times,
                             observations,
                             actions=actions,
@@ -149,10 +148,10 @@ class FMRLEstimator(flax.struct.PyTreeNode):
                         return vf.reshape([-1, *vf.shape[2:]])
 
                     # Split RNG and sample noise
-                    z = jax.random.normal(rng, shape=goals.shape, dtype=goals.dtype)
+                    z = jax.random.normal(rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
 
                     # Forward (vf) and linearization (jac_vf_dot_z)
-                    vf, jac_vf_dot_z = jax.jvp(vf_func, (goals,), (z,))
+                    vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z, ))
                     vf = vf.reshape([num_ensembles, -1, *vf.shape[1:]])
                     jac_vf_dot_z = jac_vf_dot_z.reshape([num_ensembles, -1, *jac_vf_dot_z.shape[1:]])
 
@@ -163,7 +162,7 @@ class FMRLEstimator(flax.struct.PyTreeNode):
                     return vf, div
 
                 rng, div_rng = jax.random.split(rng)
-                vf, div = compute_hutchinson_div(rng, noisy_goals, times, observations, actions)
+                vf, div = compute_hutchinson_div(noisy_goals, times, observations, actions, div_rng)
 
             # Update goals and divergence integral. We need to consider Q ensemble here.
             new_noisy_goals = jnp.min(noisy_goals[None] - vf * step_size, axis=0)
@@ -390,6 +389,7 @@ def get_config():
             num_flow_steps=20,  # Number of steps for solving ODEs using the Euler method.
             exact_divergence=False,  # Whether to compute the exact divergence or the Hutchinson's divergence estimator.
             distill_likelihood=False,  # Whether to distill the log-likelihood solutions.
+            distill_coeff=0.1,  # Likelihood distillation loss coefficient.
             discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             # Dataset hyperparameters.

@@ -47,7 +47,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
         
         times = jax.random.uniform(time_rng, shape=(batch_size, ))
         noises = jax.random.normal(path_rng, shape=goals.shape)
-        path_sample = self.cond_prob_path(x_0=noises, x_1=goals[None], t=times[None])
+        path_sample = self.cond_prob_path(x_0=noises, x_1=goals, t=times)
         vf_pred = self.network.select(module_name + '_vf')(
             path_sample.x_t,
             times,
@@ -55,7 +55,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             actions=actions,
             params=grad_params,
         )
-        cfm_loss = jnp.pow(vf_pred - path_sample.dx_t, 2).mean()
+        cfm_loss = jnp.pow(vf_pred - path_sample.dx_t[None], 2).mean()
 
         # use a fixed noise to estimate divergence for each ODE solving step.
         # likelihood_noises = jax.random.normal(likelihood_rng, shape=goals.shape)
