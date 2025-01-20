@@ -70,10 +70,10 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 goals, observations, actions=actions, params=grad_params)
             q_pred = q_pred.min(axis=0)
 
-            distill_loss = jnp.mean((jax.lax.stop_gradient(q) - q_pred) ** 2)
+            distill_loss = jnp.mean((q - q_pred) ** 2)
         else:
             distill_loss = 0.0
-        critic_loss = cfm_loss + distill_loss
+        critic_loss = cfm_loss + self.config['distill_coeff'] * distill_loss
 
         return critic_loss, {
             'cond_flow_matching_loss': cfm_loss,
@@ -217,33 +217,59 @@ class FMRLAgent(flax.struct.PyTreeNode):
             times = 1.0 - jnp.full(noisy_goals.shape[:-1], i * step_size)
 
             if self.config['exact_divergence']:
+                # def compute_exact_div(goals, times, observations, actions):
+                #     def vf_func(goal, time, observation, action):
+                #         goal = jnp.expand_dims(goal, 0)
+                #         time = jnp.expand_dims(time, 0)
+                #         observation = jnp.expand_dims(observation, 0)
+                #         if action is not None:
+                #             action = jnp.expand_dims(action, 0)
+                #         vf = self.network.select(module_name + '_vf')(
+                #             goal, time, observation, action).squeeze(1)
+                #
+                #         return vf.reshape(-1)
+                #
+                #     def div_func(goal, time, observation, action):
+                #         jac = jax.jacrev(vf_func)(goal, time, observation, action)
+                #         jac = jac.reshape([num_ensembles, goals.shape[-1], goals.shape[-1]])
+                #
+                #         return jnp.trace(jac, axis1=-2, axis2=-1)
+                #
+                #     vf = self.network.select(module_name + '_vf')(
+                #         goals, times, observations, actions)
+                #
+                #     if actions is not None:
+                #         div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=1)(
+                #             goals, times, observations, actions)
+                #     else:
+                #         div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=1)(
+                #             goals, times, observations, actions)
+                #
+                #     return vf, div
+
                 def compute_exact_div(goals, times, observations, actions):
-                    def vf_func(goal, time, observation, action):
-                        goal = jnp.expand_dims(goal, 0)
-                        time = jnp.expand_dims(time, 0)
-                        observation = jnp.expand_dims(observation, 0)
-                        if action is not None:
-                            action = jnp.expand_dims(action, 0)
+                    def vf_batch_sum_func(goals, times, observations, actions, ensemble_idx, dim_idx):
                         vf = self.network.select(module_name + '_vf')(
-                            goal, time, observation, action)
+                            goals, times, observations, actions=actions)
+                        vf = vf[ensemble_idx, :, dim_idx]
 
-                        return vf.reshape(-1)
-
-                    def div_func(goal, time, observation, action):
-                        jac = jax.jacrev(vf_func)(goal, time, observation, action)
-                        jac = jac.reshape([num_ensembles, goals.shape[-1], goals.shape[-1]])
-
-                        return jnp.trace(jac, axis1=-2, axis2=-1)
+                        # Sum over the batch: sum_{n = 1}^N vf_i(x_n)
+                        vf_sum = jnp.sum(vf)
+                        return vf_sum
 
                     vf = self.network.select(module_name + '_vf')(
                         goals, times, observations, actions)
 
-                    if actions is not None:
-                        div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=1)(
-                            goals, times, observations, actions)
-                    else:
-                        div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=1)(
-                            goals, times, observations, actions)
+                    # [∇_x vf_i(x_n)]_d, shape = (N, )
+                    derivative_func = lambda e, d: jax.grad(
+                        vf_batch_sum_func)(goals, times, observations, actions, e, d)[:, d]
+
+                    # (N, D)
+                    derivative_vec_func = lambda e: jax.vmap(
+                        derivative_func, in_axes=(None, 0), out_axes=1)(e, jnp.arange(goals.shape[-1]))
+
+                    derivatives = jax.vmap(derivative_vec_func)(jnp.arange(num_ensembles))
+                    div = derivatives.sum(axis=-1)
 
                     return vf, div
 
@@ -296,7 +322,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             #     # Sum over the batch: sum_{n = 1}^N vf_i(x_n)
             #     vf_sum = jnp.sum(vf)
             #     return vf_sum
-
+            #
             # def compute_div1(goals, times, observations, actions):
             #     # dfidxi = lambda i: jax.grad(vf_func_d)(noisy_goal, time, observation, action, i)[i]
             #
@@ -593,6 +619,7 @@ def get_config():
             num_flow_steps=20,  # Number of steps for solving ODEs using the Euler method.
             exact_divergence=False,  # Whether to compute the exact divergence or the Hutchinson's divergence estimator.
             distill_likelihood=False,  # Whether to distill the log-likelihood solutions.
+            distill_coeff=0.1,  # Likelihood distillation loss coefficient.
             actor_loss='sfbc',  # Actor loss type ('ddpgbc' or 'awr' or 'sfbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.
             state_dependent_std=True,  # Whether to use state-dependent standard deviation for the actor.

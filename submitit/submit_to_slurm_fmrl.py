@@ -39,12 +39,12 @@ def main():
     with executor.batch():  # job array
         for env_name in ["pointmaze-medium-navigate-v0"]:
             for actor_loss in ["sfbc"]:
-                for eval_temperature in [1.0]:
+                for eval_temperature in [0.5, 1.0, 2.0]:
                     for alpha in [-1.0]:
-                        for num_flow_steps in [20, 50]:
+                        for num_flow_steps in [20]:
                             for num_behavioral_candidates in [32]:
-                                for exact_divergence in [True, False]:
-                                    for distill_likelihood in [True, False]:
+                                for exact_divergence in [True]:
+                                    for distill_likelihood in [False]:
                                         for seed in [0, 1]:
                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_exact_divergence={exact_divergence}_distill_likelihood={distill_likelihood}"
                                             log_dir = os.path.expanduser(
