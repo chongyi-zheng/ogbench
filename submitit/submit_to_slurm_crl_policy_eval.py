@@ -79,7 +79,7 @@ def main():
                         --eval_on_cpu=0 \
                         --visualize_heatmaps=0 \
                         --save_interval=200_000 \
-                        --estimator=policy_evaluation/crl.py \
+                        --estimator=impls/policy_evaluation/crl.py \
                         --seed={seed} \
                         --save_dir={log_dir} \
                     2>&1 | tee {log_dir}/stream.log;

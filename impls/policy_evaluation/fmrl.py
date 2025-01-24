@@ -389,7 +389,7 @@ def get_config():
             num_flow_steps=20,  # Number of steps for solving ODEs using the Euler method.
             exact_divergence=False,  # Whether to compute the exact divergence or the Hutchinson's divergence estimator.
             distill_likelihood=False,  # Whether to distill the log-likelihood solutions.
-            distill_coeff=0.1,  # Likelihood distillation loss coefficient.
+            distill_coeff=1.0,  # Likelihood distillation loss coefficient.
             discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             # Dataset hyperparameters.
