@@ -761,7 +761,7 @@ class GCFMValue(nn.Module):
         if self.network_type == 'mlp':
             value_net = network_module(
                 (*self.hidden_dims, self.output_dim),
-                activate_final=False,
+                activate_final=True,
                 layer_norm=self.layer_norm
             )
         else:
@@ -796,6 +796,6 @@ class GCFMValue(nn.Module):
         #     inputs
         # )
 
-        v = self.value_net(inputs).squeeze(-1)
+        log_prob = -self.value_net(inputs).squeeze(-1)
 
-        return v
+        return log_prob

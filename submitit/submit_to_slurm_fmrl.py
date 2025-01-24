@@ -24,7 +24,7 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="fmrl",
-        slurm_time=int(8 * 60),  # minute
+        slurm_time=int(16 * 60),  # minute
         slurm_partition=partition,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
@@ -37,13 +37,13 @@ def main():
     # sfbc hyperparameters: eval_temperature, num_flow_steps, num_behavioral_candidates, exact_divergence, distill_likelihood
     # awr hyperparameters: eval_temperature, alpha, num_flow_steps, distill_likelihood
     with executor.batch():  # job array
-        for env_name in ["pointmaze-medium-navigate-v0"]:
+        for env_name in ["pointmaze-medium-navigate-v0", "pointmaze-large-navigate-v0", "antmaze-large-navigate-v0"]:
             for actor_loss in ["sfbc"]:
                 for eval_temperature in [1.0]:
                     for alpha in [-1.0]:
                         for num_flow_steps in [20]:
                             for num_behavioral_candidates in [32]:
-                                for exact_divergence in [True, False]:
+                                for exact_divergence in [False]:
                                     for distill_likelihood in [True, False]:
                                         for seed in [0, 1]:
                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_exact_divergence={exact_divergence}_distill_likelihood={distill_likelihood}"
