@@ -85,7 +85,9 @@ class FMRLAgent(flax.struct.PyTreeNode):
     def actor_loss(self, batch, grad_params, rng):
         """Compute the actor loss (AWR or DDPG+BC)."""
 
-        if self.config['actor_loss'] == 'awr':
+        if self.config['actor_loss'] == 'pg':
+            raise NotImplementedError
+        elif self.config['actor_loss'] == 'awr':
             # v_noises = jax.random.normal(v_rng, shape=batch['actor_goals'].shape)
             # q_noises = jax.random.normal(q_rng, shape=batch['actor_goals'].shape)
             # v_noises = jax.random.rademacher(
@@ -95,16 +97,18 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
             # AWR loss.
             if self.config['distill_likelihood']:
+                v = self.network.select('value')(
+                    batch['actor_goals'], batch['observations'])
+                q = self.network.select('critic')(
+                    batch['actor_goals'], batch['observations'], actions=batch['actions'])
+                v = v.min(axis=0)
+                q = q.min(axis=0)
+            else:
                 rng, v_rng, q_rng = jax.random.split(rng, 3)
                 v = self.compute_log_likelihood(
                     batch['actor_goals'], batch['observations'], v_rng)
                 q = self.compute_log_likelihood(
                     batch['actor_goals'], batch['observations'], q_rng, actions=batch['actions'])
-            else:
-                v = self.network.select('value')(
-                    batch['actor_goals'], batch['observations'])
-                q = self.network.select('critic')(
-                    batch['actor_goals'], batch['observations'], actions=batch['actions'])
             adv = q - v  # log p(g | s, a) - log p(g | s)
 
             exp_a = jnp.exp(adv * self.config['alpha'])
@@ -134,12 +138,16 @@ class FMRLAgent(flax.struct.PyTreeNode):
             assert not self.config['discrete']
 
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
-            if self.config['const_std']:
-                q_actions = jnp.clip(dist.mode(), -1, 1)
+            q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+
+            if self.config['distill_likelihood']:
+                q = self.network.select('critic')(
+                    batch['actor_goals'], batch['observations'], actions=q_actions)
+                q = q.min(axis=0)
             else:
-                q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
-            q1, q2 = self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
-            q = jnp.minimum(q1, q2)
+                rng, q_rng = jax.random.split(rng)
+                q = self.compute_log_likelihood(
+                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
 
             # Normalize Q values by the absolute mean to make the loss scale invariant.
             q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
@@ -538,7 +546,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             critic_def = GCFMValue(
                 hidden_dims=config['value_hidden_dims'],
                 layer_norm=config['layer_norm'],
-                num_ensembles=1,
+                num_ensembles=2,
                 state_encoder=encoders.get('critic_state'),
                 goal_encoder=encoders.get('critic_goal'),
             )
@@ -619,7 +627,7 @@ def get_config():
             exact_divergence=False,  # Whether to compute the exact divergence or the Hutchinson's divergence estimator.
             distill_likelihood=False,  # Whether to distill the log-likelihood solutions.
             distill_coeff=1.0,  # Likelihood distillation loss coefficient.
-            actor_loss='sfbc',  # Actor loss type ('ddpgbc' or 'awr' or 'sfbc').
+            actor_loss='sfbc',  # Actor loss type ('ddpgbc', 'pg', 'awr' or 'sfbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.
             state_dependent_std=True,  # Whether to use state-dependent standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.

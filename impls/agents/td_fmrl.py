@@ -11,7 +11,7 @@ from utils.networks import GCActor, GCDiscreteActor, GCFMVectorField, GCFMValue
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
-class FMRLAgent(flax.struct.PyTreeNode):
+class TDFMRLAgent(flax.struct.PyTreeNode):
     """Temporal Difference Flow Matching RL (FMRL) agent.
 
     This implementation supports both AWR (actor_loss='awr') and DDPG+BC (actor_loss='ddpgbc') for the actor loss.
