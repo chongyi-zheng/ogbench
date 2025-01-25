@@ -467,10 +467,6 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
         if self.config['actor_loss'] == 'sfbc':
             # SfBC: selecting from behavioral candidates
-            # seed, noise_seed = jax.random.split(seed)
-            # noises = jax.random.normal(noise_seed, shape=goals.shape)
-            # noises = jax.random.rademacher(
-            #     noise_seed, shape=goals.shape, dtype=goals.dtype)
             if self.config['distill_likelihood']:
                 q = self.network.select('critic')(goals, observations, actions=actions)
                 q = q.min(axis=0)

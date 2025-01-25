@@ -691,7 +691,7 @@ class GCFMVectorField(nn.Module):
         # self.proj_net = proj_net
         self.velocity_field_net = velocity_field_net
 
-    def __call__(self, noisy_goals, times, observations, actions=None):
+    def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None):
         """Return the value/critic velocity field.
 
         Args:
@@ -708,6 +708,8 @@ class GCFMVectorField(nn.Module):
             observations = self.state_encoder(observations)
 
         conds = observations
+        if commanded_goals is not None:
+            conds = jnp.concatenate([conds, commanded_goals], axis=-1)
         if actions is not None:
             # This will be all nans if both observations and actions are all nan
             conds = jnp.concatenate([conds, actions], axis=-1)
@@ -769,7 +771,7 @@ class GCFMValue(nn.Module):
 
         self.value_net = value_net
 
-    def __call__(self, goals, observations, actions=None):
+    def __call__(self, goals, observations, actions=None, commanded_goals=None):
         """Return the value/critic function.
 
         Args:
@@ -786,6 +788,8 @@ class GCFMValue(nn.Module):
 
         # TODO (chongyi): figure out the case when observations are all zeros.
         conds = observations
+        if commanded_goals is not None:
+            conds = jnp.concatenate([conds, commanded_goals], axis=-1)
         if actions is not None:
             # This will be all nans if both observations and actions are all nan
             conds = jnp.concatenate([conds, actions], axis=-1)
