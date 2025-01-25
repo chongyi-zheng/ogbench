@@ -37,6 +37,7 @@ def main():
     # sfbc hyperparameters: eval_temperature, num_flow_steps, num_behavioral_candidates, exact_divergence, distill_likelihood
     # awr hyperparameters: eval_temperature, alpha, num_flow_steps, exact_divergence, distill_likelihood
     # ddpgbc hyperparameters: eval_temperature, alpha, num_flow_steps, exact_divergence, distill_likelihood
+    # pgbc hyperparameters: eval_temperature, alpha, num_flow_steps, exact_divergence, distill_likelihood
     with executor.batch():  # job array
         for env_name in ["pointmaze-medium-navigate-v0", "pointmaze-large-navigate-v0", "antmaze-large-navigate-v0"]:
             for actor_loss in ["awr"]:

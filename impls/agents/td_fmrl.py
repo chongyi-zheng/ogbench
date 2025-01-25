@@ -164,14 +164,47 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
     def actor_loss(self, batch, grad_params, rng):
         """Compute the actor loss (AWR or DDPG+BC)."""
 
-        if self.config['actor_loss'] == 'awr':
-            # v_noises = jax.random.normal(v_rng, shape=batch['actor_goals'].shape)
-            # q_noises = jax.random.normal(q_rng, shape=batch['actor_goals'].shape)
-            # v_noises = jax.random.rademacher(
-            #     v_rng, shape=batch['actor_goals'].shape, dtype=batch['actor_goals'].dtype)
-            # q_noises = jax.random.rademacher(
-            #     q_rng, shape=batch['actor_goals'].shape, dtype=batch['actor_goals'].dtype)
+        if self.config['actor_loss'] == 'pgbc':
+            # PG+BC loss.
+            assert not self.config['discrete']
 
+            dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
+            q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+            q_action_log_prob = dist.log_prob(q_actions)
+
+            if self.config['distill_likelihood']:
+                q = self.network.select('critic')(
+                    batch['actor_goals'], batch['observations'],
+                    actions=q_actions, commanded_goals=batch['actor_goals']
+                )
+                q = q.min(axis=0)
+            else:
+                rng, q_rng = jax.random.split(rng)
+                q = self.compute_log_likelihood(
+                    batch['actor_goals'], batch['observations'], q_rng,
+                    actions=q_actions, commanded_goals=batch['actor_goals']
+                )
+
+            # Normalize Q values by the absolute mean to make the loss scale invariant.
+            q_loss = -(q_action_log_prob * jax.lax.stop_gradient(q)).mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
+            log_prob = dist.log_prob(batch['actions'])
+
+            bc_loss = -(self.config['alpha'] * log_prob).mean()
+
+            actor_loss = q_loss + bc_loss
+
+            return actor_loss, {
+                'actor_loss': actor_loss,
+                'q_loss': q_loss,
+                'bc_loss': bc_loss,
+                'q_mean': q.mean(),
+                'q_abs_mean': jnp.abs(q).mean(),
+                'q_action_log_prob': q_action_log_prob.mean(),
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+            }
+        elif self.config['actor_loss'] == 'awr':
             # AWR loss.
             if self.config['distill_likelihood']:
                 v = self.network.select('value')(
