@@ -191,10 +191,11 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
                     actions=q_actions, commanded_goals=batch['actor_goals']
                 )
 
-            # Normalize Q values by the absolute mean to make the loss scale invariant.
-            q_loss = -(q_action_log_prob * jax.lax.stop_gradient(q)).mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
-            log_prob = dist.log_prob(batch['actions'])
+            exp_q = jnp.exp(q)
+            exp_q = jnp.minimum(exp_q, 100.0)
+            q_loss = -(jax.lax.stop_gradient(exp_q) * q_action_log_prob).mean()
 
+            log_prob = dist.log_prob(batch['actions'])
             bc_loss = -(self.config['alpha'] * log_prob).mean()
 
             actor_loss = q_loss + bc_loss
@@ -717,7 +718,7 @@ def get_config():
             num_flow_steps=20,  # Number of steps for solving ODEs using the Euler method.
             exact_divergence=False,  # Whether to compute the exact divergence or the Hutchinson's divergence estimator.
             distill_likelihood=False,  # Whether to distill the log-likelihood solutions.
-            distill_coeff=0.1,  # Likelihood distillation loss coefficient.
+            distill_coeff=1.0,  # Likelihood distillation loss coefficient.
             actor_loss='sfbc',  # Actor loss type ('ddpgbc' or 'awr' or 'sfbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.

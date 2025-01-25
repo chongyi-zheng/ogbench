@@ -106,10 +106,11 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 q = self.compute_log_likelihood(
                     batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
 
-            # Normalize Q values by the absolute mean to make the loss scale invariant.
-            q_loss = -(q_action_log_prob * jax.lax.stop_gradient(q)).mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
-            log_prob = dist.log_prob(batch['actions'])
+            exp_q = jnp.exp(q)
+            exp_q = jnp.minimum(exp_q, 100.0)
+            q_loss = -(jax.lax.stop_gradient(exp_q) * q_action_log_prob).mean()
 
+            log_prob = dist.log_prob(batch['actions'])
             bc_loss = -(self.config['alpha'] * log_prob).mean()
 
             actor_loss = q_loss + bc_loss
