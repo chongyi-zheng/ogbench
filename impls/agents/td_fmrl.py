@@ -81,9 +81,11 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
 
             rng, next_action_rng = jax.random.split(rng)
             dist = self.network.select('actor')(candidate_next_observations, candidate_goals)
-            next_actions = dist.sample(seed=next_action_rng)
-            if not self.config['discrete']:
-                next_actions = jnp.clip(next_actions, -1, 1)
+            if self.config['const_std']:
+                next_actions = jnp.clip(dist.mode(), -1, 1)
+            else:
+                rng, next_action_rng = jax.random.split(rng)
+                next_actions = jnp.clip(dist.sample(seed=next_action_rng), -1, 1)
 
             if self.config['actor_loss'] == 'sfbc':
                 # SfBC: selecting from behavioral candidates
@@ -169,7 +171,11 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             assert not self.config['discrete']
 
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
-            q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+            if self.config['const_std']:
+                q_actions = jnp.clip(dist.mode(), -1, 1)
+            else:
+                rng, q_action_rng = jax.random.split(rng)
+                q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
             q_action_log_prob = dist.log_prob(q_actions)
 
             if self.config['distill_likelihood']:
@@ -259,7 +265,8 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             if self.config['const_std']:
                 q_actions = jnp.clip(dist.mode(), -1, 1)
             else:
-                q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+                rng, q_action_rng = jax.random.split(rng)
+                q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
             q1, q2 = self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
             q = jnp.minimum(q1, q2)
 
@@ -287,7 +294,9 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             log_prob = dist.log_prob(batch['actions'])
             bc_loss = -log_prob.mean()
             
-            # q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+            # assert not self.config['const_std']
+            # rng, q_action_rng = jax.random.split(rng)
+            # q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
 
             #     likelihood_rng, shape=batch['actor_goals'].shape, dtype=batch['actor_goals'].dtype)
             # if self.config['distill_likelihood']:
@@ -652,8 +661,8 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             actor_def = GCActor(
                 hidden_dims=config['actor_hidden_dims'],
                 action_dim=action_dim,
-                state_dependent_std=config['state_dependent_std'],
-                const_std=False,
+                state_dependent_std=False,
+                const_std=config['const_std'],
                 gc_encoder=encoders.get('actor'),
             )
 
@@ -711,7 +720,7 @@ def get_config():
             distill_coeff=0.1,  # Likelihood distillation loss coefficient.
             actor_loss='sfbc',  # Actor loss type ('ddpgbc' or 'awr' or 'sfbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.
-            state_dependent_std=True,  # Whether to use state-dependent standard deviation for the actor.
+            const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             num_behavioral_candidates=32,  # Number of behavioral candidates for SfBC.

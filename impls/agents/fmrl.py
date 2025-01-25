@@ -90,7 +90,11 @@ class FMRLAgent(flax.struct.PyTreeNode):
             assert not self.config['discrete']
 
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
-            q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+            if self.config['const_std']:
+                q_actions = jnp.clip(dist.mode(), -1, 1)
+            else:
+                rng, q_action_rng = jax.random.split(rng)
+                q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
             q_action_log_prob = dist.log_prob(q_actions)
 
             if self.config['distill_likelihood']:
@@ -165,7 +169,11 @@ class FMRLAgent(flax.struct.PyTreeNode):
             assert not self.config['discrete']
 
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
-            q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+            if self.config['const_std']:
+                q_actions = jnp.clip(dist.mode(), -1, 1)
+            else:
+                rng, q_action_rng = jax.random.split(rng)
+                q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
 
             if self.config['distill_likelihood']:
                 q = self.network.select('critic')(
@@ -199,26 +207,25 @@ class FMRLAgent(flax.struct.PyTreeNode):
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
             log_prob = dist.log_prob(batch['actions'])
             bc_loss = -log_prob.mean()
-            
-            q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
 
-            # noises = jax.random.normal(likelihood_rng, shape=batch['actor_goals'].shape)
-            # noises = jax.random.rademacher(
-            #     likelihood_rng, shape=batch['actor_goals'].shape, dtype=batch['actor_goals'].dtype)
-            if self.config['distill_likelihood']:
-                q = self.network.select('critic')(
-                    batch['actor_goals'], batch['observations'], actions=q_actions)
-            else:
-                rng, likelihood_rng = jax.random.split(rng)
-                q = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'], likelihood_rng, actions=q_actions)
+            # assert not self.config['const_std']
+            # rng, q_action_rng = jax.random.split(rng)
+            # q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
+
+            # if self.config['distill_likelihood']:
+            #     q = self.network.select('critic')(
+            #         batch['actor_goals'], batch['observations'], actions=q_actions)
+            # else:
+            #     rng, likelihood_rng = jax.random.split(rng)
+            #     q = self.compute_log_likelihood(
+            #         batch['actor_goals'], batch['observations'], likelihood_rng, actions=q_actions)
             
             actor_loss = bc_loss
             return actor_loss, {
                 'actor_loss': actor_loss,
                 'bc_loss': bc_loss,
-                'q_mean': q.mean(),
-                'q_abs_mean': jnp.abs(q).mean(),
+                # 'q_mean': q.mean(),
+                # 'q_abs_mean': jnp.abs(q).mean(),
                 'bc_log_prob': log_prob.mean(),
                 'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
                 'std': jnp.mean(dist.scale_diag),
@@ -601,8 +608,8 @@ class FMRLAgent(flax.struct.PyTreeNode):
             actor_def = GCActor(
                 hidden_dims=config['actor_hidden_dims'],
                 action_dim=action_dim,
-                state_dependent_std=config['state_dependent_std'],
-                const_std=False,
+                state_dependent_std=False,
+                const_std=config['const_std'],
                 gc_encoder=encoders.get('actor'),
             )
 
@@ -652,7 +659,7 @@ def get_config():
             distill_coeff=1.0,  # Likelihood distillation loss coefficient.
             actor_loss='sfbc',  # Actor loss type ('ddpgbc', 'pgbc', 'awr' or 'sfbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.
-            state_dependent_std=True,  # Whether to use state-dependent standard deviation for the actor.
+            const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             num_behavioral_candidates=32,  # Number of behavioral candidates for SfBC.
