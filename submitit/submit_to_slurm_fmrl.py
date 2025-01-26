@@ -42,7 +42,7 @@ def main():
         for env_name in ["pointmaze-medium-navigate-v0", "pointmaze-large-navigate-v0", "antmaze-large-navigate-v0"]:
             for actor_loss in ["ddpgbc"]:
                 for eval_temperature in [0.0]:
-                    for alpha in [0.3, 0.003]:
+                    for alpha in [0.3, 0.03, 0.003]:
                         for const_std in [True]:
                             for num_flow_steps in [20, 50]:
                                 for num_behavioral_candidates in [-1]:
