@@ -40,14 +40,14 @@ def main():
     # pgbc hyperparameters: eval_temperature, alpha, const_std, num_flow_steps, exact_divergence, distill_likelihood
     with executor.batch():  # job array
         for env_name in ["pointmaze-medium-navigate-v0", "pointmaze-large-navigate-v0", "antmaze-large-navigate-v0"]:
-            for actor_loss in ["awr"]:
+            for actor_loss in ["ddpgbc"]:
                 for eval_temperature in [0.0]:
-                    for alpha in [3.0]:
+                    for alpha in [0.3, 0.003]:
                         for const_std in [True]:
-                            for num_flow_steps in [20]:
+                            for num_flow_steps in [20, 50]:
                                 for num_behavioral_candidates in [-1]:
                                     for exact_divergence in [False]:
-                                        for distill_likelihood in [True, False]:
+                                        for distill_likelihood in [False]:
                                             for seed in [0, 1]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_exact_divergence={exact_divergence}_distill_likelihood={distill_likelihood}"
                                                 log_dir = os.path.expanduser(
