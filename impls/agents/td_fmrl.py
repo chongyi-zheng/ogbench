@@ -268,8 +268,19 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             else:
                 rng, q_action_rng = jax.random.split(rng)
                 q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
-            q1, q2 = self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
-            q = jnp.minimum(q1, q2)
+
+            if self.config['distill_likelihood']:
+                q = self.network.select('critic')(
+                    batch['actor_goals'], batch['observations'],
+                    actions=q_actions, commanded_goals=batch['actor_goals']
+                )
+                q = q.min(axis=0)
+            else:
+                rng, q_rng = jax.random.split(rng)
+                q = self.compute_log_likelihood(
+                    batch['actor_goals'], batch['observations'], q_rng,
+                    actions=q_actions, commanded_goals=batch['actor_goals']
+                )
 
             # Normalize Q values by the absolute mean to make the loss scale invariant.
             q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
@@ -719,7 +730,7 @@ def get_config():
             exact_divergence=False,  # Whether to compute the exact divergence or the Hutchinson's divergence estimator.
             distill_likelihood=False,  # Whether to distill the log-likelihood solutions.
             distill_coeff=1.0,  # Likelihood distillation loss coefficient.
-            actor_loss='sfbc',  # Actor loss type ('ddpgbc' or 'awr' or 'sfbc').
+            actor_loss='sfbc',  # Actor loss type ('ddpgbc', 'pgbc', 'awr' or 'sfbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
