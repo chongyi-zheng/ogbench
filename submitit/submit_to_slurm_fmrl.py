@@ -47,7 +47,7 @@ def main():
                             for num_flow_steps in [10, 20]:
                                 for num_behavioral_candidates in [-1]:
                                     for exact_divergence in [True, False]:
-                                        for distill_type in [False]:
+                                        for distill_type in ['rev_int']:
                                             for seed in [0, 1]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_exact_divergence={exact_divergence}_distill_type={distill_type}"
                                                 log_dir = os.path.expanduser(
