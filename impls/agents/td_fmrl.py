@@ -476,7 +476,7 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
                 noisy_future_goals, times, observations, actions, commanded_goals)
 
             # Update goals and divergence integral. We need to consider Q ensemble here.
-            new_noisy_future_goals = jnp.min(noisy_future_goals[None] - vf * step_size, axis=0)
+            new_noisy_future_goals = jnp.min(noisy_future_goals[None] + vf * step_size, axis=0)
 
             # Return updated carry and scan output
             return (new_noisy_future_goals, ), None

@@ -748,6 +748,7 @@ class GCFMValue(nn.Module):
     output_dim: int = 1
     network_type: str = 'mlp'
     layer_norm: bool = True
+    activate_final: bool = False
     num_ensembles: int = 1
     state_encoder: nn.Module = None
     goal_encoder: nn.Module = None
@@ -763,7 +764,7 @@ class GCFMValue(nn.Module):
         if self.network_type == 'mlp':
             value_net = network_module(
                 (*self.hidden_dims, self.output_dim),
-                activate_final=True,
+                activate_final=self.activate_final,
                 layer_norm=self.layer_norm
             )
         else:
@@ -800,6 +801,10 @@ class GCFMValue(nn.Module):
         #     inputs
         # )
 
-        log_prob = -self.value_net(inputs).squeeze(-1)
+        if self.output_dim == 1 and self.activate_final:
+            output = -self.value_net(inputs).squeeze(-1)
+        else:
+            assert (self.output_dim != 1) and (not self.activate_final)
+            output = self.value_net(inputs)
 
-        return log_prob
+        return output
