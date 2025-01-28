@@ -535,7 +535,6 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
         return log_prob
 
-
     @jax.jit
     def total_loss(self, batch, grad_params, rng=None):
         """Compute the total loss."""

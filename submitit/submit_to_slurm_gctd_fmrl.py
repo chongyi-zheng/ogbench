@@ -23,7 +23,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="td_fmrl",
+        slurm_name="gctd_fmrl",
         slurm_time=int(16 * 60),  # minute
         slurm_partition=partition,
         slurm_nodes=1,
@@ -40,18 +40,18 @@ def main():
     # pgbc hyperparameters: eval_temperature, alpha, const_std, num_flow_steps, exact_divergence, distill_likelihood
     with executor.batch():  # job array
         for env_name in ["pointmaze-medium-navigate-v0", "pointmaze-large-navigate-v0", "antmaze-large-navigate-v0"]:
-            for actor_loss in ["awr"]:
+            for actor_loss in ["ddpgbc"]:
                 for eval_temperature in [0.0]:
-                    for alpha in [3.0]:
+                    for alpha in [0.03]:
                         for const_std in [True]:
-                            for num_flow_steps in [20]:
+                            for num_flow_steps in [10, 20]:
                                 for num_behavioral_candidates in [-1]:
-                                    for exact_divergence in [False]:
-                                        for distill_likelihood in [True, False]:
+                                    for exact_divergence in [True, False]:
+                                        for distill_type in ['rev_int']:
                                             for seed in [0, 1]:
-                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_td_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_exact_divergence={exact_divergence}_distill_likelihood={distill_likelihood}"
+                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_exact_divergence={exact_divergence}_distill_type={distill_type}"
                                                 log_dir = os.path.expanduser(
-                                                    f"{log_root_dir}/exp_logs/ogbench_logs/td_fmrl/{exp_name}/{seed}")
+                                                    f"{log_root_dir}/exp_logs/ogbench_logs/gctd_fmrl/{exp_name}/{seed}")
 
                                                 # change the log folder of slurm executor
                                                 submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -95,7 +95,7 @@ def main():
                                                         --agent.num_flow_steps={num_flow_steps} \
                                                         --agent.num_behavioral_candidates={num_behavioral_candidates} \
                                                         --agent.exact_divergence={exact_divergence} \
-                                                        --agent.distill_likelihood={distill_likelihood} \
+                                                        --agent.distill_type={distill_type} \
                                                         --seed={seed} \
                                                         --save_dir={log_dir} \
                                                     2>&1 | tee {log_dir}/stream.log;
