@@ -88,7 +88,7 @@ def main():
                                                         --eval_episodes=50 \
                                                         --eval_on_cpu=0 \
                                                         --eval_temperature={eval_temperature} \
-                                                        --agent=impls/agents/td_fmrl.py \
+                                                        --agent=impls/agents/gctd_fmrl.py \
                                                         --agent.actor_loss={actor_loss} \
                                                         --agent.alpha={alpha} \
                                                         --agent.const_std={const_std} \
