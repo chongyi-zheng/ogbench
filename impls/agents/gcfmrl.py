@@ -78,6 +78,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
         critic_loss = cfm_loss + self.config['distill_coeff'] * distill_loss
 
         return critic_loss, {
+            'critic_loss': critic_loss,
             'cond_flow_matching_loss': cfm_loss,
             'distillation_loss': distill_loss,
             'v_mean': q.mean(),

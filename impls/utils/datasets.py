@@ -265,7 +265,7 @@ class GCDataset:
         batch['actor_goals'] = self.get_observations(actor_goal_idxs)
         successes = (idxs == value_goal_idxs).astype(float)
         batch['masks'] = 1.0 - successes
-        batch['rewards'] = successes - (1.0 if self.config['gc_negative'] else 0.0)
+        # batch['rewards'] = successes - (1.0 if self.config['gc_negative'] else 0.0)
 
         final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, idxs)]
         final_state_dists = final_state_idxs - idxs
@@ -298,7 +298,7 @@ class GCDataset:
         random_goal_idxs = self.dataset.get_random_idxs(batch_size)
 
         # Goals from the same trajectory (excluding the current state, unless it is the final state).
-        initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
+        # initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
         final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, idxs)]
         if geom_sample:
             # Geometric sampling.

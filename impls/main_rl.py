@@ -14,7 +14,7 @@ from ml_collections import config_flags
 from utils.datasets import Dataset, GCDataset, HGCDataset
 from utils.wrappers import OfflineObservationNormalizer
 from utils.env_utils import make_env_and_datasets
-from utils.evaluation import evaluate_gc
+from utils.evaluation import evaluate
 from utils.flax_utils import restore_agent, save_agent
 from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb
 
@@ -34,7 +34,7 @@ flags.DEFINE_integer('log_interval', 5000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 100000, 'Evaluation interval.')
 flags.DEFINE_integer('save_interval', 1000000, 'Saving interval.')
 
-flags.DEFINE_integer('eval_tasks', None, 'Number of tasks to evaluate (None for all).')
+flags.DEFINE_integer('eval_task_id', 1, 'Task ID to evaluate.')
 flags.DEFINE_integer('eval_episodes', 20, 'Number of episodes for each task.')
 flags.DEFINE_float('eval_temperature', 0, 'Actor temperature for evaluation.')
 flags.DEFINE_float('eval_gaussian', None, 'Action Gaussian noise for evaluation.')
@@ -135,35 +135,56 @@ def main(_):
                 eval_agent = agent
             renders = []
             eval_metrics = {}
-            overall_metrics = defaultdict(list)
+            # overall_metrics = defaultdict(list)
             task_infos = env.unwrapped.task_infos if hasattr(env.unwrapped, 'task_infos') else env.task_infos
-            num_tasks = FLAGS.eval_tasks if FLAGS.eval_tasks is not None else len(task_infos)
-            for task_id in tqdm.trange(1, num_tasks + 1):
-                task_name = task_infos[task_id - 1]['task_name']
-                eval_info, trajs, cur_renders = evaluate_gc(
-                    agent=eval_agent,
-                    env=env,
-                    task_id=task_id,
-                    config=config,
-                    num_eval_episodes=FLAGS.eval_episodes,
-                    num_video_episodes=FLAGS.video_episodes,
-                    video_frame_skip=FLAGS.video_frame_skip,
-                    eval_temperature=FLAGS.eval_temperature,
-                    eval_gaussian=FLAGS.eval_gaussian,
-                )
-                renders.extend(cur_renders)
-                metric_names = ['success']
-                eval_metrics.update(
-                    {f'evaluation/{task_name}_{k}': v for k, v in eval_info.items() if k in metric_names}
-                )
-                for k, v in eval_info.items():
-                    if k in metric_names:
-                        overall_metrics[k].append(v)
-            for k, v in overall_metrics.items():
-                eval_metrics[f'evaluation/overall_{k}'] = np.mean(v)
+            # num_tasks = FLAGS.eval_tasks if FLAGS.eval_tasks is not None else len(task_infos)
+            task_id = FLAGS.eval_task_id
+            # for task_id in tqdm.trange(1, num_tasks + 1):
+            #     task_name = task_infos[task_id - 1]['task_name']
+            #     eval_info, trajs, cur_renders = evaluate(
+            #         agent=eval_agent,
+            #         env=env,
+            #         task_id=task_id,
+            #         config=config,
+            #         num_eval_episodes=FLAGS.eval_episodes,
+            #         num_video_episodes=FLAGS.video_episodes,
+            #         video_frame_skip=FLAGS.video_frame_skip,
+            #         eval_temperature=FLAGS.eval_temperature,
+            #         eval_gaussian=FLAGS.eval_gaussian,
+            #     )
+            #     renders.extend(cur_renders)
+            #     metric_names = ['success']
+            #     eval_metrics.update(
+            #         {f'evaluation/{task_name}_{k}': v for k, v in eval_info.items() if k in metric_names}
+            #     )
+            #     for k, v in eval_info.items():
+            #         if k in metric_names:
+            #             overall_metrics[k].append(v)
+            task_name = task_infos[task_id - 1]['task_name']
+            eval_info, trajs, cur_renders = evaluate(
+                agent=eval_agent,
+                env=env,
+                task_id=task_id,
+                config=config,
+                num_eval_episodes=FLAGS.eval_episodes,
+                num_video_episodes=FLAGS.video_episodes,
+                video_frame_skip=FLAGS.video_frame_skip,
+                eval_temperature=FLAGS.eval_temperature,
+                eval_gaussian=FLAGS.eval_gaussian,
+            )
+            renders.extend(cur_renders)
+            metric_names = ['success']
+            eval_metrics.update(
+                {f'evaluation/{task_name}_{k}': v for k, v in eval_info.items() if k in metric_names}
+            )
+            # for k, v in eval_info.items():
+            #     if k in metric_names:
+            #         overall_metrics[k].append(v)
+            # for k, v in overall_metrics.items():
+            #     eval_metrics[f'evaluation/overall_{k}'] = np.mean(v)
 
             if FLAGS.video_episodes > 0:
-                video = get_wandb_video(renders=renders, n_cols=num_tasks)
+                video = get_wandb_video(renders=renders, n_cols=1)
                 eval_metrics['video'] = video
 
             if FLAGS.enable_wandb:
