@@ -16,7 +16,7 @@ def main():
         partition = 'gpu-test'
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
-        log_root_dir = '/n/fs/'
+        log_root_dir = '/n/fs/rl-chongyiz'
         partition = 'all'
     else:
         raise NotImplementedError
