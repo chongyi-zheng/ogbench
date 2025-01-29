@@ -330,8 +330,8 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                 )
 
             # Normalize Q values by the absolute mean to make the loss scale invariant.
-            # q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
-            q_loss = -q.mean()
+            q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
+            # q_loss = -q.mean()
             log_prob = dist.log_prob(batch['actions'])
 
             bc_loss = -(self.config['alpha'] * log_prob).mean()
@@ -594,8 +594,8 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                 return shortcut_preds
 
             key, z_key = jax.random.split(key)
-            # z = jax.random.normal(z_key, shape=goals.shape, dtype=goals.dtype)
-            z = jax.random.rademacher(z_key, shape=goals.shape, dtype=goals.dtype)
+            z = jax.random.normal(z_key, shape=goals.shape, dtype=goals.dtype)
+            # z = jax.random.rademacher(z_key, shape=goals.shape, dtype=goals.dtype)
             shortcut_preds, jac_sc_dot_z = jax.jvp(shortcut_func, (goals,), (z,))
             noise_preds = goals[None] + shortcut_preds
             div_int = jnp.einsum("eij,ij->ei", jac_sc_dot_z, z)

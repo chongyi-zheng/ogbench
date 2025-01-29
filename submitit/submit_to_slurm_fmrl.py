@@ -16,7 +16,7 @@ def main():
         partition = 'gpu-test'
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
-        log_root_dir = '/n/fs/rl-chongyiz'
+        log_root_dir = '/n/fs/'
         partition = 'all'
     else:
         raise NotImplementedError
@@ -42,14 +42,14 @@ def main():
         for env_name in ["pointmaze-medium-navigate-v0", "pointmaze-large-navigate-v0", "antmaze-large-navigate-v0"]:
             for actor_loss in ["ddpgbc"]:
                 for eval_temperature in [0.0]:
-                    for alpha in [0.03]:
+                    for alpha in [30.0, 3.0, 0.3, 0.03, 0.003]:
                         for const_std in [True]:
-                            for num_flow_steps in [10, 20]:
+                            for num_flow_steps in [20]:
                                 for num_behavioral_candidates in [-1]:
-                                    for exact_divergence in [True, False]:
+                                    for exact_divergence in [False]:
                                         for distill_type in ['rev_int']:
                                             for seed in [0, 1]:
-                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_exact_divergence={exact_divergence}_distill_type={distill_type}"
+                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_exact_divergence={exact_divergence}_distill_type={distill_type}_normalized_q"
                                                 log_dir = os.path.expanduser(
                                                     f"{log_root_dir}/exp_logs/ogbench_logs/fmrl/{exp_name}/{seed}")
 
