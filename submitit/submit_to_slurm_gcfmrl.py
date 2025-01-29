@@ -23,7 +23,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="fmrl",
+        slurm_name="gcfmrl",
         slurm_time=int(16 * 60),  # minute
         slurm_partition=partition,
         slurm_nodes=1,
@@ -51,7 +51,7 @@ def main():
                                             for seed in [0, 1]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_exact_divergence={exact_divergence}_distill_type={distill_type}_normalized_q"
                                                 log_dir = os.path.expanduser(
-                                                    f"{log_root_dir}/exp_logs/ogbench_logs/fmrl/{exp_name}/{seed}")
+                                                    f"{log_root_dir}/exp_logs/ogbench_logs/gcfmrl/{exp_name}/{seed}")
 
                                                 # change the log folder of slurm executor
                                                 submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -88,7 +88,7 @@ def main():
                                                         --eval_episodes=50 \
                                                         --eval_on_cpu=0 \
                                                         --eval_temperature={eval_temperature} \
-                                                        --agent=impls/agents/fmrl.py \
+                                                        --agent=impls/agents/gcfmrl.py \
                                                         --agent.actor_loss={actor_loss} \
                                                         --agent.alpha={alpha} \
                                                         --agent.const_std={const_std} \

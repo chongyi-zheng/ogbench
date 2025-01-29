@@ -11,11 +11,11 @@ from utils.networks import GCActor, GCDiscreteActor, GCFMVectorField, GCFMValue
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
-class FMRLAgent(flax.struct.PyTreeNode):
-    """Flow Matching RL (FMRL) agent.
+class GCFMRLAgent(flax.struct.PyTreeNode):
+    """Goal-conditioned Flow Matching RL (GCFMRL) agent.
 
     This implementation supports both AWR (actor_loss='awr') and DDPG+BC (actor_loss='ddpgbc') for the actor loss.
-    FMRL with DDPG+BC only fits a Q function, while FMRL with AWR fits both Q and V functions to compute advantages.
+    GCFMRL with DDPG+BC only fits a Q function, while GCFMRL with AWR fits both Q and V functions to compute advantages.
     """
 
     rng: Any
@@ -758,7 +758,7 @@ def get_config():
     config = ml_collections.ConfigDict(
         dict(
             # Agent hyperparameters.
-            agent_name='fmrl',  # Agent name.
+            agent_name='gcfmrl',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
             actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
