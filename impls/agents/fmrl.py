@@ -1,4 +1,3 @@
-import copy
 from typing import Any
 
 import flax
@@ -8,15 +7,15 @@ import ml_collections
 import optax
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, GCDiscreteActor, GCFMVectorField, GCFMValue
+from utils.networks import GCActor, GCDiscreteActor, GCFMVectorField, GCFMValue, GCValue
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
-class GCTDFMRLAgent(flax.struct.PyTreeNode):
-    """Goal-conditioned Temporal Difference Flow Matching RL (FMRL) agent.
+class FMRLAgent(flax.struct.PyTreeNode):
+    """Flow Matching RL (FMRL) agent.
 
     This implementation supports both AWR (actor_loss='awr') and DDPG+BC (actor_loss='ddpgbc') for the actor loss.
-    TDFMRL with DDPG+BC only fits a Q function, while FMRL with AWR fits both Q and V functions to compute advantages.
+    FMRL with DDPG+BC only fits a Q function, while FMRL with AWR fits both Q and V functions to compute advantages.
     """
 
     rng: Any
@@ -24,11 +23,26 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
     cond_prob_path: Any
     config: Any = nonpytree_field()
 
+    def reward_loss(self, batch, grad_params):
+        observations = batch['observations']
+        rewards = batch['rewards']
+
+        reward_preds = self.network.select('reward')(
+            observations,
+            params=grad_params,
+        )
+
+        reward_loss = jnp.pow(reward_preds - rewards, 2).mean()
+
+        return reward_loss, {
+            'reward_loss': reward_loss
+        }
+
     def critic_loss(self, batch, grad_params, rng, module_name='critic'):
         """Compute the contrastive value loss for the Q or V function."""
         batch_size = batch['observations'].shape[0]
 
-        rng, guidance_rng = jax.random.split(rng)
+        rng, guidance_rng, time_rng, path_rng, likelihood_rng = jax.random.split(rng, 5)
         use_guidance = (jax.random.uniform(guidance_rng) >= self.config['uncond_prob'])
         
         observations = jax.lax.select(
@@ -36,7 +50,6 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             batch['observations'], 
             jnp.zeros_like(batch['observations'])
         )
-        next_observations = batch['next_observations']
         if module_name == 'critic':
             actions = jax.lax.select(
                 use_guidance, 
@@ -46,128 +59,33 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         else:
             actions = None
         goals = batch['value_goals']
-        random_goals = jnp.roll(goals, -1, axis=0)
-
-        rng, next_time_rng = jax.random.split(rng)
-        next_times = jax.random.uniform(next_time_rng, shape=(batch_size, ))
-        rng, next_noise_rng = jax.random.split(rng)
-        next_noises = jax.random.normal(next_noise_rng, shape=next_observations.shape)
-        next_path_sample = self.cond_prob_path(x_0=next_noises, x_1=next_observations, t=next_times)
-        next_vf_pred = self.network.select(module_name + '_vf')(
-            next_path_sample.x_t,
-            next_times,
+        
+        times = jax.random.uniform(time_rng, shape=(batch_size, ))
+        noises = jax.random.normal(path_rng, shape=goals.shape)
+        path_sample = self.cond_prob_path(x_0=noises, x_1=goals, t=times)
+        vf_pred = self.network.select(module_name + '_vf')(
+            path_sample.x_t,
+            times,
             observations,
             actions=actions,
-            commanded_goals=goals,
             params=grad_params,
         )
-        next_cfm_loss = jnp.pow(next_vf_pred - next_path_sample.dx_t[None], 2).mean()
+        cfm_loss = jnp.pow(vf_pred - path_sample.dx_t[None], 2).mean()
 
-        if module_name == 'critic':
-            # sample next actions
-            if self.config['actor_loss'] == 'sfbc':
-                num_candidates = self.config['num_behavioral_candidates']
-                candidate_next_observations = jax.lax.collapse(
-                    jnp.repeat(next_observations[None], num_candidates, axis=0),
-                    0, 2
-                )
-                candidate_goals = jax.lax.collapse(
-                    jnp.repeat(goals[None], num_candidates, axis=0),
-                    0, 2
-                )
-            else:
-                candidate_next_observations = next_observations
-                candidate_goals = goals
-
-            rng, next_action_rng = jax.random.split(rng)
-            dist = self.network.select('actor')(candidate_next_observations, candidate_goals)
-            if self.config['const_std']:
-                next_actions = jnp.clip(dist.mode(), -1, 1)
-            else:
-                rng, next_action_rng = jax.random.split(rng)
-                next_actions = jnp.clip(dist.sample(seed=next_action_rng), -1, 1)
-
-            if self.config['actor_loss'] == 'sfbc':
-                # SfBC: selecting from behavioral candidates
-                if self.config['distill_type'] == 'log_prob':
-                    next_q = self.network.select('critic')(
-                        candidate_goals, candidate_next_observations,
-                        actions=next_actions, commanded_goals=candidate_goals,
-                    )
-                    next_q = next_q.min(axis=0).reshape([num_candidates, batch_size])
-                elif self.config['distill_type'] == 'rev_int':
-                    rng, next_q_rng = jax.random.split(rng)
-                    next_q = self.compute_shortcut_log_likelihood(
-                        candidate_goals, candidate_next_observations, next_q_rng,
-                        actions=next_actions, commanded_goals=candidate_goals,
-                    )
-                    next_q = next_q.min(axis=0)
-                    next_q = next_q.reshape([num_candidates, batch_size])
-                else:
-                    rng, next_q_rng = jax.random.split(rng)
-                    next_q = self.compute_log_likelihood(
-                        candidate_goals, candidate_next_observations, next_q_rng,
-                        actions=next_actions, commanded_goals=candidate_goals,
-                    ).reshape([num_candidates, batch_size])
-                argmax_idxs = jnp.argmax(next_q, axis=0)
-                next_actions = next_actions.reshape([num_candidates, batch_size, -1])
-                next_actions = next_actions[argmax_idxs, jnp.arange(batch_size)]
-        else:
-            next_actions = None
-
-        # sample future goals
-        rng, future_goal_rng = jax.random.split(rng)
-        future_goal_noises = jax.random.normal(future_goal_rng, shape=goals.shape)
-        future_goals = self.compute_fwd_flow_samples(
-            future_goal_noises, next_observations,
-            actions=next_actions, commanded_goals=goals,
-            use_target_network=True
-        )
-        future_goals = jax.lax.stop_gradient(future_goals)
-
-        rng, future_time_rng = jax.random.split(rng)
-        future_times = jax.random.uniform(future_time_rng, shape=(batch_size,))
-        rng, future_noise_rng = jax.random.split(rng)
-        future_noises = jax.random.normal(future_noise_rng, shape=future_goals.shape)
-        future_path_sample = self.cond_prob_path(x_0=future_noises, x_1=future_goals, t=future_times)
-        future_vf_pred = self.network.select(module_name + '_vf')(
-            future_path_sample.x_t,
-            future_times,
-            observations,
-            actions=actions,
-            commanded_goals=goals,
-            params=grad_params,
-        )
-        future_cfm_loss = jnp.pow(future_vf_pred - future_path_sample.dx_t[None], 2).mean()
-
-        cfm_loss = (1 - self.config['discount']) * next_cfm_loss + self.config['discount'] * future_cfm_loss
-
-        # distillation loss
-        rng, q_rng = jax.random.split(rng)
         q = self.compute_log_likelihood(
-            random_goals, observations, q_rng,
-            actions=actions, commanded_goals=goals
-        )
+            goals, observations, likelihood_rng, actions=actions)
 
         if self.config['distill_type'] == 'log_prob':
             q_pred = self.network.select(module_name)(
-                random_goals, observations,
-                actions=actions, commanded_goals=goals,
-                params=grad_params
-            )
+                goals, observations, actions=actions, params=grad_params)
             q_pred = q_pred.min(axis=0)
 
-            distill_loss = jnp.pow(q - q_pred, 2).mean()
+            distill_loss = jnp.mean((q - q_pred) ** 2)
         elif self.config['distill_type'] == 'rev_int':
             noises = self.compute_rev_flow_samples(
-                random_goals, observations,
-                actions=actions, commanded_goals=goals,
-            )
+                goals, observations, actions=actions)
             shortcut_preds = self.network.select(module_name)(
-                goals, observations,
-                actions=actions, commanded_goals=goals,
-                params=grad_params,
-            )
+                goals, observations, actions=actions, params=grad_params)
             distill_loss = jnp.pow(
                 shortcut_preds - (noises - goals)[None], 2).mean()
         else:
@@ -177,8 +95,6 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         return critic_loss, {
             'critic_loss': critic_loss,
             'cond_flow_matching_loss': cfm_loss,
-            'next_cond_flow_matching_loss': next_cfm_loss,
-            'future_cond_flow_matching_loss': future_cfm_loss,
             'distillation_loss': distill_loss,
             'v_mean': q.mean(),
             'v_max': q.max(),
@@ -186,7 +102,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         }
 
     def actor_loss(self, batch, grad_params, rng):
-        """Compute the actor loss (AWR or DDPG+BC)."""
+        """Compute the actor loss (DDPG+BC, PG+BC, AWR, or SfBC)."""
 
         if self.config['actor_loss'] == 'pgbc':
             # PG+BC loss.
@@ -202,23 +118,17 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
 
             if self.config['distill_type'] == 'log_prob':
                 q = self.network.select('critic')(
-                    batch['actor_goals'], batch['observations'],
-                    actions=q_actions, commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'], actions=q_actions)
                 q = q.min(axis=0)
             elif self.config['distill_type'] == 'rev_int':
                 rng, q_rng = jax.random.split(rng)
                 q = self.compute_shortcut_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng,
-                    actions=q_actions, commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
                 q = q.min(axis=0)
             else:
                 rng, q_rng = jax.random.split(rng)
                 q = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng,
-                    actions=q_actions, commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
 
             exp_q = jnp.exp(q)
             exp_q = jnp.minimum(exp_q, 100.0)
@@ -244,37 +154,25 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             # AWR loss.
             if self.config['distill_type'] == 'log_prob':
                 v = self.network.select('value')(
-                    batch['actor_goals'], batch['observations'],
-                    commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'])
                 q = self.network.select('critic')(
-                    batch['actor_goals'], batch['observations'],
-                    actions=batch['actions'], commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'], actions=batch['actions'])
                 v = v.min(axis=0)
                 q = q.min(axis=0)
             elif self.config['distill_type'] == 'rev_int':
                 rng, v_rng, q_rng = jax.random.split(rng, 3)
                 v = self.compute_shortcut_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng,
-                    commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'], v_rng)
                 q = self.compute_shortcut_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng,
-                    actions=batch['actions'], commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'], q_rng, actions=batch['actions'])
                 v = v.min(axis=0)
                 q = q.min(axis=0)
             else:
                 rng, v_rng, q_rng = jax.random.split(rng, 3)
                 v = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'], v_rng,
-                    commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'], v_rng)
                 q = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng,
-                    actions=batch['actions'], commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'], q_rng, actions=batch['actions'])
             adv = q - v  # log p(g | s, a) - log p(g | s)
 
             exp_a = jnp.exp(adv * self.config['alpha'])
@@ -303,32 +201,50 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             # DDPG+BC loss.
             assert not self.config['discrete']
 
-            dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
+            batch_size = batch['observations'].shape[0]
+            observations = batch['observations']
+            rewards = batch['rewards']
+
+            dist = self.network.select('actor')(batch['observations'], params=grad_params)
             if self.config['const_std']:
                 q_actions = jnp.clip(dist.mode(), -1, 1)
             else:
                 rng, q_action_rng = jax.random.split(rng)
                 q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
 
+            num_candidates = self.config['num_candidates']
+            observations = jnp.repeat(
+                jnp.expand_dims(observations, axis=1),
+                num_candidates, axis=1
+            ).reshape([-1, *observations.shape[1:]])
+            q_actions = jnp.repeat(
+                jnp.expand_dims(q_actions, axis=1),
+                num_candidates, axis=1
+            ).reshape([-1, *q_actions.shape[1:]])
+
             if self.config['distill_type'] == 'log_prob':
+                raise NotImplementedError
                 q = self.network.select('critic')(
-                    batch['actor_goals'], batch['observations'],
-                    actions=q_actions, commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'], actions=q_actions)
                 q = q.min(axis=0)
             elif self.config['distill_type'] == 'rev_int':
+                raise NotImplementedError
                 rng, q_rng = jax.random.split(rng)
                 q = self.compute_shortcut_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng,
-                    actions=batch['actions'], commanded_goals=batch['actor_goals']
-                )
+                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
                 q = q.min(axis=0)
             else:
-                rng, q_rng = jax.random.split(rng)
-                q = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng,
-                    actions=q_actions, commanded_goals=batch['actor_goals']
-                )
+                # rng, q_rng = jax.random.split(rng)
+                # q = self.compute_rev_flow_samples(
+                #     batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
+                rng, g_rng = jax.random.split(rng)
+                noises = jax.random.normal(g_rng, shape=observations.shape, dtype=observations.dtype)
+                sampled_goals = self.compute_fwd_flow_samples(noises, observations, actions=q_actions)
+                # sampled_goals = sampled_goals.reshape([batch_size, batch_size, -1])
+
+            goal_rewards = self.network.select('reward')(sampled_goals)
+            goal_rewards = goal_rewards.reshape([batch_size, num_candidates])
+            q = (1 - self.config['discount']) * rewards + self.config['discount'] * goal_rewards.mean(axis=-1)
 
             # Normalize Q values by the absolute mean to make the loss scale invariant.
             q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
@@ -354,31 +270,11 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
             log_prob = dist.log_prob(batch['actions'])
             bc_loss = -log_prob.mean()
-            
-            # assert not self.config['const_std']
-            # rng, q_action_rng = jax.random.split(rng)
-            # q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
 
-            #     likelihood_rng, shape=batch['actor_goals'].shape, dtype=batch['actor_goals'].dtype)
-            # if self.config['distill_likelihood']:
-            #     q = self.network.select('critic')(
-            #         batch['actor_goals'], batch['observations'],
-            #         actions=q_actions, commanded_goals=batch['actor_goals']
-            #     )
-            #     q = q.min(axis=0)
-            # else:
-            #     rng, likelihood_rng = jax.random.split(rng)
-            #     q = self.compute_log_likelihood(
-            #         batch['actor_goals'], batch['observations'], likelihood_rng,
-            #         actions=q_actions, commanded_goals=batch['actor_goals']
-            #     )
-            
             actor_loss = bc_loss
             return actor_loss, {
                 'actor_loss': actor_loss,
                 'bc_loss': bc_loss,
-                # 'q_mean': q.mean(),
-                # 'q_abs_mean': jnp.abs(q).mean(),
                 'bc_log_prob': log_prob.mean(),
                 'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
                 'std': jnp.mean(dist.scale_diag),
@@ -386,12 +282,11 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         else:
             raise ValueError(f'Unsupported actor loss: {self.config["actor_loss"]}')
 
-    def compute_fwd_flow_samples(self, noises, observations, actions=None, commanded_goals=None,
-                                 use_target_network=False):
+    def compute_fwd_flow_samples(self, noises, observations, actions=None):
         if actions is not None:
-            module_name = 'target_critic_vf' if use_target_network else 'critic_vf'
+            module_name = 'critic_vf'
         else:
-            module_name = 'target_value_vf' if use_target_network else 'value_vf'
+            module_name = 'value_vf'
 
         noisy_goals = noises
         num_flow_steps = self.config['num_flow_steps']
@@ -408,7 +303,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             times = jnp.full(noisy_goals.shape[:-1], i * step_size)
 
             vf = self.network.select(module_name)(
-                noisy_goals, times, observations, actions, commanded_goals)
+                noisy_goals, times, observations, actions)
 
             # Update goals and divergence integral. We need to consider Q ensemble here.
             new_noisy_goals = jnp.min(noisy_goals[None] + vf * step_size, axis=0)
@@ -422,7 +317,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
 
         return noisy_goals
 
-    def compute_rev_flow_samples(self, goals, observations, actions=None, commanded_goals=None):
+    def compute_rev_flow_samples(self, goals, observations, actions=None):
         if actions is not None:
             module_name = 'critic_vf'
         else:
@@ -443,7 +338,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             times = 1.0 - jnp.full(goals.shape[:-1], i * step_size)
 
             vf = self.network.select(module_name)(
-                noises, times, observations, actions, commanded_goals)
+                noises, times, observations, actions)
 
             # Update goals and divergence integral. We need to consider Q ensemble here.
             new_noises = jnp.min(noises[None] - vf * step_size, axis=0)
@@ -457,7 +352,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
 
         return noises
 
-    def compute_log_likelihood(self, goals, observations, rng, actions=None, commanded_goals=None):
+    def compute_log_likelihood(self, goals, observations, rng, actions=None):
         if actions is not None:
             module_name = 'critic_vf'
             num_ensembles = self.config['num_ensembles_q']
@@ -482,46 +377,39 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             times = 1.0 - jnp.full(noisy_goals.shape[:-1], i * step_size)
 
             if self.config['exact_divergence']:
-                def compute_exact_div(noisy_goals, times, observations, actions, commanded_goals):
-                    def vf_func(noisy_goal, time, observation, action, commanded_goal):
+                def compute_exact_div(noisy_goals, times, observations, actions):
+                    def vf_func(noisy_goal, time, observation, action):
                         noisy_goal = jnp.expand_dims(noisy_goal, 0)
                         time = jnp.expand_dims(time, 0)
                         observation = jnp.expand_dims(observation, 0)
                         if action is not None:
                             action = jnp.expand_dims(action, 0)
-                        if commanded_goal is not None:
-                            commanded_goal = jnp.expand_dims(commanded_goal, 0)
                         vf = self.network.select(module_name)(
-                            noisy_goal, time, observation, action, commanded_goal).squeeze(1)
+                            noisy_goal, time, observation, action).squeeze(1)
                 
                         return vf.reshape(-1)
                 
-                    def div_func(noisy_goal, time, observation, action, commanded_goal):
-                        jac = jax.jacrev(vf_func)(noisy_goal, time, observation, action, commanded_goal)
+                    def div_func(noisy_goal, time, observation, action):
+                        jac = jax.jacrev(vf_func)(noisy_goal, time, observation, action)
                         jac = jac.reshape([num_ensembles, noisy_goal.shape[-1], noisy_goal.shape[-1]])
                 
                         return jnp.trace(jac, axis1=-2, axis2=-1)
                 
                     vf = self.network.select(module_name)(
-                        noisy_goals, times, observations, actions, commanded_goals)
+                        noisy_goals, times, observations, actions)
                 
-                    if (actions is not None) and (commanded_goals is not None):
-                        in_axes = (0, 0, 0, 0, 0)
-                    elif (actions is not None) and (commanded_goals is None):
-                        in_axes = (0, 0, 0, 0, None)
-                    elif (actions is None) and (commanded_goals is not None):
-                        in_axes = (0, 0, 0, None, 0)
+                    if actions is not None:
+                        div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=1)(
+                            noisy_goals, times, observations, actions)
                     else:
-                        in_axes = (0, 0, 0, None, None)
-
-                    div = jax.vmap(div_func, in_axes=in_axes, out_axes=1)(
-                        noisy_goals, times, observations, actions, commanded_goals)
+                        div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=1)(
+                            noisy_goals, times, observations, actions)
                 
                     return vf, div
 
-                vf, div = compute_exact_div(noisy_goals, times, observations, actions, commanded_goals)
+                vf, div = compute_exact_div(noisy_goals, times, observations, actions)
             else:
-                def compute_hutchinson_div(noisy_goals, times, observations, actions, commanded_goals, rng):
+                def compute_hutchinson_div(noisy_goals, times, observations, actions, rng):
                     # Define vf_func for jvp
                     def vf_func(goals):
                         vf = self.network.select(module_name)(
@@ -529,7 +417,6 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                             times,
                             observations,
                             actions=actions,
-                            commanded_goals=commanded_goals,
                         )
 
                         return vf.reshape([-1, *vf.shape[2:]])
@@ -549,7 +436,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                     return vf, div
 
                 rng, div_rng = jax.random.split(rng)
-                vf, div = compute_hutchinson_div(noisy_goals, times, observations, actions, commanded_goals, div_rng)
+                vf, div = compute_hutchinson_div(noisy_goals, times, observations, actions, div_rng)
 
             # Update goals and divergence integral. We need to consider Q ensemble here.
             new_noisy_goals = jnp.min(noisy_goals[None] - vf * step_size, axis=0)
@@ -568,7 +455,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
 
         return log_prob
 
-    def compute_shortcut_log_likelihood(self, goals, observations, key, actions=None, commanded_goals=None):
+    def compute_shortcut_log_likelihood(self, goals, observations, key, actions=None):
         if actions is not None:
             module_name = 'critic'
         else:
@@ -576,21 +463,20 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
 
         if self.config['exact_divergence']:
             noise_preds = goals[None] + self.network.select(module_name)(
-                goals, observations, actions, commanded_goals)
+                goals, observations, actions)
 
-            def shortcut_func(g, s, a, cg):
+            def shortcut_func(g, s, a):
                 shortcut_pred = self.network.select(module_name)(
-                    g, s, a, cg)
+                    g, s, a)
 
                 return shortcut_pred
 
-            jac = jax.vmap(jax.jacrev(shortcut_func), in_axes=(0, 0, 0, 0), out_axes=1)(
-                goals, observations, actions, commanded_goals)
+            jac = jax.vmap(jax.jacrev(shortcut_func), in_axes=(0, 0, 0), out_axes=1)(goals, observations, actions)
             div_int = jnp.trace(jac, axis1=-2, axis2=-1)
         else:
             def shortcut_func(g):
                 shortcut_preds = self.network.select(module_name)(
-                    g, observations, actions, commanded_goals)
+                    g, observations, actions)
 
                 return shortcut_preds
 
@@ -612,6 +498,10 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         info = {}
         rng = rng if rng is not None else self.rng
 
+        reward_loss, reward_info = self.reward_loss(batch, grad_params)
+        for k, v in reward_info.items():
+            info[f'reward/{k}'] = v
+
         rng, critic_rng = jax.random.split(rng)
         critic_loss, critic_info = self.critic_loss(batch, grad_params, critic_rng, 'critic')
         for k, v in critic_info.items():
@@ -630,16 +520,8 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         for k, v in actor_info.items():
             info[f'actor/{k}'] = v
 
-        loss = critic_loss + value_loss + actor_loss
+        loss = reward_loss + critic_loss + value_loss + actor_loss
         return loss, info
-    def target_update(self, network, module_name):
-        """Update the target network."""
-        new_target_params = jax.tree_util.tree_map(
-            lambda p, tp: p * self.config['tau'] + tp * (1 - self.config['tau']),
-            self.network.params[f'modules_{module_name}'],
-            self.network.params[f'modules_target_{module_name}'],
-        )
-        network.params[f'modules_target_{module_name}'] = new_target_params
 
     @jax.jit
     def update(self, batch):
@@ -650,9 +532,6 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        self.target_update(new_network, 'critic_vf')
-        if self.config['actor_loss'] == 'awr':
-            self.target_update(new_network, 'value_vf')
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -660,44 +539,37 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
     def sample_actions(
         self,
         observations,
-        goals=None,
         seed=None,
         temperature=1.0,
     ):
         """Sample actions from the actor."""
         if self.config['actor_loss'] == 'sfbc':
-            num_candidates = self.config['num_behavioral_candidates']
+            num_candidates = self.config['num_candidates']
             observations = jnp.repeat(observations[None], num_candidates, axis=0)
-            goals = jnp.repeat(goals[None], num_candidates, axis=0)
-        
-        dist = self.network.select('actor')(observations, goals, temperature=temperature)
+
+        dist = self.network.select('actor')(observations, temperature=temperature)
         seed, actor_seed = jax.random.split(seed)
         actions = dist.sample(seed=actor_seed)
         if not self.config['discrete']:
             actions = jnp.clip(actions, -1, 1)
 
         if self.config['actor_loss'] == 'sfbc':
+            # TODO (chongyiz): fixme
+            raise NotImplementedError
+
             # SfBC: selecting from behavioral candidates
             if self.config['distill_type'] == 'log_prob':
-                q = self.network.select('critic')(
-                    goals, observations,
-                    actions=actions, commanded_goals=goals
-                )
+                q = self.network.select('critic')(goals, observations, actions=actions)
                 q = q.min(axis=0)
             elif self.config['distill_type'] == 'rev_int':
                 seed, q_seed = jax.random.split(seed)
                 q = self.compute_shortcut_log_likelihood(
-                    goals, observations, q_seed,
-                    actions=actions, commanded_goals=goals
-                )
+                    goals, observations, q_seed, actions=actions)
                 q = q.min(axis=0)
             else:
                 seed, q_seed = jax.random.split(seed)
-                q = self.compute_log_likelihood(
-                    goals, observations, q_seed,
-                    actions=actions, commanded_goals=goals
-                )
-            argmax_idxs = jnp.argmax(q, axis=0)
+                q = self.compute_log_likelihood(goals, observations, q_seed, actions=actions)
+            argmax_idxs = jnp.argmax(q, axis=-1)
             actions = actions[argmax_idxs]
         
         return actions
@@ -722,7 +594,6 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         rng, init_rng = jax.random.split(rng, 2)
 
         ex_goals = ex_observations
-        ex_commanded_goals = ex_observations
         if config['discrete']:
             action_dim = ex_actions.max() + 1
         else:
@@ -735,12 +606,11 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
-            encoders['critic_state'] = encoder_module()
-            encoders['critic_goal'] = encoder_module()
+            encoders['critic'] = encoder_module()
             encoders['actor'] = GCEncoder(concat_encoder=encoder_module())
             if config['actor_loss'] == 'awr':
-                encoders['value_state'] = encoder_module()
-                encoders['value_goal'] = encoder_module()
+                encoders['value'] = encoder_module()
+            encoders['reward'] = encoder_module()
 
         # Define value and actor networks.
         if config['discrete']:
@@ -761,8 +631,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                 hidden_dims=config['value_hidden_dims'],
                 layer_norm=config['layer_norm'],
                 num_ensembles=config['num_ensembles_q'],
-                state_encoder=encoders.get('critic_state'),
-                goal_encoder=encoders.get('critic_goal'),
+                state_encoder=encoders.get('value'),
             )
             if config['distill_type'] == 'rev_int':
                 output_dim = ex_goals.shape[-1]
@@ -776,8 +645,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                 layer_norm=config['layer_norm'],
                 activate_final=activate_final,
                 num_ensembles=2,
-                state_encoder=encoders.get('critic_state'),
-                goal_encoder=encoders.get('critic_goal'),
+                state_encoder=encoders.get('value'),
             )
 
         if config['actor_loss'] == 'awr':
@@ -786,8 +654,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                 hidden_dims=config['value_hidden_dims'],
                 layer_norm=config['layer_norm'],
                 num_ensembles=1,
-                state_encoder=encoders.get('value_state'),
-                goal_encoder=encoders.get('value_goal'),
+                state_encoder=encoders.get('value'),
             )
             if config['distill_type'] == 'rev_int':
                 output_dim = ex_goals.shape[-1]
@@ -801,8 +668,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                 layer_norm=config['layer_norm'],
                 activate_final=activate_final,
                 num_ensembles=1,
-                state_encoder=encoders.get('value_state'),
-                goal_encoder=encoders.get('value_goal'),
+                state_encoder=encoders.get('value'),
             )
 
         if config['discrete']:
@@ -820,17 +686,23 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                 gc_encoder=encoders.get('actor'),
             )
 
+        reward_def = GCValue(
+            hidden_dims=config['reward_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            ensemble=False,
+            gc_encoder=encoders.get('value'),
+        )
+
         network_info = dict(
-            critic_vf=(critic_vf_def, (ex_goals, ex_times, ex_observations, ex_actions, ex_commanded_goals)),
-            critic=(critic_def, (ex_goals, ex_observations, ex_actions, ex_commanded_goals)),
-            target_critic_vf=(copy.deepcopy(critic_vf_def), (ex_goals, ex_times, ex_observations, ex_actions, ex_commanded_goals)),
-            actor=(actor_def, (ex_observations, ex_goals)),
+            critic_vf=(critic_vf_def, (ex_goals, ex_times, ex_observations, ex_actions)),
+            critic=(critic_def, (ex_goals, ex_observations, ex_actions)),
+            actor=(actor_def, (ex_observations, )),
+            reward=(reward_def, (ex_observations, )),
         )
         if config['actor_loss'] == 'awr':
             network_info.update(
-                value_vf=(value_vf_def, (ex_goals, ex_times, ex_observations, ex_commanded_goals)),
-                target_value_vf=(copy.deepcopy(value_vf_def), (ex_goals, ex_times, ex_observations, ex_commanded_goals)),
-                value=(value_def, (ex_goals, ex_observations, ex_commanded_goals)),
+                value_vf=(value_vf_def, (ex_goals, ex_times, ex_observations)),
+                value=(value_def, (ex_goals, ex_observations)),
             )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
@@ -839,11 +711,6 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         network_tx = optax.adam(learning_rate=config['lr'])
         network_params = network_def.init(init_rng, **network_args)['params']
         network = TrainState.create(network_def, network_params, tx=network_tx)
-
-        params = network_params
-        params['modules_target_critic_vf'] = params['modules_critic_vf']
-        if config['actor_loss'] == 'awr':
-            params['modules_target_value_vf'] = params['modules_value_vf']
 
         cond_prob_path = cond_prob_path_class[config['prob_path_class']](
             scheduler=scheduler_class[config['scheduler_class']]()
@@ -856,14 +723,14 @@ def get_config():
     config = ml_collections.ConfigDict(
         dict(
             # Agent hyperparameters.
-            agent_name='gctd_fmrl',  # Agent name.
+            agent_name='fmrl',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
             actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
+            reward_hidden_dims=(512, 512, 512),  # Reward network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.
-            tau=0.005,  # Target network update rate.
             num_ensembles_q=2,  # Number of ensemble for the critic.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
@@ -877,7 +744,7 @@ def get_config():
             const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
-            num_behavioral_candidates=32,  # Number of behavioral candidates for SfBC.
+            num_candidates=32,  # Number of behavioral candidates for SfBC or number of future goal candidates for DDPGBC.
             # Dataset hyperparameters.
             dataset_class='GCDataset',  # Dataset class name.
             value_p_curgoal=0.0,  # Probability of using the current state as the value goal.
@@ -888,7 +755,6 @@ def get_config():
             actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
             actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
             actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
-            gc_negative=False,  # Unused (defined for compatibility with GCDataset).
             p_aug=0.0,  # Probability of applying image augmentation.
             frame_stack=ml_collections.config_dict.placeholder(int),  # Number of frames to stack.
         )
