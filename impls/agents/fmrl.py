@@ -72,33 +72,29 @@ class FMRLAgent(flax.struct.PyTreeNode):
         )
         cfm_loss = jnp.pow(vf_pred - path_sample.dx_t[None], 2).mean()
 
-        q = self.compute_log_likelihood(
-            goals, observations, likelihood_rng, actions=actions)
+        # q = self.compute_log_likelihood(
+        #     goals, observations, likelihood_rng, actions=actions)
 
-        if self.config['distill_type'] == 'log_prob':
-            q_pred = self.network.select(module_name)(
-                goals, observations, actions=actions, params=grad_params)
-            q_pred = q_pred.min(axis=0)
-
-            distill_loss = jnp.mean((q - q_pred) ** 2)
-        elif self.config['distill_type'] == 'rev_int':
-            noises = self.compute_rev_flow_samples(
-                goals, observations, actions=actions)
+        if self.config['distill_type'] == 'fwd_int':
+            rng, g_rng = jax.random.split(rng)
+            shortcut_noises = jax.random.normal(g_rng, shape=goals.shape, dtype=goals.dtype)
+            sampled_goals = self.compute_fwd_flow_samples(
+                shortcut_noises, observations, actions=actions)
             shortcut_preds = self.network.select(module_name)(
-                goals, observations, actions=actions, params=grad_params)
+                shortcut_noises, observations, actions=actions, params=grad_params)
             distill_loss = jnp.pow(
-                shortcut_preds - (noises - goals)[None], 2).mean()
+                shortcut_preds - (sampled_goals - shortcut_noises)[None], 2).mean()
         else:
             distill_loss = 0.0
-        critic_loss = cfm_loss + self.config['distill_coeff'] * distill_loss
+        critic_loss = cfm_loss + distill_loss
 
         return critic_loss, {
             'critic_loss': critic_loss,
             'cond_flow_matching_loss': cfm_loss,
             'distillation_loss': distill_loss,
-            'v_mean': q.mean(),
-            'v_max': q.max(),
-            'v_min': q.min(),
+            # 'v_mean': q.mean(),
+            # 'v_max': q.max(),
+            # 'v_min': q.min(),
         }
 
     def actor_loss(self, batch, grad_params, rng):
@@ -116,11 +112,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
             q_action_log_prob = dist.log_prob(q_actions)
 
-            if self.config['distill_type'] == 'log_prob':
-                q = self.network.select('critic')(
-                    batch['actor_goals'], batch['observations'], actions=q_actions)
-                q = q.min(axis=0)
-            elif self.config['distill_type'] == 'rev_int':
+            if self.config['distill_type'] == 'fwd_int':
                 rng, q_rng = jax.random.split(rng)
                 q = self.compute_shortcut_log_likelihood(
                     batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
@@ -152,33 +144,58 @@ class FMRLAgent(flax.struct.PyTreeNode):
             }
         elif self.config['actor_loss'] == 'awr':
             # AWR loss.
-            if self.config['distill_type'] == 'log_prob':
-                v = self.network.select('value')(
-                    batch['actor_goals'], batch['observations'])
-                q = self.network.select('critic')(
-                    batch['actor_goals'], batch['observations'], actions=batch['actions'])
-                v = v.min(axis=0)
-                q = q.min(axis=0)
-            elif self.config['distill_type'] == 'rev_int':
-                rng, v_rng, q_rng = jax.random.split(rng, 3)
-                v = self.compute_shortcut_log_likelihood(
-                    batch['actor_goals'], batch['observations'], v_rng)
-                q = self.compute_shortcut_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng, actions=batch['actions'])
-                v = v.min(axis=0)
-                q = q.min(axis=0)
+            batch_size = batch['observations'].shape[0]
+            observations = batch['observations']
+            actions = batch['actions']
+            # goals = batch['actor_goals']
+
+            num_candidates = self.config['num_candidates']
+            observations = jnp.repeat(
+                jnp.expand_dims(observations, axis=1),
+                num_candidates, axis=1
+            ).reshape([-1, *observations.shape[1:]])
+            actions = jnp.repeat(
+                jnp.expand_dims(actions, axis=1),
+                num_candidates, axis=1
+            ).reshape([-1, *actions.shape[1:]])
+            if self.config['distill_type'] == 'fwd_int':
+                rng, v_g_rng, q_g_rng = jax.random.split(rng, 3)
+                v_noises = jax.random.normal(v_g_rng, shape=observations.shape, dtype=observations.dtype)
+                sampled_v_goals = v_noises + self.network.select('value')(
+                    v_noises, observations)
+                q_noises = jax.random.normal(q_g_rng, shape=observations.shape, dtype=observations.dtype)
+                sampled_q_goals = q_noises + self.network.select('critic')(
+                    q_noises, observations, actions=actions)
+                sampled_v_goals = sampled_v_goals.min(axis=0)
+                sampled_q_goals = sampled_q_goals.min(axis=0)
             else:
-                rng, v_rng, q_rng = jax.random.split(rng, 3)
-                v = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'], v_rng)
-                q = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng, actions=batch['actions'])
+                rng, v_g_rng, q_g_rng = jax.random.split(rng, 3)
+                v_noises = jax.random.normal(v_g_rng, shape=observations.shape, dtype=observations.dtype)
+                sampled_v_goals = self.compute_fwd_flow_samples(
+                    v_noises, observations)
+                q_noises = jax.random.normal(q_g_rng, shape=observations.shape, dtype=observations.dtype)
+                sampled_q_goals = self.compute_fwd_flow_samples(
+                    q_noises, observations, actions=actions)
+
+                # rng, v_rng, q_rng = jax.random.split(rng, 3)
+                # v = self.compute_log_likelihood(
+                #     batch['actor_goals'], batch['observations'], v_rng)
+                # q = self.compute_log_likelihood(
+                #     batch['actor_goals'], batch['observations'], q_rng, actions=batch['actions'])
+
+            v_goal_rewards = self.network.select('reward')(sampled_v_goals)
+            v_goal_rewards = v_goal_rewards.reshape([batch_size, num_candidates])
+            q_goal_rewards = self.network.select('reward')(sampled_q_goals)
+            q_goal_rewards = q_goal_rewards.reshape([batch_size, num_candidates])
+            q = q_goal_rewards.mean(axis=-1)
+            v = v_goal_rewards.mean(axis=-1)
+
             adv = q - v  # log p(g | s, a) - log p(g | s)
 
             exp_a = jnp.exp(adv * self.config['alpha'])
             exp_a = jnp.minimum(exp_a, 100.0)
 
-            dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
+            dist = self.network.select('actor')(batch['observations'], params=grad_params)
             log_prob = dist.log_prob(batch['actions'])
 
             actor_loss = -(exp_a * log_prob).mean()
@@ -222,17 +239,16 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 num_candidates, axis=1
             ).reshape([-1, *q_actions.shape[1:]])
 
-            if self.config['distill_type'] == 'log_prob':
-                raise NotImplementedError
-                q = self.network.select('critic')(
-                    batch['actor_goals'], batch['observations'], actions=q_actions)
-                q = q.min(axis=0)
-            elif self.config['distill_type'] == 'rev_int':
-                raise NotImplementedError
-                rng, q_rng = jax.random.split(rng)
-                q = self.compute_shortcut_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
-                q = q.min(axis=0)
+            if self.config['distill_type'] == 'fwd_int':
+                # rng, q_rng = jax.random.split(rng)
+                # q = self.compute_shortcut_log_likelihood(
+                #     batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
+                # q = q.min(axis=0)
+                rng, g_rng = jax.random.split(rng)
+                noises = jax.random.normal(g_rng, shape=observations.shape, dtype=observations.dtype)
+                sampled_goals = noises + self.network.select('critic')(
+                    noises, observations, actions=q_actions)
+                sampled_goals = sampled_goals.min(axis=0)
             else:
                 # rng, q_rng = jax.random.split(rng)
                 # q = self.compute_rev_flow_samples(
@@ -240,7 +256,6 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 rng, g_rng = jax.random.split(rng)
                 noises = jax.random.normal(g_rng, shape=observations.shape, dtype=observations.dtype)
                 sampled_goals = self.compute_fwd_flow_samples(noises, observations, actions=q_actions)
-                # sampled_goals = sampled_goals.reshape([batch_size, batch_size, -1])
 
             goal_rewards = self.network.select('reward')(sampled_goals)
             goal_rewards = goal_rewards.reshape([batch_size, num_candidates])
@@ -352,145 +367,145 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
         return noises
 
-    def compute_log_likelihood(self, goals, observations, rng, actions=None):
-        if actions is not None:
-            module_name = 'critic_vf'
-            num_ensembles = self.config['num_ensembles_q']
-        else:
-            module_name = 'value_vf'
-            num_ensembles = 1
+    # def compute_log_likelihood(self, goals, observations, rng, actions=None):
+    #     if actions is not None:
+    #         module_name = 'critic_vf'
+    #         num_ensembles = self.config['num_ensembles_q']
+    #     else:
+    #         module_name = 'value_vf'
+    #         num_ensembles = 1
+    #
+    #     noisy_goals = goals
+    #     div_int = jnp.zeros(goals.shape[:-1])
+    #     num_flow_steps = self.config['num_flow_steps']
+    #     step_size = 1.0 / num_flow_steps
+    #
+    #     # Define the body function to be scanned
+    #     def body_fn(carry, i):
+    #         """
+    #         carry: (noisy_goals, div_int, rng)
+    #         i: current step index
+    #         """
+    #         noisy_goals, div_int, rng = carry
+    #
+    #         # Time for this iteration
+    #         times = 1.0 - jnp.full(noisy_goals.shape[:-1], i * step_size)
+    #
+    #         if self.config['exact_divergence']:
+    #             def compute_exact_div(noisy_goals, times, observations, actions):
+    #                 def vf_func(noisy_goal, time, observation, action):
+    #                     noisy_goal = jnp.expand_dims(noisy_goal, 0)
+    #                     time = jnp.expand_dims(time, 0)
+    #                     observation = jnp.expand_dims(observation, 0)
+    #                     if action is not None:
+    #                         action = jnp.expand_dims(action, 0)
+    #                     vf = self.network.select(module_name)(
+    #                         noisy_goal, time, observation, action).squeeze(1)
+    #
+    #                     return vf.reshape(-1)
+    #
+    #                 def div_func(noisy_goal, time, observation, action):
+    #                     jac = jax.jacrev(vf_func)(noisy_goal, time, observation, action)
+    #                     jac = jac.reshape([num_ensembles, noisy_goal.shape[-1], noisy_goal.shape[-1]])
+    #
+    #                     return jnp.trace(jac, axis1=-2, axis2=-1)
+    #
+    #                 vf = self.network.select(module_name)(
+    #                     noisy_goals, times, observations, actions)
+    #
+    #                 if actions is not None:
+    #                     div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=1)(
+    #                         noisy_goals, times, observations, actions)
+    #                 else:
+    #                     div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=1)(
+    #                         noisy_goals, times, observations, actions)
+    #
+    #                 return vf, div
+    #
+    #             vf, div = compute_exact_div(noisy_goals, times, observations, actions)
+    #         else:
+    #             def compute_hutchinson_div(noisy_goals, times, observations, actions, rng):
+    #                 # Define vf_func for jvp
+    #                 def vf_func(goals):
+    #                     vf = self.network.select(module_name)(
+    #                         goals,
+    #                         times,
+    #                         observations,
+    #                         actions=actions,
+    #                     )
+    #
+    #                     return vf.reshape([-1, *vf.shape[2:]])
+    #
+    #                 # Split RNG and sample noise
+    #                 z = jax.random.normal(rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
+    #
+    #                 # Forward (vf) and linearization (jac_vf_dot_z)
+    #                 vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z, ))
+    #                 vf = vf.reshape([num_ensembles, -1, *vf.shape[1:]])
+    #                 jac_vf_dot_z = jac_vf_dot_z.reshape([num_ensembles, -1, *jac_vf_dot_z.shape[1:]])
+    #
+    #                 # Hutchinson's trace estimator
+    #                 # shape assumptions: jac_vf_dot_z, z both (B, D) => div is shape (B,)
+    #                 div = jnp.einsum("eij,ij->ei", jac_vf_dot_z, z)
+    #
+    #                 return vf, div
+    #
+    #             rng, div_rng = jax.random.split(rng)
+    #             vf, div = compute_hutchinson_div(noisy_goals, times, observations, actions, div_rng)
+    #
+    #         # Update goals and divergence integral. We need to consider Q ensemble here.
+    #         new_noisy_goals = jnp.min(noisy_goals[None] - vf * step_size, axis=0)
+    #         new_div_int = jnp.min(div_int[None] - div * step_size, axis=0)
+    #
+    #         # Return updated carry and scan output
+    #         return (new_noisy_goals, new_div_int, rng), None
+    #
+    #     # Use lax.scan to iterate over num_flow_steps
+    #     (noisy_goals, div_int, rng), _ = jax.lax.scan(
+    #         body_fn, (noisy_goals, div_int, rng), jnp.arange(num_flow_steps))
+    #
+    #     # Finally, compute log_prob using the final noisy_goals and div_int
+    #     gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noisy_goals ** 2, axis=-1)
+    #     log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
+    #
+    #     return log_prob
 
-        noisy_goals = goals
-        div_int = jnp.zeros(goals.shape[:-1])
-        num_flow_steps = self.config['num_flow_steps']
-        step_size = 1.0 / num_flow_steps
-
-        # Define the body function to be scanned
-        def body_fn(carry, i):
-            """
-            carry: (noisy_goals, div_int, rng)
-            i: current step index
-            """
-            noisy_goals, div_int, rng = carry
-            
-            # Time for this iteration
-            times = 1.0 - jnp.full(noisy_goals.shape[:-1], i * step_size)
-
-            if self.config['exact_divergence']:
-                def compute_exact_div(noisy_goals, times, observations, actions):
-                    def vf_func(noisy_goal, time, observation, action):
-                        noisy_goal = jnp.expand_dims(noisy_goal, 0)
-                        time = jnp.expand_dims(time, 0)
-                        observation = jnp.expand_dims(observation, 0)
-                        if action is not None:
-                            action = jnp.expand_dims(action, 0)
-                        vf = self.network.select(module_name)(
-                            noisy_goal, time, observation, action).squeeze(1)
-                
-                        return vf.reshape(-1)
-                
-                    def div_func(noisy_goal, time, observation, action):
-                        jac = jax.jacrev(vf_func)(noisy_goal, time, observation, action)
-                        jac = jac.reshape([num_ensembles, noisy_goal.shape[-1], noisy_goal.shape[-1]])
-                
-                        return jnp.trace(jac, axis1=-2, axis2=-1)
-                
-                    vf = self.network.select(module_name)(
-                        noisy_goals, times, observations, actions)
-                
-                    if actions is not None:
-                        div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=1)(
-                            noisy_goals, times, observations, actions)
-                    else:
-                        div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=1)(
-                            noisy_goals, times, observations, actions)
-                
-                    return vf, div
-
-                vf, div = compute_exact_div(noisy_goals, times, observations, actions)
-            else:
-                def compute_hutchinson_div(noisy_goals, times, observations, actions, rng):
-                    # Define vf_func for jvp
-                    def vf_func(goals):
-                        vf = self.network.select(module_name)(
-                            goals,
-                            times,
-                            observations,
-                            actions=actions,
-                        )
-
-                        return vf.reshape([-1, *vf.shape[2:]])
-
-                    # Split RNG and sample noise
-                    z = jax.random.normal(rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
-
-                    # Forward (vf) and linearization (jac_vf_dot_z)
-                    vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z, ))
-                    vf = vf.reshape([num_ensembles, -1, *vf.shape[1:]])
-                    jac_vf_dot_z = jac_vf_dot_z.reshape([num_ensembles, -1, *jac_vf_dot_z.shape[1:]])
-
-                    # Hutchinson's trace estimator
-                    # shape assumptions: jac_vf_dot_z, z both (B, D) => div is shape (B,)
-                    div = jnp.einsum("eij,ij->ei", jac_vf_dot_z, z)
-
-                    return vf, div
-
-                rng, div_rng = jax.random.split(rng)
-                vf, div = compute_hutchinson_div(noisy_goals, times, observations, actions, div_rng)
-
-            # Update goals and divergence integral. We need to consider Q ensemble here.
-            new_noisy_goals = jnp.min(noisy_goals[None] - vf * step_size, axis=0)
-            new_div_int = jnp.min(div_int[None] - div * step_size, axis=0)
-
-            # Return updated carry and scan output
-            return (new_noisy_goals, new_div_int, rng), None
-
-        # Use lax.scan to iterate over num_flow_steps
-        (noisy_goals, div_int, rng), _ = jax.lax.scan(
-            body_fn, (noisy_goals, div_int, rng), jnp.arange(num_flow_steps))
-
-        # Finally, compute log_prob using the final noisy_goals and div_int
-        gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noisy_goals ** 2, axis=-1)
-        log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
-
-        return log_prob
-
-    def compute_shortcut_log_likelihood(self, goals, observations, key, actions=None):
-        if actions is not None:
-            module_name = 'critic'
-        else:
-            module_name = 'value'
-
-        if self.config['exact_divergence']:
-            noise_preds = goals[None] + self.network.select(module_name)(
-                goals, observations, actions)
-
-            def shortcut_func(g, s, a):
-                shortcut_pred = self.network.select(module_name)(
-                    g, s, a)
-
-                return shortcut_pred
-
-            jac = jax.vmap(jax.jacrev(shortcut_func), in_axes=(0, 0, 0), out_axes=1)(goals, observations, actions)
-            div_int = jnp.trace(jac, axis1=-2, axis2=-1)
-        else:
-            def shortcut_func(g):
-                shortcut_preds = self.network.select(module_name)(
-                    g, observations, actions)
-
-                return shortcut_preds
-
-            key, z_key = jax.random.split(key)
-            z = jax.random.normal(z_key, shape=goals.shape, dtype=goals.dtype)
-            # z = jax.random.rademacher(z_key, shape=goals.shape, dtype=goals.dtype)
-            shortcut_preds, jac_sc_dot_z = jax.jvp(shortcut_func, (goals,), (z,))
-            noise_preds = goals[None] + shortcut_preds
-            div_int = jnp.einsum("eij,ij->ei", jac_sc_dot_z, z)
-
-        gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noise_preds ** 2, axis=-1)
-        log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
-
-        return log_prob
+    # def compute_shortcut_log_likelihood(self, goals, observations, key, actions=None):
+    #     if actions is not None:
+    #         module_name = 'critic'
+    #     else:
+    #         module_name = 'value'
+    #
+    #     if self.config['exact_divergence']:
+    #         noise_preds = goals[None] + self.network.select(module_name)(
+    #             goals, observations, actions)
+    #
+    #         def shortcut_func(g, s, a):
+    #             shortcut_pred = self.network.select(module_name)(
+    #                 g, s, a)
+    #
+    #             return shortcut_pred
+    #
+    #         jac = jax.vmap(jax.jacrev(shortcut_func), in_axes=(0, 0, 0), out_axes=1)(goals, observations, actions)
+    #         div_int = jnp.trace(jac, axis1=-2, axis2=-1)
+    #     else:
+    #         def shortcut_func(g):
+    #             shortcut_preds = self.network.select(module_name)(
+    #                 g, observations, actions)
+    #
+    #             return shortcut_preds
+    #
+    #         key, z_key = jax.random.split(key)
+    #         z = jax.random.normal(z_key, shape=goals.shape, dtype=goals.dtype)
+    #         # z = jax.random.rademacher(z_key, shape=goals.shape, dtype=goals.dtype)
+    #         shortcut_preds, jac_sc_dot_z = jax.jvp(shortcut_func, (goals,), (z,))
+    #         noise_preds = goals[None] + shortcut_preds
+    #         div_int = jnp.einsum("eij,ij->ei", jac_sc_dot_z, z)
+    #
+    #     gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noise_preds ** 2, axis=-1)
+    #     log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
+    #
+    #     return log_prob
 
     @jax.jit
     def total_loss(self, batch, grad_params, rng=None):
@@ -561,7 +576,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             if self.config['distill_type'] == 'log_prob':
                 q = self.network.select('critic')(goals, observations, actions=actions)
                 q = q.min(axis=0)
-            elif self.config['distill_type'] == 'rev_int':
+            elif self.config['distill_type'] == 'fwd_int':
                 seed, q_seed = jax.random.split(seed)
                 q = self.compute_shortcut_log_likelihood(
                     goals, observations, q_seed, actions=actions)
@@ -633,7 +648,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 num_ensembles=config['num_ensembles_q'],
                 state_encoder=encoders.get('value'),
             )
-            if config['distill_type'] == 'rev_int':
+            if config['distill_type'] == 'fwd_int':
                 output_dim = ex_goals.shape[-1]
                 activate_final = False
             else:
@@ -656,7 +671,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 num_ensembles=1,
                 state_encoder=encoders.get('value'),
             )
-            if config['distill_type'] == 'rev_int':
+            if config['distill_type'] == 'fwd_int':
                 output_dim = ex_goals.shape[-1]
                 activate_final = False
             else:
@@ -736,9 +751,7 @@ def get_config():
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             uncond_prob=0.0,  # Probability of training the marginal velocity field vs the guided velocity field.
             num_flow_steps=20,  # Number of steps for solving ODEs using the Euler method.
-            exact_divergence=False,  # Whether to compute the exact divergence or the Hutchinson's divergence estimator.
-            distill_type='none',  # Distillation type ('none', 'log_prob', 'rev_int').
-            distill_coeff=1.0,  # Likelihood distillation loss coefficient.
+            distill_type='none',  # Distillation type ('none', 'log_prob', 'fwd_int').
             actor_loss='sfbc',  # Actor loss type ('ddpgbc', 'pgbc', 'awr' or 'sfbc').
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.
