@@ -104,7 +104,11 @@ class FMRLAgent(flax.struct.PyTreeNode):
             # PG+BC loss.
             assert not self.config['discrete']
 
-            dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
+            batch_size = batch['observations'].shape[0]
+            observations = batch['observations']
+            rewards = batch['rewards']
+
+            dist = self.network.select('actor')(batch['observations'], params=grad_params)
             if self.config['const_std']:
                 q_actions = jnp.clip(dist.mode(), -1, 1)
             else:
@@ -112,15 +116,31 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
             q_action_log_prob = dist.log_prob(q_actions)
 
+            num_candidates = self.config['num_candidates']
+            observations = jnp.repeat(
+                jnp.expand_dims(observations, axis=1),
+                num_candidates, axis=1
+            ).reshape([-1, *observations.shape[1:]])
+            q_actions = jnp.repeat(
+                jnp.expand_dims(q_actions, axis=1),
+                num_candidates, axis=1
+            ).reshape([-1, *q_actions.shape[1:]])
+
             if self.config['distill_type'] == 'fwd_int':
-                rng, q_rng = jax.random.split(rng)
-                q = self.compute_shortcut_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
-                q = q.min(axis=0)
+                rng, g_rng = jax.random.split(rng)
+                noises = jax.random.normal(g_rng, shape=observations.shape, dtype=observations.dtype)
+                sampled_goals = noises + self.network.select('critic')(
+                    noises, observations, actions=q_actions)
+                sampled_goals = sampled_goals.min(axis=0)
             else:
-                rng, q_rng = jax.random.split(rng)
-                q = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
+                rng, g_rng = jax.random.split(rng)
+                noises = jax.random.normal(g_rng, shape=observations.shape, dtype=observations.dtype)
+                sampled_goals = self.compute_fwd_flow_samples(
+                    noises, observations, actions=q_actions)
+
+            goal_rewards = self.network.select('reward')(sampled_goals)
+            goal_rewards = goal_rewards.reshape([batch_size, num_candidates])
+            q = (1 - self.config['discount']) * rewards + self.config['discount'] * goal_rewards.mean(axis=-1)
 
             exp_q = jnp.exp(q)
             exp_q = jnp.minimum(exp_q, 100.0)
@@ -147,7 +167,6 @@ class FMRLAgent(flax.struct.PyTreeNode):
             batch_size = batch['observations'].shape[0]
             observations = batch['observations']
             actions = batch['actions']
-            # goals = batch['actor_goals']
 
             num_candidates = self.config['num_candidates']
             observations = jnp.repeat(
@@ -177,18 +196,12 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 sampled_q_goals = self.compute_fwd_flow_samples(
                     q_noises, observations, actions=actions)
 
-                # rng, v_rng, q_rng = jax.random.split(rng, 3)
-                # v = self.compute_log_likelihood(
-                #     batch['actor_goals'], batch['observations'], v_rng)
-                # q = self.compute_log_likelihood(
-                #     batch['actor_goals'], batch['observations'], q_rng, actions=batch['actions'])
-
             v_goal_rewards = self.network.select('reward')(sampled_v_goals)
             v_goal_rewards = v_goal_rewards.reshape([batch_size, num_candidates])
             q_goal_rewards = self.network.select('reward')(sampled_q_goals)
             q_goal_rewards = q_goal_rewards.reshape([batch_size, num_candidates])
-            q = q_goal_rewards.mean(axis=-1)
             v = v_goal_rewards.mean(axis=-1)
+            q = q_goal_rewards.mean(axis=-1)
 
             adv = q - v  # log p(g | s, a) - log p(g | s)
 
@@ -240,19 +253,12 @@ class FMRLAgent(flax.struct.PyTreeNode):
             ).reshape([-1, *q_actions.shape[1:]])
 
             if self.config['distill_type'] == 'fwd_int':
-                # rng, q_rng = jax.random.split(rng)
-                # q = self.compute_shortcut_log_likelihood(
-                #     batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
-                # q = q.min(axis=0)
                 rng, g_rng = jax.random.split(rng)
                 noises = jax.random.normal(g_rng, shape=observations.shape, dtype=observations.dtype)
                 sampled_goals = noises + self.network.select('critic')(
                     noises, observations, actions=q_actions)
                 sampled_goals = sampled_goals.min(axis=0)
             else:
-                # rng, q_rng = jax.random.split(rng)
-                # q = self.compute_rev_flow_samples(
-                #     batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
                 rng, g_rng = jax.random.split(rng)
                 noises = jax.random.normal(g_rng, shape=observations.shape, dtype=observations.dtype)
                 sampled_goals = self.compute_fwd_flow_samples(noises, observations, actions=q_actions)
@@ -282,7 +288,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             }
         elif self.config['actor_loss'] == 'sfbc':
             # BC loss.
-            dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
+            dist = self.network.select('actor')(batch['observations'], params=grad_params)
             log_prob = dist.log_prob(batch['actions'])
             bc_loss = -log_prob.mean()
 
@@ -560,7 +566,11 @@ class FMRLAgent(flax.struct.PyTreeNode):
         """Sample actions from the actor."""
         if self.config['actor_loss'] == 'sfbc':
             num_candidates = self.config['num_candidates']
-            observations = jnp.repeat(observations[None], num_candidates, axis=0)
+            observations = jnp.repeat(
+                jnp.expand_dims(observations, axis=0),
+                num_candidates, axis=0
+            )
+            rewards = self.network.select('reward')(observations)
 
         dist = self.network.select('actor')(observations, temperature=temperature)
         seed, actor_seed = jax.random.split(seed)
@@ -569,21 +579,30 @@ class FMRLAgent(flax.struct.PyTreeNode):
             actions = jnp.clip(actions, -1, 1)
 
         if self.config['actor_loss'] == 'sfbc':
-            # TODO (chongyiz): fixme
-            raise NotImplementedError
-
             # SfBC: selecting from behavioral candidates
-            if self.config['distill_type'] == 'log_prob':
-                q = self.network.select('critic')(goals, observations, actions=actions)
-                q = q.min(axis=0)
-            elif self.config['distill_type'] == 'fwd_int':
-                seed, q_seed = jax.random.split(seed)
-                q = self.compute_shortcut_log_likelihood(
-                    goals, observations, q_seed, actions=actions)
-                q = q.min(axis=0)
+            observations = jnp.repeat(
+                jnp.expand_dims(observations, axis=1),
+                num_candidates, axis=1
+            ).reshape([-1, *observations.shape[1:]])
+            actions = jnp.repeat(
+                jnp.expand_dims(actions, axis=1),
+                num_candidates, axis=1
+            ).reshape([-1, *actions.shape[1:]])
+
+            if self.config['distill_type'] == 'fwd_int':
+                seed, g_seed = jax.random.split(seed)
+                noises = jax.random.normal(g_seed, shape=observations.shape, dtype=observations.dtype)
+                sampled_goals = noises + self.network.select('critic')(
+                    noises, observations, actions=actions)
+                sampled_goals = sampled_goals.min(axis=0)
             else:
-                seed, q_seed = jax.random.split(seed)
-                q = self.compute_log_likelihood(goals, observations, q_seed, actions=actions)
+                seed, g_seed = jax.random.split(seed)
+                noises = jax.random.normal(g_seed, shape=observations.shape, dtype=observations.dtype)
+                sampled_goals = self.compute_fwd_flow_samples(
+                    noises, observations, actions=actions)
+            goal_rewards = self.network.select('reward')(sampled_goals)
+            goal_rewards = goal_rewards.reshape([num_candidates, num_candidates])
+            q = (1 - self.config['discount']) * rewards + self.config['discount'] * goal_rewards.mean(axis=-1)
             argmax_idxs = jnp.argmax(q, axis=-1)
             actions = actions[argmax_idxs]
         

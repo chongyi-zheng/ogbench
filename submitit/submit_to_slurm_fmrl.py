@@ -47,9 +47,9 @@ def main():
                     for eval_task_id in [1]:
                         for alpha in [30.0, 3.0, 0.3, 0.03]:
                             for const_std in [True]:
-                                for num_flow_steps in [10, 20]:
+                                for num_flow_steps in [10]:
                                     for num_candidates in [8]:
-                                        for distill_type in ['none']:
+                                        for distill_type in ['none', 'fwd_int']:
                                             for seed in [0, 1]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_eval_task_id={eval_task_id}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_candidates={num_candidates}_distill_type={distill_type}_normalized_q"
                                                 log_dir = os.path.expanduser(
@@ -84,7 +84,7 @@ def main():
     
                                                     rm -rf {log_dir};
                                                     mkdir -p {log_dir};
-                                                    python $PROJECT_DIR/impls/main.py \
+                                                    python $PROJECT_DIR/impls/main_rl.py \
                                                         --enable_wandb=1 \
                                                         --env_name={env_name} \
                                                         --eval_episodes=50 \
