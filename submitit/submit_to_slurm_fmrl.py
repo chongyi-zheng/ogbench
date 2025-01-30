@@ -40,7 +40,7 @@ def main():
     # pgbc hyperparameters: eval_temperature, eval_task_id, alpha, const_std, num_flow_steps, exact_divergence, distill_type
     with executor.batch():  # job array
         for env_name in ["antmaze-large-navigate-singletask-v0",
-                         "antmaze-large-giant-singletask-v0",
+                         "antmaze-giant-navigate-singletask-v0",
                          "humanoidmaze-medium-navigate-singletask-v0"]:
             for actor_loss in ["ddpgbc"]:
                 for eval_temperature in [0.0]:
