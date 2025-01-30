@@ -48,7 +48,7 @@ def main():
                         for alpha in [30.0, 3.0, 0.3, 0.03]:
                             for const_std in [True]:
                                 for num_flow_steps in [20]:
-                                    for num_candidates in [16]:
+                                    for num_candidates in [8]:
                                         for exact_divergence in [True, False]:
                                             for distill_type in ['none']:
                                                 for seed in [0, 1]:
@@ -85,12 +85,13 @@ def main():
         
                                                         rm -rf {log_dir};
                                                         mkdir -p {log_dir};
-                                                        python $PROJECT_DIR/impls/main.py \
+                                                        python $PROJECT_DIR/impls/main_rl.py \
                                                             --enable_wandb=1 \
                                                             --env_name={env_name} \
                                                             --eval_episodes=50 \
                                                             --eval_on_cpu=0 \
                                                             --eval_temperature={eval_temperature} \
+                                                            --eval_task_id={eval_task_id} \
                                                             --agent=impls/agents/fmrl.py \
                                                             --agent.actor_loss={actor_loss} \
                                                             --agent.alpha={alpha} \
