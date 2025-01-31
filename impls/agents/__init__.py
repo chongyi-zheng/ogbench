@@ -10,6 +10,7 @@ from agents.gcivl import GCIVLAgent
 from agents.hiql import HIQLAgent
 from agents.qrl import QRLAgent
 from agents.sac import SACAgent
+from agents.td_fmrl import TDFMRLAgent
 from agents.gctd_fmrl import GCTDFMRLAgent
 from agents.td_infonce import TDInfoNCEAgent
 
@@ -26,6 +27,7 @@ agents = dict(
     hiql=HIQLAgent,
     qrl=QRLAgent,
     sac=SACAgent,
+    td_fmrl=TDFMRLAgent,
     gctd_fmrl=GCTDFMRLAgent,
     td_infonce=TDInfoNCEAgent,
 )

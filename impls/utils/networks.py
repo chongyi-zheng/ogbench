@@ -808,3 +808,112 @@ class GCFMValue(nn.Module):
             output = self.value_net(inputs)
 
         return output
+
+
+class GCFMBilinearValue(nn.Module):
+    """Bilinear goal-conditioned flow matching value/critic function.
+
+    This module can be used for both value V(s, g) and critic Q(s, a, g) functions.
+    We typically use this module to distill the ODE solutions.
+
+    Attributes:
+        network_type: Type of MLP network. ('mlp' or 'simba')
+        hidden_dims: Hidden layer dimensions.
+        layer_norm: Whether to apply layer normalization.
+        ensemble: Whether to ensemble the value function.
+        state_encoder: Optional state encoder.
+        goal_encoder: Optional goal encoder.
+    """
+
+    hidden_dims: Sequence[int]
+    latent_dim: int
+    output_dim: int = 1
+    network_type: str = 'mlp'
+    layer_norm: bool = True
+    num_ensembles: int = 1
+    state_encoder: nn.Module = None
+    goal_encoder: nn.Module = None
+
+    def setup(self):
+        if self.network_type == 'mlp':
+            network_module = MLP
+        else:
+            raise NotImplementedError
+
+        network_module = ensemblize(network_module, self.num_ensembles)
+
+        if self.network_type == 'mlp':
+            self.phi = network_module(
+                (*self.hidden_dims, self.latent_dim * self.output_dim),
+                activate_final=False,
+                layer_norm=self.layer_norm
+            )
+            self.psi = network_module(
+                (*self.hidden_dims, self.latent_dim),
+                activate_final=False,
+                layer_norm=self.layer_norm
+            )
+        else:
+            raise NotImplementedError
+
+    def __call__(self, goals, observations, actions=None, commanded_goals=None):
+        """Return the value/critic function.
+
+        Args:
+            observations: Observations.
+            goals: Goals (optional).
+            actions: Actions (optional).
+        """
+
+        # if self.state_encoder is not None:
+        #     observations = self.state_encoder(observations)
+        # if self.goal_encoder is not None:
+        #     goals = self.goal_encoder(goals)
+        #
+        # if actions is None:
+        #     phi_inputs = observations
+        # else:
+        #     phi_inputs = jnp.concatenate([observations, actions], axis=-1)
+        #
+        # phi = self.phi(phi_inputs)
+        # psi = self.psi(goals)
+        #
+        # # v = (phi * psi / jnp.sqrt(self.latent_dim)).sum(axis=-1)
+        # if len(phi.shape) == 2:  # Non-ensemble.
+        #     v = jnp.einsum('ik,jk->ij', phi, psi) / jnp.sqrt(self.latent_dim)
+        # else:
+        #     v = jnp.einsum('eik,ejk->eij', phi, psi) / jnp.sqrt(self.latent_dim)
+        #
+        # if self.value_exp:
+        #     v = jnp.exp(v)
+        #
+        # if info:
+        #     return v, phi, psi
+        # else:
+        #     return v
+
+        if self.goal_encoder is not None:
+            goals = self.goal_encoder(goals)
+
+        if self.state_encoder is not None:
+            observations = self.state_encoder(observations)
+
+        conds = observations
+        if commanded_goals is not None:
+            conds = jnp.concatenate([conds, commanded_goals], axis=-1)
+        if actions is not None:
+            # This will be all nans if both observations and actions are all nan
+            conds = jnp.concatenate([conds, actions], axis=-1)
+        # inputs = jnp.concatenate([goals, conds], axis=-1)
+        # inputs = jax.lax.select(
+        #     jnp.logical_not(jnp.all(jnp.isnan(conds))),
+        #     jnp.concatenate([inputs, conds], axis=-1),
+        #     inputs
+        # )
+        phi = self.phi(goals).reshape(
+            [self.num_ensembles, -1, self.output_dim, self.latent_dim])
+        psi = self.psi(conds)
+
+        output = jnp.einsum('eilk,ejk->eijl', phi, psi) / jnp.sqrt(self.latent_dim)
+
+        return output

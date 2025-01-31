@@ -7,11 +7,12 @@ import ml_collections
 import optax
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, GCDiscreteActor, GCFMVectorField, GCFMBilinearValue, GCValue
+from utils.networks import GCActor, GCDiscreteActor, GCFMVectorField, GCFMValue, GCValue
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
 class FMRLAgent(flax.struct.PyTreeNode):
+    # TODO (chongyiz)
     """Flow Matching RL (FMRL) agent.
 
     This implementation supports both AWR (actor_loss='awr') and DDPG+BC (actor_loss='ddpgbc') for the actor loss.
@@ -44,23 +45,23 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
         rng, guidance_rng, time_rng, path_rng, likelihood_rng = jax.random.split(rng, 5)
         use_guidance = (jax.random.uniform(guidance_rng) >= self.config['uncond_prob'])
-        
+
         observations = jax.lax.select(
             use_guidance,
-            batch['observations'], 
+            batch['observations'],
             jnp.zeros_like(batch['observations'])
         )
         if module_name == 'critic':
             actions = jax.lax.select(
-                use_guidance, 
-                batch['actions'], 
+                use_guidance,
+                batch['actions'],
                 jnp.zeros_like(batch['actions'])
             )
         else:
             actions = None
         goals = batch['value_goals']
-        
-        times = jax.random.uniform(time_rng, shape=(batch_size, ))
+
+        times = jax.random.uniform(time_rng, shape=(batch_size,))
         noises = jax.random.normal(path_rng, shape=goals.shape)
         path_sample = self.cond_prob_path(x_0=noises, x_1=goals, t=times)
         vf_pred = self.network.select(module_name + '_vf')(
@@ -318,7 +319,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             carry: (noisy_goals, )
             i: current step index
             """
-            (noisy_goals, ) = carry
+            (noisy_goals,) = carry
 
             # Time for this iteration
             times = jnp.full(noisy_goals.shape[:-1], i * step_size)
@@ -330,11 +331,11 @@ class FMRLAgent(flax.struct.PyTreeNode):
             new_noisy_goals = jnp.min(noisy_goals[None] + vf * step_size, axis=0)
 
             # Return updated carry and scan output
-            return (new_noisy_goals, ), None
+            return (new_noisy_goals,), None
 
         # Use lax.scan to iterate over num_flow_steps
-        (noisy_goals, ), _ = jax.lax.scan(
-            body_fn, (noisy_goals, ), jnp.arange(num_flow_steps))
+        (noisy_goals,), _ = jax.lax.scan(
+            body_fn, (noisy_goals,), jnp.arange(num_flow_steps))
 
         return noisy_goals
 
@@ -353,7 +354,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             carry: (noisy_goals, )
             i: current step index
             """
-            (noises, ) = carry
+            (noises,) = carry
 
             # Time for this iteration
             times = 1.0 - jnp.full(goals.shape[:-1], i * step_size)
@@ -365,11 +366,11 @@ class FMRLAgent(flax.struct.PyTreeNode):
             new_noises = jnp.min(noises[None] - vf * step_size, axis=0)
 
             # Return updated carry and scan output
-            return (new_noises, ), None
+            return (new_noises,), None
 
         # Use lax.scan to iterate over num_flow_steps
-        (noises, ), _ = jax.lax.scan(
-            body_fn, (noises, ), jnp.arange(num_flow_steps))
+        (noises,), _ = jax.lax.scan(
+            body_fn, (noises,), jnp.arange(num_flow_steps))
 
         return noises
 
@@ -558,10 +559,10 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
     @jax.jit
     def sample_actions(
-        self,
-        observations,
-        seed=None,
-        temperature=1.0,
+            self,
+            observations,
+            seed=None,
+            temperature=1.0,
     ):
         """Sample actions from the actor."""
         if self.config['actor_loss'] == 'sfbc':
@@ -605,16 +606,16 @@ class FMRLAgent(flax.struct.PyTreeNode):
             q = (1 - self.config['discount']) * rewards + self.config['discount'] * goal_rewards.mean(axis=-1)
             argmax_idxs = jnp.argmax(q, axis=-1)
             actions = actions[argmax_idxs]
-        
+
         return actions
 
     @classmethod
     def create(
-        cls,
-        seed,
-        ex_observations,
-        ex_actions,
-        config,
+            cls,
+            seed,
+            ex_observations,
+            ex_actions,
+            config,
     ):
         """Create a new agent.
 
@@ -632,9 +633,9 @@ class FMRLAgent(flax.struct.PyTreeNode):
             action_dim = ex_actions.max() + 1
         else:
             action_dim = ex_actions.shape[-1]
-        
+
         rng, time_rng = jax.random.split(rng)
-        ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0], ))
+        ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],))
 
         # Define encoders.
         encoders = dict()
@@ -673,9 +674,8 @@ class FMRLAgent(flax.struct.PyTreeNode):
             else:
                 output_dim = 1
                 activate_final = True
-            critic_def = GCFMBilinearValue(
+            critic_def = GCFMValue(
                 hidden_dims=config['value_hidden_dims'],
-                latent_dim=config['latent_dim'],
                 output_dim=output_dim,
                 layer_norm=config['layer_norm'],
                 activate_final=activate_final,
@@ -697,9 +697,8 @@ class FMRLAgent(flax.struct.PyTreeNode):
             else:
                 output_dim = 1
                 activate_final = True
-            value_def = GCFMBilinearValue(
+            value_def = GCFMValue(
                 hidden_dims=config['value_hidden_dims'],
-                latent_dim=config['latent_dim'],
                 output_dim=output_dim,
                 layer_norm=config['layer_norm'],
                 activate_final=activate_final,
@@ -732,8 +731,8 @@ class FMRLAgent(flax.struct.PyTreeNode):
         network_info = dict(
             critic_vf=(critic_vf_def, (ex_goals, ex_times, ex_observations, ex_actions)),
             critic=(critic_def, (ex_goals, ex_observations, ex_actions)),
-            actor=(actor_def, (ex_observations, )),
-            reward=(reward_def, (ex_observations, )),
+            actor=(actor_def, (ex_observations,)),
+            reward=(reward_def, (ex_observations,)),
         )
         if config['actor_loss'] == 'awr':
             network_info.update(
@@ -765,7 +764,6 @@ def get_config():
             actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
             reward_hidden_dims=(512, 512, 512),  # Reward network hidden dimensions.
-            latent_dim=512,  # Latent dimension for phi and psi.
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.
             num_ensembles_q=2,  # Number of ensemble for the critic.
@@ -779,7 +777,8 @@ def get_config():
             const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
-            num_candidates=32,  # Number of behavioral candidates for SfBC or number of future goal candidates for DDPGBC.
+            num_candidates=32,
+            # Number of behavioral candidates for SfBC or number of future goal candidates for DDPGBC.
             # Dataset hyperparameters.
             dataset_class='GCDataset',  # Dataset class name.
             value_p_curgoal=0.0,  # Probability of using the current state as the value goal.
