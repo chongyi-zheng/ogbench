@@ -45,13 +45,13 @@ def main():
             for actor_loss in ["ddpgbc"]:
                 for eval_temperature in [0.0]:
                     for eval_task_id in [1]:
-                        for alpha in [30.0, 3.0, 0.3, 0.03]:
+                        for alpha in [300.0, 30.0, 3.0, 0.3]:
                             for const_std in [True]:
                                 for num_flow_steps in [10]:
                                     for num_candidates in [-1]:
                                         for distill_type in ['none', 'fwd_int']:
                                             for seed in [0, 1]:
-                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_td_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_eval_task_id={eval_task_id}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_candidates={num_candidates}_distill_type={distill_type}_normalized_q"
+                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_td_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_eval_task_id={eval_task_id}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_candidates={num_candidates}_distill_type={distill_type}"
                                                 log_dir = os.path.expanduser(
                                                     f"{log_root_dir}/exp_logs/ogbench_logs/td_fmrl/{exp_name}/{seed}")
 
