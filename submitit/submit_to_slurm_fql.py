@@ -49,9 +49,9 @@ def main():
                             for num_flow_steps in [10, 20]:
                                 for num_candidates in [-1]:
                                     for seed in [0, 1]:
-                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_eval_task_id={eval_task_id}_alpha={alpha}_num_flow_steps={num_flow_steps}_num_candidates={num_candidates}"
+                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_eval_task_id={eval_task_id}_alpha={alpha}_num_flow_steps={num_flow_steps}_num_candidates={num_candidates}"
                                         log_dir = os.path.expanduser(
-                                            f"{log_root_dir}/exp_logs/ogbench_logs/fmrl/{exp_name}/{seed}")
+                                            f"{log_root_dir}/exp_logs/ogbench_logs/fql/{exp_name}/{seed}")
 
                                         # change the log folder of slurm executor
                                         submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -88,7 +88,7 @@ def main():
                                                 --eval_episodes=50 \
                                                 --eval_on_cpu=0 \
                                                 --eval_temperature={eval_temperature} \
-                                                --agent=impls/agents/fmrl.py \
+                                                --agent=impls/agents/fql.py \
                                                 --agent.actor_loss={actor_loss} \
                                                 --agent.alpha={alpha} \
                                                 --agent.num_flow_steps={num_flow_steps} \
