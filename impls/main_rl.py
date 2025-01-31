@@ -64,13 +64,15 @@ def main(_):
     config = FLAGS.agent
     env, train_dataset, val_dataset = make_env_and_datasets(FLAGS.env_name, frame_stack=config['frame_stack'])
 
-    dataset_class = {
-        'GCDataset': GCDataset,
-        'HGCDataset': HGCDataset,
-    }[config['dataset_class']]
-    train_dataset = dataset_class(Dataset.create(**train_dataset), config)
+    # dataset_class = {
+    #     'GCDataset': GCDataset,
+    #     'HGCDataset': HGCDataset,
+    # }[config['dataset_class']]
+    # train_dataset = dataset_class(Dataset.create(**train_dataset), config)
+    train_dataset = Dataset.create(**train_dataset)
     if val_dataset is not None:
-        val_dataset = dataset_class(Dataset.create(**val_dataset), config)
+        # val_dataset = dataset_class(Dataset.create(**val_dataset), config)
+        val_dataset = Dataset.create(**val_dataset)
 
     # Initialize agent.
     random.seed(FLAGS.seed)
@@ -139,27 +141,6 @@ def main(_):
             task_infos = env.unwrapped.task_infos if hasattr(env.unwrapped, 'task_infos') else env.task_infos
             # num_tasks = FLAGS.eval_tasks if FLAGS.eval_tasks is not None else len(task_infos)
             task_id = FLAGS.eval_task_id
-            # for task_id in tqdm.trange(1, num_tasks + 1):
-            #     task_name = task_infos[task_id - 1]['task_name']
-            #     eval_info, trajs, cur_renders = evaluate(
-            #         agent=eval_agent,
-            #         env=env,
-            #         task_id=task_id,
-            #         config=config,
-            #         num_eval_episodes=FLAGS.eval_episodes,
-            #         num_video_episodes=FLAGS.video_episodes,
-            #         video_frame_skip=FLAGS.video_frame_skip,
-            #         eval_temperature=FLAGS.eval_temperature,
-            #         eval_gaussian=FLAGS.eval_gaussian,
-            #     )
-            #     renders.extend(cur_renders)
-            #     metric_names = ['success']
-            #     eval_metrics.update(
-            #         {f'evaluation/{task_name}_{k}': v for k, v in eval_info.items() if k in metric_names}
-            #     )
-            #     for k, v in eval_info.items():
-            #         if k in metric_names:
-            #             overall_metrics[k].append(v)
             task_name = task_infos[task_id - 1]['task_name']
             eval_info, trajs, cur_renders = evaluate(
                 agent=eval_agent,

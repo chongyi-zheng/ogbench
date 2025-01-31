@@ -92,9 +92,6 @@ class FQLAgent(flax.struct.PyTreeNode):
         next_actions = next_actions.squeeze(0)
         next_actions = jnp.clip(next_actions, -1, 1)
 
-        # next_dist = self.network.select('actor')(batch['next_observations'])
-        # next_actions = next_dist.sample(seed=rng)
-
         next_qs = self.network.select('target_critic')(batch['next_observations'], next_actions)
         if self.config['min_q']:
             next_q = jnp.min(next_qs, axis=0)
@@ -121,7 +118,7 @@ class FQLAgent(flax.struct.PyTreeNode):
         actions = batch['actions']
 
         rng, noise_rng, time_rng = jax.random.split(rng, 3)
-        noises = jax.random.normal(noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
+        noises = jax.random.normal(noise_rng, shape=actions.shape, dtype=actions.dtype)
         times = jax.random.uniform(time_rng, shape=(batch_size, ))
         path_sample = self.cond_prob_path(x_0=noises, x_1=actions, t=times)
         vf_pred = self.network.select('actor_vf')(
@@ -130,7 +127,7 @@ class FQLAgent(flax.struct.PyTreeNode):
             observations,
             params=grad_params,
         )
-        flow_matching_loss = jnp.pow(vf_pred - path_sample.dx_t[None], 2).mean()
+        flow_matching_loss = jnp.square(vf_pred - path_sample.dx_t[None]).mean()
 
         return flow_matching_loss, {
             'flow_matching_loss': flow_matching_loss,
@@ -372,8 +369,7 @@ class FQLAgent(flax.struct.PyTreeNode):
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
-        flow_matching_loss, flow_matching_info = self.flow_matching_loss(
-            batch, grad_params, rng)
+        flow_matching_loss, flow_matching_info = self.flow_matching_loss(batch, grad_params, rng)
         for k, v in flow_matching_info.items():
             info[f'flow_matching/{k}'] = v
 
@@ -435,9 +431,9 @@ class FQLAgent(flax.struct.PyTreeNode):
             observations = jnp.expand_dims(observations, axis=0)
         action_dim = self.network.model_def.modules['actor'].output_dim
 
-        rng, noise_rng = jax.random.split(seed)
+        seed, noise_seed = jax.random.split(seed)
         noises = jax.random.normal(
-            noise_rng, shape=(observations.shape[0], action_dim), dtype=observations.dtype)
+            noise_seed, shape=(observations.shape[0], action_dim), dtype=observations.dtype)
         actions = self.network.select('actor')(noises, observations)
         actions = actions.squeeze()
         actions = jnp.clip(actions, -1, 1)
