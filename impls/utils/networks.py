@@ -850,12 +850,12 @@ class GCFMBilinearValue(nn.Module):
 
         if self.network_type == 'mlp':
             self.phi = network_module(
-                (*self.hidden_dims, self.latent_dim * self.output_dim),
+                (*self.hidden_dims, self.latent_dim),
                 activate_final=False,
                 layer_norm=self.layer_norm
             )
             self.psi = network_module(
-                (*self.hidden_dims, self.latent_dim),
+                (*self.hidden_dims, self.latent_dim * self.output_dim),
                 activate_final=False,
                 layer_norm=self.layer_norm
             )
@@ -870,33 +870,6 @@ class GCFMBilinearValue(nn.Module):
             goals: Goals (optional).
             actions: Actions (optional).
         """
-
-        # if self.state_encoder is not None:
-        #     observations = self.state_encoder(observations)
-        # if self.goal_encoder is not None:
-        #     goals = self.goal_encoder(goals)
-        #
-        # if actions is None:
-        #     phi_inputs = observations
-        # else:
-        #     phi_inputs = jnp.concatenate([observations, actions], axis=-1)
-        #
-        # phi = self.phi(phi_inputs)
-        # psi = self.psi(goals)
-        #
-        # # v = (phi * psi / jnp.sqrt(self.latent_dim)).sum(axis=-1)
-        # if len(phi.shape) == 2:  # Non-ensemble.
-        #     v = jnp.einsum('ik,jk->ij', phi, psi) / jnp.sqrt(self.latent_dim)
-        # else:
-        #     v = jnp.einsum('eik,ejk->eij', phi, psi) / jnp.sqrt(self.latent_dim)
-        #
-        # if self.value_exp:
-        #     v = jnp.exp(v)
-        #
-        # if info:
-        #     return v, phi, psi
-        # else:
-        #     return v
 
         if self.goal_encoder is not None:
             goals = self.goal_encoder(goals)
@@ -916,10 +889,16 @@ class GCFMBilinearValue(nn.Module):
         #     jnp.concatenate([inputs, conds], axis=-1),
         #     inputs
         # )
-        phi = self.phi(goals).reshape(
-            [self.num_ensembles, -1, self.output_dim, self.latent_dim])
-        psi = self.psi(conds)
-
-        output = jnp.einsum('eilk,ejk->eijl', phi, psi) / jnp.sqrt(self.latent_dim)
+        # phi = self.phi(goals).reshape(
+        #     [self.num_ensembles, -1, self.output_dim, self.latent_dim])
+        # psi = self.psi(conds)
+        phi = self.phi(conds)
+        psi = self.psi(goals)
+        if self.num_ensembles > 1:
+            psi = psi.reshape([self.num_ensembles, -1, self.latent_dim, self.output_dim])
+            output = jnp.einsum('eik,ejkl->eijl', phi, psi) / jnp.sqrt(self.latent_dim)
+        else:
+            psi = psi.reshape([-1, self.latent_dim, self.output_dim])
+            output = jnp.einsum('ik,jkl->ijl', phi, psi) / jnp.sqrt(self.latent_dim)
 
         return output

@@ -66,7 +66,7 @@ class FQLAgent(flax.struct.PyTreeNode):
             observations,
             params=grad_params,
         )
-        flow_matching_loss = jnp.square(vf_pred - path_sample.dx_t[None]).mean()
+        flow_matching_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
 
         return flow_matching_loss, {
             'flow_matching_loss': flow_matching_loss,
@@ -191,30 +191,6 @@ class FQLAgent(flax.struct.PyTreeNode):
         self.target_update(new_network, 'critic')
 
         return self.replace(network=new_network, rng=new_rng), info
-
-    # @jax.jit
-    # def sample_actions(
-    #     self,
-    #     observations,
-    #     seed=None,
-    #     temperature=1.0,
-    # ):
-    #     """Sample actions from the one-step policy."""
-    #     action_seed, noise_seed = jax.random.split(seed)
-    #     noises = jax.random.normal(
-    #         action_seed,
-    #         (
-    #             *observations.shape[: -len(self.config['ob_dims'])],
-    #             self.config['action_dim'],
-    #         ),
-    #     )
-    #     vels = self.network.select('actor_onestep_flow')(observations, noises)
-    #     if self.config['predict_delta']:
-    #         actions = noises + vels
-    #     else:
-    #         actions = vels
-    #     actions = jnp.clip(actions, -1, 1)
-    #     return actions
 
     @jax.jit
     def sample_actions(
