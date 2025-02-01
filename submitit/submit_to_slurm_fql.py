@@ -24,7 +24,7 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="fql",
-        slurm_time=int(8 * 60),  # minute
+        slurm_time=int(6 * 60),  # minute
         slurm_partition=partition,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
@@ -34,22 +34,19 @@ def main():
         slurm_stderr_to_stdout=True,
     )
 
-    # sfbc hyperparameters: eval_temperature, eval_task_id, const_std, num_flow_steps, num_candidates, distill_type
-    # awr hyperparameters: eval_temperature, eval_task_id, alpha, const_std, num_flow_steps, distill_type
-    # ddpgbc hyperparameters: eval_temperature, eval_task_id, alpha, const_std, num_flow_steps, num_candidates, distill_type
-    # pgbc hyperparameters: eval_temperature, eval_task_id, alpha, const_std, num_flow_steps, distill_type
+    # ddpgbc hyperparameters: discount, alpha, num_flow_steps, actor_layer_norm, vf_q_loss, normalize_q_loss
     with executor.batch():  # job array
         for env_name in ["antmaze-large-navigate-singletask-v0",
-                         "antmaze-giant-navigate-singletask-v0",
-                         "humanoidmaze-medium-navigate-singletask-v0"]:
-            for actor_loss in ["ddpgbc"]:
-                for eval_temperature in [0.0]:
-                    for eval_task_id in [1]:
-                        for alpha in [300.0, 30.0, 3.0]:
-                            for num_flow_steps in [10, 20]:
-                                for num_candidates in [-1]:
+                         "humanoidmaze-medium-navigate-singletask-v0",
+                         "antsoccer-arena-navigate-singletask-v0"]:
+            for discount in [0.995]:
+                for alpha in [10]:
+                    for num_flow_steps in [10]:
+                        for actor_layer_norm in [True, False]:
+                            for vf_q_loss in [True, False]:
+                                for normalize_q_loss in [True, False]:
                                     for seed in [0, 1]:
-                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_eval_task_id={eval_task_id}_alpha={alpha}_num_flow_steps={num_flow_steps}_num_candidates={num_candidates}"
+                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_alpha={alpha}_num_flow_steps={num_flow_steps}_actor_layer_norm={actor_layer_norm}_vf_q_loss={vf_q_loss}_normalize_q_loss={normalize_q_loss}"
                                         log_dir = os.path.expanduser(
                                             f"{log_root_dir}/exp_logs/ogbench_logs/fql/{exp_name}/{seed}")
 
@@ -65,12 +62,12 @@ def main():
                                             conda activate ogbench;
                                             which python;
                                             echo $CONDA_PREFIX;
-
+    
                                             echo job_id: $SLURM_ARRAY_JOB_ID;
                                             echo task_id: $SLURM_ARRAY_TASK_ID;
                                             squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
                                             echo seed: {seed};
-
+    
                                             export PROJECT_DIR=$PWD;
                                             export PYTHONPATH=$HOME/research/ogbench/impls;
                                             export PATH="$PATH":"$CONDA_PREFIX"/bin;
@@ -79,24 +76,24 @@ def main():
                                             export PYOPENGL_PLATFORM=egl;
                                             export EGL_DEVICE_ID=0;
                                             export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
-
+    
                                             rm -rf {log_dir};
                                             mkdir -p {log_dir};
                                             python $PROJECT_DIR/impls/main_rl.py \
                                                 --enable_wandb=1 \
                                                 --env_name={env_name} \
                                                 --eval_episodes=50 \
-                                                --eval_on_cpu=0 \
-                                                --eval_temperature={eval_temperature} \
                                                 --agent=impls/agents/fql.py \
-                                                --agent.actor_loss={actor_loss} \
+                                                --agent.discount={discount} \
                                                 --agent.alpha={alpha} \
                                                 --agent.num_flow_steps={num_flow_steps} \
-                                                --agent.num_candidates={num_candidates} \
+                                                --agent.actor_layer_norm={actor_layer_norm} \
+                                                --agent.vf_q_loss={vf_q_loss} \
+                                                --agent.normalize_q_loss={normalize_q_loss} \
                                                 --seed={seed} \
                                                 --save_dir={log_dir} \
                                             2>&1 | tee {log_dir}/stream.log;
-
+    
                                             export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
                                             echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
                                             echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";

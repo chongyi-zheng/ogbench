@@ -58,6 +58,8 @@ class MLP(nn.Module):
                 x = self.activations(x)
                 if self.layer_norm:
                     x = nn.LayerNorm()(x)
+            if i == len(self.hidden_dims) - 2:
+                self.sow('intermediates', 'feature', x)
         return x
 
 
@@ -337,7 +339,7 @@ class GCValue(nn.Module):
     network_type: str = 'mlp'
     num_residual_blocks: int = 1
     layer_norm: bool = True
-    ensemble: bool = True
+    num_ensembles: int = 1
     gc_encoder: nn.Module = None
 
     def setup(self):
@@ -346,8 +348,8 @@ class GCValue(nn.Module):
         elif self.network_type == 'simba':
             network_module = SimBaMLP
 
-        if self.ensemble:
-            network_module = ensemblize(network_module, 2)
+        if self.num_ensembles > 1:
+            network_module = ensemblize(network_module,  self.num_ensembles)
 
         if self.network_type == 'mlp':
             value_net = network_module(
@@ -659,7 +661,8 @@ class GCFMVectorField(nn.Module):
         else:
             raise NotImplementedError
 
-        network_module = ensemblize(network_module, self.num_ensembles)
+        if self.num_ensembles > 1:
+            network_module = ensemblize(network_module, self.num_ensembles)
 
         if self.network_type == 'mlp':
             # time_net = MLP(
@@ -685,7 +688,7 @@ class GCFMVectorField(nn.Module):
         else:
             raise NotImplementedError
 
-        self.time_embedding = SinusoidalPosEmb(emb_dim=2 * self.vector_dim)
+        # self.time_embedding = SinusoidalPosEmb(emb_dim=2 * self.vector_dim)
         # self.time_net = time_net
         # self.cond_net = cond_net
         # self.proj_net = proj_net
@@ -713,8 +716,10 @@ class GCFMVectorField(nn.Module):
         if actions is not None:
             # This will be all nans if both observations and actions are all nan
             conds = jnp.concatenate([conds, actions], axis=-1)
-        
-        times = self.time_embedding(times)
+
+        if len(times.shape) == 1:
+            times = jnp.expand_dims(times, axis=-1)
+        # times = self.time_embedding(times)
         # h = self.proj_net(noisy_goals) + self.time_net(times)
         # h = jax.lax.select(
         #     jnp.logical_not(jnp.all(jnp.isnan(conds))),
@@ -759,7 +764,8 @@ class GCFMValue(nn.Module):
         else:
             raise NotImplementedError
 
-        network_module = ensemblize(network_module, self.num_ensembles)
+        if self.num_ensembles > 1:
+            network_module = ensemblize(network_module, self.num_ensembles)
 
         if self.network_type == 'mlp':
             value_net = network_module(

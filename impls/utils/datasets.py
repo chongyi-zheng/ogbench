@@ -34,13 +34,7 @@ def batched_random_crop(imgs, crop_froms, padding):
 
 
 class Dataset(FrozenDict):
-    """Dataset class.
-
-    This class supports both regular datasets (i.e., storing both observations and next_observations) and
-    compact datasets (i.e., storing only observations). It assumes 'observations' is always present in the keys. If
-    'next_observations' is not present, it will be inferred from 'observations' by shifting the indices by 1. In this
-    case, set 'valids' appropriately to mask out the last state of each trajectory.
-    """
+    """Dataset class."""
 
     @classmethod
     def create(cls, freeze=True, **fields):
@@ -59,30 +53,63 @@ class Dataset(FrozenDict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.size = get_size(self._dict)
-        if 'valids' in self._dict:
-            (self.valid_idxs,) = np.nonzero(self['valids'] > 0)
+        self.frame_stack = None  # Number of frames to stack; set outside the class.
+        self.p_aug = None  # Image augmentation probability; set outside the class.
+        self.return_next_actions = False  # Whether to additionally return next actions; set outside the class.
+
+        # Compute terminal and initial locations.
+        self.terminal_locs = np.nonzero(self['terminals'] > 0)[0]
+        self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
 
     def get_random_idxs(self, num_idxs):
         """Return `num_idxs` random indices."""
-        if 'valids' in self._dict:
-            return self.valid_idxs[np.random.randint(len(self.valid_idxs), size=num_idxs)]
-        else:
-            return np.random.randint(self.size, size=num_idxs)
+        return np.random.randint(self.size, size=num_idxs)
 
     def sample(self, batch_size: int, idxs=None):
         """Sample a batch of transitions."""
         if idxs is None:
             idxs = self.get_random_idxs(batch_size)
-        return self.get_subset(idxs)
+        batch = self.get_subset(idxs)
+        if self.frame_stack is not None:
+            # Stack frames.
+            initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
+            obs = []  # Will be [ob[t - frame_stack + 1], ..., ob[t]].
+            next_obs = []  # Will be [ob[t - frame_stack + 2], ..., ob[t], next_ob[t]].
+            for i in reversed(range(self.frame_stack)):
+                # Use the initial state if the index is out of bounds.
+                cur_idxs = np.maximum(idxs - i, initial_state_idxs)
+                obs.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs], self['observations']))
+                if i != self.frame_stack - 1:
+                    next_obs.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs], self['observations']))
+            next_obs.append(jax.tree_util.tree_map(lambda arr: arr[idxs], self['next_observations']))
+
+            batch['observations'] = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *obs)
+            batch['next_observations'] = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *next_obs)
+        if self.p_aug is not None:
+            # Apply random-crop image augmentation.
+            if np.random.rand() < self.p_aug:
+                self.augment(batch, ['observations', 'next_observations'])
+        return batch
 
     def get_subset(self, idxs):
         """Return a subset of the dataset given the indices."""
         result = jax.tree_util.tree_map(lambda arr: arr[idxs], self._dict)
-        if 'next_observations' not in result:
-            result['next_observations'] = self._dict['observations'][np.minimum(idxs + 1, self.size - 1)]
-        if 'next_actions' not in result:
+        if self.return_next_actions:
+            # WARNING: This is incorrect at the end of the trajectory. Use with caution.
             result['next_actions'] = self._dict['actions'][np.minimum(idxs + 1, self.size - 1)]
         return result
+
+    def augment(self, batch, keys):
+        """Apply image augmentation to the given keys."""
+        padding = 3
+        batch_size = len(batch[keys[0]])
+        crop_froms = np.random.randint(0, 2 * padding + 1, (batch_size, 2))
+        crop_froms = np.concatenate([crop_froms, np.zeros((batch_size, 1), dtype=np.int64)], axis=1)
+        for key in keys:
+            batch[key] = jax.tree_util.tree_map(
+                lambda arr: np.array(batched_random_crop(arr, crop_froms, padding)) if len(arr.shape) == 4 else arr,
+                batch[key],
+            )
 
 
 class ReplayBuffer(Dataset):
