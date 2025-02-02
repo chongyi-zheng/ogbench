@@ -37,15 +37,15 @@ def main():
     # ddpgbc hyperparameters: discount, alpha, const_std, num_flow_steps, q_agg, critic_layer_norm, distill_type
     with executor.batch():  # job array
         for env_name in [
-            # "antmaze-large-navigate-singletask-v0",
-            "humanoidmaze-medium-navigate-singletask-v0",
+            "antmaze-large-navigate-singletask-v0",
+            # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
         ]:
-            for discount in [0.995]:
-                for alpha in [30]:
+            for discount in [0.99]:
+                for alpha in [0.03, 0.003, 0.3, 3, 30]:
                     for const_std in [True, False]:
-                        for num_flow_steps in [10]:
-                            for q_agg in ["mean"]:
+                        for num_flow_steps in [10, 20]:
+                            for q_agg in ["min"]:
                                 for critic_layer_norm in [True, False]:
                                     for distill_type in ['none', 'fwd_int']:
                                         for seed in [0, 1]:

@@ -8,7 +8,7 @@ import ml_collections
 import optax
 from utils.encoders import encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, GCDiscreteActor, GCFMVectorField, GCFMBilinearValue, GCValue
+from utils.networks import GCActor, GCDiscreteActor, GCFMBilinearVectorField, GCFMBilinearValue, GCValue
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
@@ -55,6 +55,7 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             actions=actions,
             params=grad_params,
         )
+        next_vf_pred = jax.vmap(jnp.diag, -1, -1)(next_vf_pred)
         next_cfm_loss = jnp.square(next_vf_pred - next_path_sample.dx_t).mean()
 
         # sample next actions
@@ -72,7 +73,6 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
         if self.config['distill_type'] == 'fwd_int':
             future_goals = future_goal_noises[None, None, :] + self.network.select('target_critic')(
                 future_goal_noises, next_observations, actions=next_actions)
-            future_goals = jnp.diagonal(future_goals, axis1=1, axis2=2).transpose([0, 2, 1])
             if self.config['q_agg'] == 'min':
                 future_goals = future_goals.min(axis=0)
             else:
@@ -83,7 +83,8 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
                 actions=next_actions,
                 use_target_network=True
             )
-            future_goals = jax.lax.stop_gradient(future_goals)
+        future_goals = jax.lax.stop_gradient(future_goals)
+        future_goals = jax.vmap(jnp.diag, -1, -1)(future_goals)
 
         rng, future_time_rng, future_noise_rng = jax.random.split(rng, 3)
         future_times = jax.random.uniform(future_time_rng, shape=(batch_size,))
@@ -96,6 +97,7 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             actions=actions,
             params=grad_params,
         )
+        future_vf_pred = jax.vmap(jnp.diag, -1, -1)(future_vf_pred)
         future_cfm_loss = jnp.square(future_vf_pred - future_path_sample.dx_t).mean()
 
         cfm_loss = (1 - self.config['discount']) * next_cfm_loss + self.config['discount'] * future_cfm_loss
@@ -111,7 +113,7 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
 
             shortcut_goal_preds = shortcut_noises[None, None, :] + self.network.select('critic')(
                 shortcut_noises, observations, actions=actions, params=grad_params)
-            shortcut_goal_preds = jnp.diagonal(shortcut_goal_preds, axis1=1, axis2=2).transpose([0, 2, 1])
+            # shortcut_goal_preds = jax.vmap(jax.vmap(jnp.diag, -1, -1), 0, 0)(shortcut_goal_preds)
             distill_loss = jnp.square(shortcut_goal_preds - sampled_goals[None]).mean()
         else:
             distill_loss = 0.0
@@ -187,7 +189,7 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
         else:
             module_name = 'critic_vf'
 
-        noisy_goals = noises
+        noisy_goals = jnp.repeat(noises[None], noises.shape[0], axis=0)
         num_flow_steps = self.config['num_flow_steps']
         step_size = 1.0 / num_flow_steps
 
@@ -197,6 +199,8 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             i: current step index
             """
             (noisy_goals, ) = carry
+
+            noisy_goals = jax.vmap(jnp.diag, -1, -1)(noisy_goals)
 
             # Time for this iteration
             times = jnp.full(noisy_goals.shape[:-1], i * step_size)
@@ -209,7 +213,7 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             #     new_noisy_goals = jnp.min(noisy_goals[None] + vf * step_size, axis=0)
             # else:
             #     new_noisy_goals = jnp.mean(noisy_goals[None] + vf * step_size, axis=0)
-            new_noisy_goals = noisy_goals + vf * step_size
+            new_noisy_goals = noisy_goals[None] + vf * step_size
 
             # Return updated carry and scan output
             return (new_noisy_goals, ), None
@@ -346,8 +350,9 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
                 num_ensembles=2,
                 state_encoder=encoders.get('critic'),
             )
-            critic_vf_def = GCFMVectorField(
+            critic_vf_def = GCFMBilinearVectorField(
                 vector_dim=ex_goals.shape[-1],
+                latent_dim=config['latent_dim'],
                 hidden_dims=config['value_hidden_dims'],
                 layer_norm=config['critic_layer_norm'],
                 num_ensembles=1,
@@ -422,7 +427,7 @@ def get_config():
             # Agent hyperparameters.
             agent_name='td_fmrl',  # Agent name.
             lr=3e-4,  # Learning rate.
-            batch_size=1024,  # Batch size.
+            batch_size=256,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             reward_hidden_dims=(512, 512, 512, 512),  # Reward network hidden dimensions.
@@ -432,7 +437,6 @@ def get_config():
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
             q_agg='mean',  # Aggregation method for target Q values.
-            vf_q_loss=False,  # Whether to use vector fields to compute Q in the Q loss.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
