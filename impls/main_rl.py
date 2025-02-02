@@ -14,7 +14,7 @@ from ml_collections import config_flags
 
 from agents import agents
 from utils.env_utils import make_env_and_datasets
-from utils.datasets import Dataset, ReplayBuffer
+from utils.datasets import GCDataset, Dataset, ReplayBuffer
 from utils.evaluation import evaluate, flatten
 from utils.flax_utils import restore_agent, save_agent
 from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb
@@ -26,6 +26,7 @@ flags.DEFINE_string('wandb_run_group', 'debug', 'Run group.')
 flags.DEFINE_string('wandb_mode', 'offline', 'Wandb mode.')
 flags.DEFINE_integer('seed', 0, 'Random seed.')
 flags.DEFINE_string('env_name', 'cube-double-play-singletask-v0', 'Environment (dataset) name.')
+flags.DEFINE_string('dataset_class', 'Dataset', 'Dataset class name.')
 flags.DEFINE_string('save_dir', 'exp/', 'Save directory.')
 flags.DEFINE_string('restore_path', None, 'Restore path.')
 flags.DEFINE_integer('restore_epoch', None, 'Restore epoch.')
@@ -94,6 +95,10 @@ def main(_):
             dataset.frame_stack = FLAGS.frame_stack
             if config['agent_name'] == 'rebrac':
                 dataset.return_next_actions = True
+    if FLAGS.dataset_class == 'GCDataset':
+        config['p_aug'] = FLAGS.p_aug
+        config['frame_stack'] = FLAGS.frame_stack
+        train_dataset = GCDataset(train_dataset, config)
 
     # Create agent.
     example_batch = train_dataset.sample(1)

@@ -292,7 +292,8 @@ class GCDataset:
         batch['actor_goals'] = self.get_observations(actor_goal_idxs)
         successes = (idxs == value_goal_idxs).astype(float)
         batch['masks'] = 1.0 - successes
-        # batch['rewards'] = successes - (1.0 if self.config['gc_negative'] else 0.0)
+        if self.config['relabel_reward']:
+            batch['rewards'] = successes - (1.0 if self.config['gc_negative'] else 0.0)
 
         final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, idxs)]
         final_state_dists = final_state_idxs - idxs
