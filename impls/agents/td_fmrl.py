@@ -81,7 +81,7 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             future_goals = self.compute_fwd_flow_samples(
                 future_goal_noises, next_observations,
                 actions=next_actions,
-                use_target_network=True
+                use_target_network=self.config['use_target_critic']
             )
         future_goals = jax.lax.stop_gradient(future_goals)
         future_goals = jax.vmap(jnp.diag, -1, -1)(future_goals)
@@ -436,6 +436,7 @@ def get_config():
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
+            use_target_critic=True,  # Whether to use the target network to compute the future goals.
             q_agg='mean',  # Aggregation method for target Q values.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
