@@ -49,7 +49,10 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
         dataset,
         epsilon=1e-8,
     ):
-        observations = dataset.dataset['observations']
+        if hasattr(dataset, 'dataset'):
+            observations = dataset.dataset['observations']
+        else:
+            observations = dataset['observations']
         mean = np.mean(observations, axis=0)
         var = np.var(observations, axis=0)
 
