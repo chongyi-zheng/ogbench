@@ -83,7 +83,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
         assert not self.config['discrete']
 
         observations = batch['observations']
-        rewards = batch['rewards']
+        # rewards = batch['rewards']
 
         dist = self.network.select('actor')(batch['observations'], params=grad_params)
         if self.config['const_std']:

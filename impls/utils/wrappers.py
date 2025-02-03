@@ -30,8 +30,10 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
     def update(self, batch):
         batch['observations'] = self._normalize(batch['observations'])
         batch['next_observations'] = self._normalize(batch['next_observations'])
-        batch['value_goals'] = self._normalize(batch['value_goals'])
-        batch['actor_goals'] = self._normalize(batch['actor_goals'])
+        if 'value_goals' in batch:
+            batch['value_goals'] = self._normalize(batch['value_goals'])
+        if 'actor_goals' in batch:
+            batch['actor_goals'] = self._normalize(batch['actor_goals'])
         agent, info = self.agent.update(batch)
 
         return self.replace(agent=agent), info

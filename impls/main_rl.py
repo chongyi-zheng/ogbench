@@ -14,6 +14,7 @@ from ml_collections import config_flags
 
 from agents import agents
 from utils.env_utils import make_env_and_datasets
+from utils.wrappers import OfflineObservationNormalizer
 from utils.datasets import GCDataset, Dataset, ReplayBuffer
 from utils.evaluation import evaluate, flatten
 from utils.flax_utils import restore_agent, save_agent
@@ -42,6 +43,7 @@ flags.DEFINE_integer('eval_episodes', 50, 'Number of evaluation episodes.')
 flags.DEFINE_integer('video_episodes', 0, 'Number of video episodes for each task.')
 flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
 
+flags.DEFINE_integer('normalize_observation', 0, 'Whether to normalize observations.')
 flags.DEFINE_float('p_aug', None, 'Probability of applying image augmentation.')
 flags.DEFINE_integer('frame_stack', None, 'Number of frames to stack.')
 flags.DEFINE_integer('balanced_sampling', 0, 'Whether to use balanced sampling for online fine-tuning.')
@@ -116,6 +118,12 @@ def main(_):
         example_batch['actions'],
         config,
     )
+
+    if FLAGS.normalize_observation:
+        agent = OfflineObservationNormalizer.create(
+            agent,
+            train_dataset
+        )
 
     # Restore agent.
     if FLAGS.restore_path is not None:
