@@ -53,7 +53,7 @@ def main():
                                 for actor_layer_norm in [False]:
                                     for vf_q_loss in [True, False]:
                                         for normalize_q_loss in [False]:
-                                            for seed in [0, 1]:
+                                            for seed in [10, 20]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_normalize_observation={normalize_observation}_alpha={alpha}_num_flow_steps={num_flow_steps}_q_agg={q_agg}_actor_layer_norm={actor_layer_norm}_vf_q_loss={vf_q_loss}_normalize_q_loss={normalize_q_loss}"
                                                 log_dir = os.path.expanduser(
                                                     f"{log_root_dir}/exp_logs/ogbench_logs/fql/{exp_name}/{seed}")
