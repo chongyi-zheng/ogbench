@@ -99,6 +99,9 @@ def main(_):
         config['p_aug'] = FLAGS.p_aug
         config['frame_stack'] = FLAGS.frame_stack
         train_dataset = GCDataset(train_dataset, config)
+        if val_dataset is not None:
+            val_dataset = GCDataset(val_dataset, config)
+        assert FLAGS.online_steps == 0, "Online fine-tuning with goal-conditioned dataset is currently not supported."
 
     # Create agent.
     example_batch = train_dataset.sample(1)
