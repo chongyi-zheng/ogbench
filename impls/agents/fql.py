@@ -24,13 +24,18 @@ class FQLAgent(flax.struct.PyTreeNode):
     def critic_loss(self, batch, grad_params, rng):
         """Compute the critic loss."""
 
-        rng, noise_rng = jax.random.split(rng)
-        noises = jax.random.normal(noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
-        next_actions = noises + self.network.select('actor')(noises, batch['next_observations'])
+        rng, next_noise_rng = jax.random.split(rng)
+        next_noises = jax.random.normal(next_noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
+        next_action_vfs = self.network.select('actor')(next_noises, batch['next_observations'])
+        next_actions = next_noises + next_action_vfs
         next_actions = jnp.clip(next_actions, -1, 1)
 
-        next_qs = self.network.select('target_critic')(
-            batch['next_observations'], actions=next_actions)
+        if self.config['vf_q_loss']:
+            next_qs = self.network.select('target_critic')(
+                batch['next_observations'], actions=next_action_vfs)
+        else:
+            next_qs = self.network.select('target_critic')(
+                batch['next_observations'], actions=next_actions)
         if self.config['q_agg'] == 'mean':
             next_q = next_qs.mean(axis=0)
         else:
@@ -38,8 +43,15 @@ class FQLAgent(flax.struct.PyTreeNode):
 
         target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
 
-        q = self.network.select('critic')(
-            batch['observations'], actions=batch['actions'], params=grad_params)
+        if self.config['vf_q_loss']:
+            q = self.network.select('critic')(
+                batch['observations'], actions=batch['actions'], params=grad_params)
+        else:
+            rng, noise_rng = jax.random.split(rng)
+            noises = jax.random.normal(noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
+            action_vfs = self.network.select('actor')(noises, batch['observations'])
+            q = self.network.select('critic')(
+                batch['observations'], action_vfs, params=grad_params)
         critic_loss = jnp.square(q - target_q).mean()
 
         return critic_loss, {

@@ -105,7 +105,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             sampled_goals = self.compute_fwd_flow_samples(noises, observations, actions=q_actions)
 
         goal_rewards = self.network.select('reward')(sampled_goals)
-        q = (1 - self.config['discount']) * rewards + self.config['discount'] * goal_rewards.mean(axis=-1)
+        q = goal_rewards.mean(axis=-1)
 
         # Normalize Q values by the absolute mean to make the loss scale invariant.
         # q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)

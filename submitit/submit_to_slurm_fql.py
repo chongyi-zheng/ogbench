@@ -11,13 +11,16 @@ def main():
     if cluster_name == 'adroit':
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
+        account = None
     elif cluster_name == 'della':
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
+        account = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
-        partition = 'all'
+        partition = None
+        account = 'pnlp'
     else:
         raise NotImplementedError
 
@@ -26,6 +29,7 @@ def main():
         slurm_name="fql",
         slurm_time=int(6 * 60),  # minute
         slurm_partition=partition,
+        slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
@@ -43,11 +47,11 @@ def main():
         ]:
             for discount in [0.995]:
                 for alpha in [30]:
-                    for num_flow_steps in [10]:
+                    for num_flow_steps in [10, 20]:
                         for q_agg in ["mean"]:
-                            for actor_layer_norm in [True, False]:
-                                for vf_q_loss in [True, False]:
-                                    for normalize_q_loss in [True, False]:
+                            for actor_layer_norm in [False]:
+                                for vf_q_loss in [False]:
+                                    for normalize_q_loss in [False]:
                                         for seed in [0, 1]:
                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_alpha={alpha}_num_flow_steps={num_flow_steps}_q_agg={q_agg}_actor_layer_norm={actor_layer_norm}_vf_q_loss={vf_q_loss}_normalize_q_loss={normalize_q_loss}"
                                             log_dir = os.path.expanduser(

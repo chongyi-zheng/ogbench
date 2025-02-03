@@ -11,13 +11,16 @@ def main():
     if cluster_name == 'adroit':
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
+        account = None
     elif cluster_name == 'della':
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
+        account = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
-        partition = 'all'
+        partition = None
+        account = 'pnlp'
     else:
         raise NotImplementedError
 
@@ -26,6 +29,7 @@ def main():
         slurm_name="fmrl",
         slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
+        slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
