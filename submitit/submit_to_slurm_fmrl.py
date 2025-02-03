@@ -89,6 +89,7 @@ def main():
                                                     --enable_wandb=1 \
                                                     --env_name={env_name} \
                                                     --eval_episodes=50 \
+                                                    --dataset_class=GCDataset \
                                                     --agent=impls/agents/fmrl.py \
                                                     --agent.discount={discount} \
                                                     --agent.alpha={alpha} \
