@@ -25,7 +25,10 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
         observations = self._normalize(observations)
         goals = self._normalize(goals)
 
-        return self.agent.sample_actions(observations, goals, seed, temperature)
+        try:
+            return self.agent.sample_actions(observations, goals, seed=seed, temperature=temperature)
+        except TypeError as e:
+            return self.agent.sample_actions(observations, seed=seed, temperature=temperature)
 
     def update(self, batch):
         batch['observations'] = self._normalize(batch['observations'])
