@@ -861,27 +861,18 @@ class GCFMValue(nn.Module):
             goals = self.goal_encoder(goals)
 
         if self.state_encoder is not None:
-            # This will be all nans if observations are all nan
             observations = self.state_encoder(observations)
 
-        # TODO (chongyi): figure out the case when observations are all zeros.
         conds = observations
         if commanded_goals is not None:
             conds = jnp.concatenate([conds, commanded_goals], axis=-1)
         if actions is not None:
-            # This will be all nans if both observations and actions are all nan
             conds = jnp.concatenate([conds, actions], axis=-1)
         inputs = jnp.concatenate([goals, conds], axis=-1)
-        # inputs = jax.lax.select(
-        #     jnp.logical_not(jnp.all(jnp.isnan(conds))),
-        #     jnp.concatenate([inputs, conds], axis=-1),
-        #     inputs
-        # )
 
-        if self.output_dim == 1 and self.activate_final:
-            output = -self.value_net(inputs).squeeze(-1)
+        if self.output_dim == 1:
+            output = self.value_net(inputs).squeeze(-1)
         else:
-            assert (self.output_dim != 1) and (not self.activate_final)
             output = self.value_net(inputs)
 
         return output

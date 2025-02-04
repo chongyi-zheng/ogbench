@@ -25,6 +25,7 @@ flags.DEFINE_string('wandb_run_group', 'debug', 'Run group.')
 flags.DEFINE_string('wandb_mode', 'offline', 'Wandb mode.')
 flags.DEFINE_integer('seed', 0, 'Random seed.')
 flags.DEFINE_string('env_name', 'antmaze-large-navigate-v0', 'Environment (dataset) name.')
+flags.DEFINE_string('dataset_class', 'Dataset', 'Dataset class name.')
 flags.DEFINE_string('save_dir', 'exp/', 'Save directory.')
 flags.DEFINE_string('restore_path', None, 'Restore path.')
 flags.DEFINE_integer('restore_epoch', None, 'Restore epoch.')
@@ -41,6 +42,10 @@ flags.DEFINE_float('eval_gaussian', None, 'Action Gaussian noise for evaluation.
 flags.DEFINE_integer('video_episodes', 1, 'Number of video episodes for each task.')
 flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
 flags.DEFINE_integer('eval_on_cpu', 1, 'Whether to evaluate on CPU.')
+
+flags.DEFINE_integer('normalize_observation', 0, 'Whether to normalize observations.')
+flags.DEFINE_float('p_aug', None, 'Probability of applying image augmentation.')
+flags.DEFINE_integer('frame_stack', None, 'Number of frames to stack.')
 
 config_flags.DEFINE_config_file('agent', 'agents/gciql.py', lock_config=False)
 
@@ -62,12 +67,16 @@ def main(_):
 
     # Set up environment and dataset.
     config = FLAGS.agent
-    env, train_dataset, val_dataset = make_env_and_datasets(FLAGS.env_name, frame_stack=config['frame_stack'])
+    env, eval_env, train_dataset, val_dataset = make_env_and_datasets(
+        FLAGS.env_name, frame_stack=FLAGS.frame_stack)
 
     dataset_class = {
         'GCDataset': GCDataset,
         'HGCDataset': HGCDataset,
-    }[config['dataset_class']]
+    }[FLAGS.dataset_class]
+
+    config['p_aug'] = FLAGS.p_aug
+    config['frame_stack'] = FLAGS.frame_stack
     train_dataset = dataset_class(Dataset.create(**train_dataset), config)
     if val_dataset is not None:
         val_dataset = dataset_class(Dataset.create(**val_dataset), config)
@@ -89,7 +98,7 @@ def main(_):
         config,
     )
 
-    if hasattr(config, 'normalize_observation') and config['normalize_observation']:
+    if FLAGS.normalize_observation:
         agent = OfflineObservationNormalizer.create(
             agent,
             train_dataset
@@ -142,7 +151,7 @@ def main(_):
                 task_name = task_infos[task_id - 1]['task_name']
                 eval_info, trajs, cur_renders = evaluate_gc(
                     agent=eval_agent,
-                    env=env,
+                    env=eval_env,
                     task_id=task_id,
                     config=config,
                     num_eval_episodes=FLAGS.eval_episodes,
