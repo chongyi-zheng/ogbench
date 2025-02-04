@@ -170,13 +170,13 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
                         if action is not None:
                             action = jnp.expand_dims(action, 0)
                         vf = self.network.select('critic_vf')(
-                            noisy_goal, time, observation, action).squeeze(1)
+                            noisy_goal, time, observation, action).squeeze(0)
                 
-                        return vf.reshape(-1)
+                        return vf
                 
                     def div_func(noisy_goal, time, observation, action):
                         jac = jax.jacrev(vf_func)(noisy_goal, time, observation, action)
-                        jac = jac.reshape([noisy_goal.shape[-1], noisy_goal.shape[-1]])
+                        # jac = jac.reshape([noisy_goal.shape[-1], noisy_goal.shape[-1]])
                 
                         return jnp.trace(jac, axis1=-2, axis2=-1)
                 
@@ -184,12 +184,12 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
                         noisy_goals, times, observations, actions)
                 
                     if actions is not None:
-                        div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=1)(
+                        div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=0)(
                             noisy_goals, times, observations, actions)
                     else:
-                        div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=1)(
+                        div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=0)(
                             noisy_goals, times, observations, actions)
-                
+
                     return vf, div
 
                 vf, div = compute_exact_div(noisy_goals, times, observations, actions)
