@@ -44,14 +44,14 @@ class FQLAgent(flax.struct.PyTreeNode):
         target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
 
         if self.config['vf_q_loss']:
-            q = self.network.select('critic')(
-                batch['observations'], actions=batch['actions'], params=grad_params)
-        else:
             rng, noise_rng = jax.random.split(rng)
             noises = jax.random.normal(noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
             action_vfs = self.network.select('actor')(noises, batch['observations'])
             q = self.network.select('critic')(
                 batch['observations'], action_vfs, params=grad_params)
+        else:
+            q = self.network.select('critic')(
+                batch['observations'], actions=batch['actions'], params=grad_params)
         critic_loss = jnp.square(q - target_q).mean()
 
         return critic_loss, {
@@ -337,7 +337,7 @@ def get_config():
             # Agent hyperparameters.
             agent_name='fql',  # Agent name.
             lr=3e-4,  # Learning rate.
-            batch_size=1024,  # Batch size.
+            batch_size=256,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
