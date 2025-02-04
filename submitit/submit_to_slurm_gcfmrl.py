@@ -89,6 +89,7 @@ def main():
                                                 python $PROJECT_DIR/impls/main.py \
                                                     --enable_wandb=1 \
                                                     --env_name={env_name} \
+                                                    --dataset_class=GCDataset \
                                                     --normalize_observation={normalize_observation} \
                                                     --eval_episodes=50 \
                                                     --eval_on_cpu=0 \
