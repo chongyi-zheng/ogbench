@@ -14,7 +14,7 @@ from ml_collections import config_flags
 
 from agents import agents
 from utils.env_utils import make_env_and_datasets
-from utils.wrappers import OfflineObservationNormalizer
+from utils.wrappers import PositiveRewardShaping, OfflineObservationNormalizer
 from utils.datasets import GCDataset, Dataset, ReplayBuffer
 from utils.evaluation import evaluate, flatten
 from utils.flax_utils import restore_agent, save_agent
@@ -43,6 +43,7 @@ flags.DEFINE_integer('eval_episodes', 50, 'Number of evaluation episodes.')
 flags.DEFINE_integer('video_episodes', 0, 'Number of video episodes for each task.')
 flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
 
+flags.DEFINE_integer('pos_reward', 0, 'Whether to shape reward to positive numbers.')
 flags.DEFINE_integer('normalize_observation', 0, 'Whether to normalize observations.')
 flags.DEFINE_float('p_aug', None, 'Probability of applying image augmentation.')
 flags.DEFINE_integer('frame_stack', None, 'Number of frames to stack.')
@@ -119,6 +120,11 @@ def main(_):
         config,
     )
 
+    if FLAGS.pos_reward:
+        agent = PositiveRewardShaping.create(
+            agent,
+            train_dataset
+        )
     if FLAGS.normalize_observation:
         agent = OfflineObservationNormalizer.create(
             agent,

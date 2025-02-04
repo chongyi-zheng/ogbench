@@ -917,7 +917,8 @@ class GCFMBilinearValue(nn.Module):
         else:
             raise NotImplementedError
 
-        network_module = ensemblize(network_module, self.num_ensembles)
+        if self.num_ensembles > 1:
+            network_module = ensemblize(network_module, self.num_ensembles)
 
         if self.network_type == 'mlp':
             self.phi = network_module(

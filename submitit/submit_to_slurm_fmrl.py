@@ -51,7 +51,7 @@ def main():
             for normalize_observation in [0, 1]:
                 for discount in [0.99]:
                     for alpha in [0.03, 0.3, 3, 30]:
-                        for const_std in [True]:
+                        for const_std in [True, False]:
                             for num_flow_steps in [10]:
                                 for q_agg in ["min"]:
                                     for critic_layer_norm in [False]:

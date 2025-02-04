@@ -11,7 +11,7 @@ from utils.networks import GCActor, GCDiscreteActor, GCFMBilinearVectorField, GC
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
-class FMRLAgent(flax.struct.PyTreeNode):
+class RewardGuidedFMRLAgent(flax.struct.PyTreeNode):
     """Flow Matching RL (FMRL) agent.
     """
 
@@ -24,12 +24,12 @@ class FMRLAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
         rewards = batch['rewards']
 
-        reward_preds = self.network.select('reward')(
+        log_reward_preds = self.network.select('reward')(
             observations,
             params=grad_params,
         )
 
-        reward_loss = jnp.square(reward_preds - rewards).mean()
+        reward_loss = jnp.square(log_reward_preds - jnp.log(jnp.minimum(rewards, 1e-6))).mean()
 
         return reward_loss, {
             'reward_loss': reward_loss
@@ -37,13 +37,17 @@ class FMRLAgent(flax.struct.PyTreeNode):
 
     def critic_loss(self, batch, grad_params, rng):
         """Compute the contrastive value loss for the Q or V function."""
-        rng, time_rng, noise_rng = jax.random.split(rng, 3)
+        rng, time_rng, resampling_rng, noise_rng = jax.random.split(rng, 4)
 
         batch_size = batch['observations'].shape[0]
         observations = batch['observations']
         actions = batch['actions']
         goals = batch['value_goals']
-        
+
+        log_goal_rewards = self.network.select('reward')(goals)
+        resampled_goal_idxs = jax.random.categorical(resampling_rng, 0.5 * log_goal_rewards, axis=-1)
+        goals = goals[jnp.arange(batch_size), resampled_goal_idxs]
+
         times = jax.random.uniform(time_rng, shape=(batch_size, ))
         noises = jax.random.normal(noise_rng, shape=goals.shape)
         path_sample = self.cond_prob_path(x_0=noises, x_1=goals, t=times)
@@ -54,8 +58,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             actions=actions,
             params=grad_params,
         )
-        vf_pred = jax.vmap(jnp.diag, -1, -1)(vf_pred)
-        cfm_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
+        cfm_loss = jnp.square(vf_pred - path_sample.dx_t[None]).mean()
 
         # distillation loss
         if self.config['distill_type'] == 'fwd_int':
@@ -64,7 +67,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
             sampled_goals = self.compute_fwd_flow_samples(
                 shortcut_noises, observations, actions=actions)
 
-            shortcut_goal_preds = shortcut_noises[None, :] + self.network.select('critic')(
+            shortcut_goal_preds = shortcut_noises[None, None, :] + self.network.select('critic')(
                 shortcut_noises, observations, actions=actions, params=grad_params)
             distill_loss = jnp.square(shortcut_goal_preds - sampled_goals[None]).mean()
         else:
@@ -96,17 +99,17 @@ class FMRLAgent(flax.struct.PyTreeNode):
         rng, g_rng = jax.random.split(rng)
         noises = jax.random.normal(g_rng, shape=observations.shape, dtype=observations.dtype)
         if self.config['distill_type'] == 'fwd_int':
-            sampled_goals = noises[None, :] + self.network.select('critic')(
+            sampled_goals = noises[None, None, :] + self.network.select('critic')(
                 noises, observations, actions=q_actions)
-            # if self.config['q_agg'] == 'min':
-            #     sampled_goals = sampled_goals.min(axis=0)
-            # else:
-            #     sampled_goals = sampled_goals.mean(axis=0)
+            if self.config['q_agg'] == 'min':
+                sampled_goals = sampled_goals.min(axis=0)
+            else:
+                sampled_goals = sampled_goals.mean(axis=0)
         else:
-            sampled_goals = self.compute_fwd_flow_samples(noises, observations, actions=q_actions)
+            sampled_goals = self.compute_fwd_flow_sampels(noises, observations, actions=q_actions)
 
-        goal_rewards = self.network.select('reward')(sampled_goals)
-        q = goal_rewards.mean(axis=-1)
+        log_goal_rewards = self.network.select('reward')(sampled_goals)
+        q = jnp.exp(0.5 * log_goal_rewards).mean(axis=-1)
 
         # Normalize Q values by the absolute mean to make the loss scale invariant.
         # q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
@@ -273,7 +276,7 @@ class FMRLAgent(flax.struct.PyTreeNode):
                 latent_dim=config['latent_dim'],
                 output_dim=output_dim,
                 layer_norm=config['critic_layer_norm'],
-                num_ensembles=1,
+                num_ensembles=2,
                 state_encoder=encoders.get('critic'),
             )
             critic_vf_def = GCFMBilinearVectorField(
@@ -332,7 +335,7 @@ def get_config():
     config = ml_collections.ConfigDict(
         dict(
             # Agent hyperparameters.
-            agent_name='fmrl',  # Agent name.
+            agent_name='rg_fmrl',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
@@ -357,8 +360,8 @@ def get_config():
             value_p_curgoal=0.0,  # Probability of using the current state as the value goal.
             value_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the value goal.
             value_p_randomgoal=0.0,  # Probability of using a random state as the value goal.
-            value_geom_sample=True,  # Whether to use geometric samling for future value goals.
-            num_value_goals=1,  # Number of value goals to sample
+            value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
+            num_value_goals=32,  # Number of value goals to sample
             actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
             actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
             actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.

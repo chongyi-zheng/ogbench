@@ -270,6 +270,7 @@ class GCDataset:
             self.config['value_p_trajgoal'],
             self.config['value_p_randomgoal'],
             self.config['value_geom_sample'],
+            self.config['num_value_goals'],
         )
         actor_goal_idxs = self.sample_goals(
             idxs,
@@ -277,40 +278,35 @@ class GCDataset:
             self.config['actor_p_trajgoal'],
             self.config['actor_p_randomgoal'],
             self.config['actor_geom_sample'],
-        )
-        # Sample random goals.
-        value_random_goal_idxs = self.sample_goals(
-            idxs,
-            0.0,  # p_curgoal
-            0.0,  # p_trajgoal
-            1.0,  # p_randomgoal
-            self.config['value_geom_sample'],
+            self.config['num_actor_goals'],
         )
 
         batch['value_goals'] = self.get_observations(value_goal_idxs)
-        batch['value_random_goals'] = self.get_observations(value_random_goal_idxs)
         batch['actor_goals'] = self.get_observations(actor_goal_idxs)
-        successes = (idxs == value_goal_idxs).astype(float)
+        if self.config['num_value_goals'] > 1:
+            successes = (idxs[:, None] == value_goal_idxs).astype(float)
+        else:
+            successes = (idxs == value_goal_idxs).astype(float)
         batch['masks'] = 1.0 - successes
         if self.config['relabel_reward']:
             batch['rewards'] = successes - (1.0 if self.config['gc_negative'] else 0.0)
 
-        final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, idxs)]
-        final_state_dists = final_state_idxs - idxs
-        value_temporal_dists = value_goal_idxs - idxs
-        value_temporal_dists = np.where(
-            (0 <= value_temporal_dists) & (value_temporal_dists <= final_state_dists),
-            value_temporal_dists, np.inf
-        )
-        actor_temporal_dists = actor_goal_idxs - idxs
-        actor_temporal_dists = np.where(
-            (0 <= actor_temporal_dists) & (actor_temporal_dists <= final_state_dists),
-            actor_temporal_dists, np.inf
-        )
-        batch['value_goal_discounted_returns'] = -(
-            1 - self.config['discount'] ** value_temporal_dists) / (1 - self.config['discount'])
-        batch['actor_goal_discounted_returns'] = -(
-            1 - self.config['discount'] ** actor_temporal_dists) / (1 - self.config['discount'])
+        # final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, idxs)]
+        # final_state_dists = final_state_idxs - idxs
+        # value_temporal_dists = value_goal_idxs - idxs
+        # value_temporal_dists = np.where(
+        #     (0 <= value_temporal_dists) & (value_temporal_dists <= final_state_dists),
+        #     value_temporal_dists, np.inf
+        # )
+        # actor_temporal_dists = actor_goal_idxs - idxs
+        # actor_temporal_dists = np.where(
+        #     (0 <= actor_temporal_dists) & (actor_temporal_dists <= final_state_dists),
+        #     actor_temporal_dists, np.inf
+        # )
+        # batch['value_goal_discounted_returns'] = -(
+        #     1 - self.config['discount'] ** value_temporal_dists) / (1 - self.config['discount'])
+        # batch['actor_goal_discounted_returns'] = -(
+        #     1 - self.config['discount'] ** actor_temporal_dists) / (1 - self.config['discount'])
 
         if self.config['p_aug'] is not None and not evaluation:
             if np.random.rand() < self.config['p_aug']:
@@ -318,12 +314,16 @@ class GCDataset:
 
         return batch
 
-    def sample_goals(self, idxs, p_curgoal, p_trajgoal, p_randomgoal, geom_sample):
+    def sample_goals(self, idxs, p_curgoal, p_trajgoal, p_randomgoal, geom_sample, num_goals):
         """Sample goals for the given indices."""
         batch_size = len(idxs)
+        if num_goals > 1:
+            size = (batch_size, num_goals)
+        else:
+            size = (batch_size,)
 
         # Random goals.
-        random_goal_idxs = self.dataset.get_random_idxs(batch_size)
+        random_goal_idxs = self.dataset.get_random_idxs(size)
 
         # Goals from the same trajectory (excluding the current state, unless it is the final state).
         # initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
@@ -332,8 +332,11 @@ class GCDataset:
             # Geometric sampling.
 
             # truncated geometric sampling.
-            offsets = np.random.geometric(p=1 - self.config['discount'], size=batch_size)  # in [1, inf)
-            middle_goal_idxs = np.minimum(idxs + offsets, final_state_idxs)
+            offsets = np.random.geometric(p=1 - self.config['discount'], size=size)  # in [1, inf)
+            if num_goals > 1:
+                middle_goal_idxs = np.minimum(idxs[:, None] + offsets, final_state_idxs[:, None])
+            else:
+                middle_goal_idxs = np.minimum(idxs + offsets, final_state_idxs)
 
             # renormalized geometric sampling.
             # current_timesteps = idxs - initial_state_idxs
@@ -347,16 +350,24 @@ class GCDataset:
             # middle_goal_idxs = idxs + offsets
         else:
             # Uniform sampling.
-            distances = np.random.rand(batch_size)  # in [0, 1)
-            middle_goal_idxs = np.round(
-                (np.minimum(idxs + 1, final_state_idxs) * distances + final_state_idxs * (1 - distances))
-            ).astype(int)
+            distances = np.random.rand(*size)  # in [0, 1)
+            if num_goals > 1:
+                middle_goal_idxs = np.round(
+                    (np.minimum(idxs[:, None] + 1, final_state_idxs[:, None]) * distances + final_state_idxs[:, None] * (1 - distances))
+                ).astype(int)
+            else:
+                middle_goal_idxs = np.round(
+                    (np.minimum(idxs + 1, final_state_idxs) * distances + final_state_idxs * (1 - distances))
+                ).astype(int)
         goal_idxs = np.where(
-            np.random.rand(batch_size) < p_trajgoal / (1.0 - p_curgoal + 1e-6), middle_goal_idxs, random_goal_idxs
+            np.random.rand(*size) < p_trajgoal / (1.0 - p_curgoal + 1e-6), middle_goal_idxs, random_goal_idxs
         )
 
         # Goals at the current state.
-        goal_idxs = np.where(np.random.rand(batch_size) < p_curgoal, idxs, goal_idxs)
+        if num_goals > 1:
+            goal_idxs = np.where(np.random.rand(*size) < p_curgoal, idxs[:, None], goal_idxs)
+        else:
+            goal_idxs = np.where(np.random.rand(*size) < p_curgoal, idxs, goal_idxs)
 
         return goal_idxs
 
