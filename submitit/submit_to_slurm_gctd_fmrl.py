@@ -11,21 +11,25 @@ def main():
     if cluster_name == 'adroit':
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
+        account = None
     elif cluster_name == 'della':
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
+        account = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
-        partition = 'all'
+        partition = None
+        account = 'pnlp'
     else:
         raise NotImplementedError
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="gctd_fmrl",
-        slurm_time=int(16 * 60),  # minute
+        slurm_time=int(10 * 60),  # minute
         slurm_partition=partition,
+        slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
@@ -34,22 +38,23 @@ def main():
         slurm_stderr_to_stdout=True,
     )
 
-    # sfbc hyperparameters: eval_temperature, const_std, num_flow_steps, num_behavioral_candidates, exact_divergence, distill_likelihood
-    # awr hyperparameters: eval_temperature, alpha, const_std, num_flow_steps, exact_divergence, distill_likelihood
-    # ddpgbc hyperparameters: eval_temperature, alpha, const_std, num_flow_steps, exact_divergence, distill_likelihood
-    # pgbc hyperparameters: eval_temperature, alpha, const_std, num_flow_steps, exact_divergence, distill_likelihood
+    # ddpgbc hyperparameters: normalize_observation, alpha, const_std, num_flow_steps, exact_divergence, distill_type
     with executor.batch():  # job array
-        for env_name in ["pointmaze-medium-navigate-v0", "pointmaze-large-navigate-v0", "antmaze-large-navigate-v0"]:
-            for actor_loss in ["ddpgbc"]:
-                for eval_temperature in [0.0]:
-                    for alpha in [1.0, 0.3, 0.1, 0.03, 0.01]:
-                        for const_std in [True]:
-                            for num_flow_steps in [10]:
-                                for num_behavioral_candidates in [-1]:
-                                    for exact_divergence in [True, False]:
-                                        for distill_type in ['rev_int']:
-                                            for seed in [0, 1]:
-                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_actor_loss={actor_loss}_eval_temperature={eval_temperature}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_num_behavioral_candidates={num_behavioral_candidates}_exact_divergence={exact_divergence}_distill_type={distill_type}_normalized_q"
+        for env_name in [
+            # "pointmaze-medium-navigate-v0",
+            "pointmaze-large-navigate-v0",
+            # "antmaze-large-navigate-v0"
+        ]:
+            for normalize_observation in [1]:
+                for alpha in [3.0, 0.3, 0.03]:
+                    for const_std in [False]:
+                        for num_flow_steps in [10]:
+                            for div_type in ['exact', 'hutchinson_normal', 'hutchinson_rademacher']:
+                                for distill_type in ['none', 'rev_int', 'log_prob']:
+                                    for use_target_actor in [True, False]:
+                                        for normalize_q_loss in [False]:
+                                            for seed in [10, 20]:
+                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_normalize_observation={normalize_observation}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_div_type={div_type}_distill_type={distill_type}_use_target_actor={use_target_actor}_normalize_q_loss={normalize_q_loss}"
                                                 log_dir = os.path.expanduser(
                                                     f"{log_root_dir}/exp_logs/ogbench_logs/gctd_fmrl/{exp_name}/{seed}")
 
@@ -85,17 +90,19 @@ def main():
                                                     python $PROJECT_DIR/impls/main.py \
                                                         --enable_wandb=1 \
                                                         --env_name={env_name} \
+                                                        --dataset_class=GCDataset \
+                                                        --normalize_observation={normalize_observation} \
                                                         --eval_episodes=50 \
                                                         --eval_on_cpu=0 \
-                                                        --eval_temperature={eval_temperature} \
+                                                        --eval_temperature=0.0 \
                                                         --agent=impls/agents/gctd_fmrl.py \
-                                                        --agent.actor_loss={actor_loss} \
                                                         --agent.alpha={alpha} \
                                                         --agent.const_std={const_std} \
                                                         --agent.num_flow_steps={num_flow_steps} \
-                                                        --agent.num_behavioral_candidates={num_behavioral_candidates} \
-                                                        --agent.exact_divergence={exact_divergence} \
+                                                        --agent.div_type={div_type} \
                                                         --agent.distill_type={distill_type} \
+                                                        --agent.use_target_actor={use_target_actor} \
+                                                        --agent.normalize_q_loss={normalize_q_loss} \
                                                         --seed={seed} \
                                                         --save_dir={log_dir} \
                                                     2>&1 | tee {log_dir}/stream.log;
