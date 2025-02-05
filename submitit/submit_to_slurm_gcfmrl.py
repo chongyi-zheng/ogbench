@@ -53,7 +53,7 @@ def main():
                                 for distill_type in ['rev_int', 'log_prob']:
                                     for normalize_q_loss in [False]:
                                         for seed in [10, 20]:
-                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_fmrl_env_name={env_name}_normalize_observation={normalize_observation}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_div_type={div_type}_distill_type={distill_type}_normalize_q_loss={normalize_q_loss}"
+                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfmrl_env_name={env_name}_normalize_observation={normalize_observation}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_div_type={div_type}_distill_type={distill_type}_normalize_q_loss={normalize_q_loss}"
                                             log_dir = os.path.expanduser(
                                                 f"{log_root_dir}/exp_logs/ogbench_logs/gcfmrl/{exp_name}/{seed}")
 

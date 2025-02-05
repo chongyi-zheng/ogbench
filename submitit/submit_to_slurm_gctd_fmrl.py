@@ -50,76 +50,78 @@ def main():
                     for const_std in [False]:
                         for num_flow_steps in [10]:
                             for div_type in ['exact', 'hutchinson_normal', 'hutchinson_rademacher']:
-                                for distill_type in ['none', 'rev_int', 'log_prob']:
-                                    for use_target_actor in [True, False]:
-                                        for normalize_q_loss in [False]:
-                                            for seed in [10, 20]:
-                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_normalize_observation={normalize_observation}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_div_type={div_type}_distill_type={distill_type}_use_target_actor={use_target_actor}_normalize_q_loss={normalize_q_loss}"
-                                                log_dir = os.path.expanduser(
-                                                    f"{log_root_dir}/exp_logs/ogbench_logs/gctd_fmrl/{exp_name}/{seed}")
+                                for sample_distill_type in ['fwd_sample', 'fwd_int']:
+                                    for log_prob_distill_type in ['rev_log_prob', 'rev_int']:
+                                        for use_target_actor in [True, False]:
+                                            for normalize_q_loss in [False]:
+                                                for seed in [10, 20]:
+                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_normalize_observation={normalize_observation}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_div_type={div_type}_log_prob_distill_type={log_prob_distill_type}_sample_distill_type={sample_distill_type}_use_target_actor={use_target_actor}_normalize_q_loss={normalize_q_loss}"
+                                                    log_dir = os.path.expanduser(
+                                                        f"{log_root_dir}/exp_logs/ogbench_logs/gctd_fmrl/{exp_name}/{seed}")
 
-                                                # change the log folder of slurm executor
-                                                submitit_log_dir = os.path.join(os.path.dirname(log_dir),
-                                                                                'submitit')
-                                                executor._executor.folder = Path(
-                                                    submitit_log_dir).expanduser().absolute()
+                                                    # change the log folder of slurm executor
+                                                    submitit_log_dir = os.path.join(os.path.dirname(log_dir),
+                                                                                    'submitit')
+                                                    executor._executor.folder = Path(
+                                                        submitit_log_dir).expanduser().absolute()
 
-                                                cmds = f"""
-                                                    unset PYTHONPATH;
-                                                    source $HOME/.zshrc;
-                                                    conda activate ogbench;
-                                                    which python;
-                                                    echo $CONDA_PREFIX;
-    
-                                                    echo job_id: $SLURM_ARRAY_JOB_ID;
-                                                    echo task_id: $SLURM_ARRAY_TASK_ID;
-                                                    squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
-                                                    echo seed: {seed};
-    
-                                                    export PROJECT_DIR=$PWD;
-                                                    export PYTHONPATH=$HOME/research/ogbench/impls;
-                                                    export PATH="$PATH":"$CONDA_PREFIX"/bin;
-                                                    export CUDA_VISIBLE_DEVICES=0;
-                                                    export MUJOCO_GL=egl;
-                                                    export PYOPENGL_PLATFORM=egl;
-                                                    export EGL_DEVICE_ID=0;
-                                                    export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
-    
-                                                    rm -rf {log_dir};
-                                                    mkdir -p {log_dir};
-                                                    python $PROJECT_DIR/impls/main.py \
-                                                        --enable_wandb=1 \
-                                                        --env_name={env_name} \
-                                                        --dataset_class=GCDataset \
-                                                        --normalize_observation={normalize_observation} \
-                                                        --eval_episodes=50 \
-                                                        --eval_on_cpu=0 \
-                                                        --eval_temperature=0.0 \
-                                                        --agent=impls/agents/gctd_fmrl.py \
-                                                        --agent.alpha={alpha} \
-                                                        --agent.const_std={const_std} \
-                                                        --agent.num_flow_steps={num_flow_steps} \
-                                                        --agent.div_type={div_type} \
-                                                        --agent.distill_type={distill_type} \
-                                                        --agent.use_target_actor={use_target_actor} \
-                                                        --agent.normalize_q_loss={normalize_q_loss} \
-                                                        --seed={seed} \
-                                                        --save_dir={log_dir} \
-                                                    2>&1 | tee {log_dir}/stream.log;
-    
-                                                    export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
-                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
-                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
-                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                                """
+                                                    cmds = f"""
+                                                        unset PYTHONPATH;
+                                                        source $HOME/.zshrc;
+                                                        conda activate ogbench;
+                                                        which python;
+                                                        echo $CONDA_PREFIX;
+        
+                                                        echo job_id: $SLURM_ARRAY_JOB_ID;
+                                                        echo task_id: $SLURM_ARRAY_TASK_ID;
+                                                        squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
+                                                        echo seed: {seed};
+        
+                                                        export PROJECT_DIR=$PWD;
+                                                        export PYTHONPATH=$HOME/research/ogbench/impls;
+                                                        export PATH="$PATH":"$CONDA_PREFIX"/bin;
+                                                        export CUDA_VISIBLE_DEVICES=0;
+                                                        export MUJOCO_GL=egl;
+                                                        export PYOPENGL_PLATFORM=egl;
+                                                        export EGL_DEVICE_ID=0;
+                                                        export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
+        
+                                                        rm -rf {log_dir};
+                                                        mkdir -p {log_dir};
+                                                        python $PROJECT_DIR/impls/main.py \
+                                                            --enable_wandb=1 \
+                                                            --env_name={env_name} \
+                                                            --dataset_class=GCDataset \
+                                                            --normalize_observation={normalize_observation} \
+                                                            --eval_episodes=50 \
+                                                            --eval_on_cpu=0 \
+                                                            --eval_temperature=0.0 \
+                                                            --agent=impls/agents/gctd_fmrl.py \
+                                                            --agent.alpha={alpha} \
+                                                            --agent.const_std={const_std} \
+                                                            --agent.num_flow_steps={num_flow_steps} \
+                                                            --agent.div_type={div_type} \
+                                                            --agent.sample_distill_type={sample_distill_type} \
+                                                            --agent.log_prob_distill_type={log_prob_distill_type} \
+                                                            --agent.use_target_actor={use_target_actor} \
+                                                            --agent.normalize_q_loss={normalize_q_loss} \
+                                                            --seed={seed} \
+                                                            --save_dir={log_dir} \
+                                                        2>&1 | tee {log_dir}/stream.log;
+        
+                                                        export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
+                                                        echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                                        echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
+                                                        echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
+                                                        echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                                    """
 
-                                                cmd_func = submitit.helpers.CommandFunction([
-                                                    "/bin/zsh", "-c",
-                                                    cmds,
-                                                ], verbose=True)
+                                                    cmd_func = submitit.helpers.CommandFunction([
+                                                        "/bin/zsh", "-c",
+                                                        cmds,
+                                                    ], verbose=True)
 
-                                                executor.submit(cmd_func)
+                                                    executor.submit(cmd_func)
 
 
 if __name__ == "__main__":
