@@ -30,7 +30,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
         goals = batch['value_goals']
         
         times = jax.random.uniform(time_rng, shape=(batch_size, ))
-        noises = jax.random.normal(noise_rng, shape=goals.shape)
+        noises = jax.random.normal(noise_rng, shape=goals.shape, dtype=goals.dtype)
         path_sample = self.cond_prob_path(x_0=noises, x_1=goals, t=times)
         vf_pred = self.network.select('critic_vf')(
             path_sample.x_t,
@@ -48,12 +48,20 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             q_pred = self.network.select('critic')(
                 goals, observations, actions=actions, params=grad_params)
             distill_loss = jnp.square(q - q_pred).mean()
+        # elif self.config['distill_type'] == 'fwd_int':
+        #     rng, noise_rng = jax.random.split(rng)
+        #     noises = jax.random.normal(noise_rng, shape=goals.shape, dtype=goals.dtype)
+        #     flow_goals = self.compute_fwd_flow_samples(
+        #         noises, observations, actions=actions)
+        #     shortcut_goal_preds = noises + self.network.select('critic')(
+        #         noises, observations, actions=actions, params=grad_params)
+        #     distill_loss = jnp.square(shortcut_goal_preds - flow_goals).mean()
         elif self.config['distill_type'] == 'rev_int':
-            noises = self.compute_rev_flow_samples(
+            flow_noises = self.compute_rev_flow_samples(
                 goals, observations, actions=actions)
             shortcut_noise_preds = goals + self.network.select('critic')(
                 goals, observations, actions=actions, params=grad_params)
-            distill_loss = jnp.square(shortcut_noise_preds - noises).mean()
+            distill_loss = jnp.square(shortcut_noise_preds - flow_noises).mean()
         else:
             distill_loss = 0.0
         critic_loss = fm_loss + distill_loss
@@ -248,7 +256,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
 
     def compute_shortcut_log_likelihood(self, goals, observations, key, actions=None):
         if self.config['div_type'] == 'exact':
-            noise_preds = goals[None] + self.network.select('critic')(
+            noise_preds = goals + self.network.select('critic')(
                 goals, observations, actions)
 
             def shortcut_func(g, s, a):
@@ -257,7 +265,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
 
                 return shortcut_pred
 
-            jac = jax.vmap(jax.jacrev(shortcut_func), in_axes=(0, 0, 0), out_axes=1)(goals, observations, actions)
+            jac = jax.vmap(jax.jacrev(shortcut_func), in_axes=(0, 0, 0), out_axes=0)(goals, observations, actions)
             div_int = jnp.trace(jac, axis1=-2, axis2=-1)
         else:
             def shortcut_func(g):
