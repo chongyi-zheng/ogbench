@@ -42,11 +42,13 @@ def main():
     with executor.batch():  # job array
         for env_name in [
             # "pointmaze-medium-navigate-v0",
-            "pointmaze-large-navigate-v0",
-            # "antmaze-large-navigate-v0"
+            # "pointmaze-large-navigate-v0",
+            "antmaze-large-navigate-v0",
+            "humanoidmaze-medium-navigate-v0",
+            "antsoccer-arena-navigate-v0"
         ]:
             for normalize_observation in [1]:
-                for alpha in [0.01, 0.005, 0.001]:
+                for alpha in [3.0, 0.3, 0.03, 0.003]:
                     for const_std in [False]:
                         for num_flow_steps in [10]:
                             for div_type in ['hutchinson_normal', 'hutchinson_rademacher']:

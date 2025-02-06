@@ -651,7 +651,6 @@ def get_config():
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
-            num_ensembles_q=2,  # Number of ensemble for the critic.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             num_flow_steps=10,  # Number of steps for solving ODEs using the Euler method.
