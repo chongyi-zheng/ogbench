@@ -46,7 +46,7 @@ def main():
             "antmaze-large-navigate-v0"
         ]:
             for normalize_observation in [1]:
-                for alpha in [3.0, 0.3, 0.03]:
+                for alpha in [0.03, 0.003, 0.0003]:
                     for const_std in [False]:
                         for num_flow_steps in [10]:
                             for div_type in ['exact', 'hutchinson_normal', 'hutchinson_rademacher']:
@@ -54,7 +54,7 @@ def main():
                                     for log_prob_distill_type in ['rev_int']:
                                         for use_cycle_consistency_loss in [True]:
                                             for use_target_actor in [False]:
-                                                for normalize_q_loss in [False]:
+                                                for normalize_q_loss in [True]:
                                                     for seed in [10, 20]:
                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_norm_obs={normalize_observation}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_div_type={div_type}_log_prob_distill_type={log_prob_distill_type}_sample_distill_type={sample_distill_type}_use_cyc_loss={use_cycle_consistency_loss}_use_target_actor={use_target_actor}_normalize_q_loss={normalize_q_loss}"
                                                         log_dir = os.path.expanduser(
