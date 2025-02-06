@@ -130,6 +130,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             q_pred = self.network.select('rev_critic')(
                 goals, observations,
                 actions=actions,
+                commanded_goals=goals,
                 params=grad_params
             )
             log_prob_distill_loss = jnp.square(flow_q - q_pred).mean()
@@ -142,12 +143,53 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             shortcut_noise_preds = goals + self.network.select('rev_critic')(
                 goals, observations,
                 actions=actions,
+                commanded_goals=goals,
                 params=grad_params,
             )
             log_prob_distill_loss = jnp.square(shortcut_noise_preds - flow_noises).mean()
         else:
             log_prob_distill_loss = 0.0
-        critic_loss = fm_loss + sample_distill_loss + log_prob_distill_loss
+
+        if self.config['use_cycle_consistency_loss']:
+            assert self.config['sample_distill_type'] == 'fwd_int'
+            assert self.config['log_prob_distill_type'] == 'rev_int'
+
+            rng, cyc_noise_rng = jax.random.split(rng)
+            cyc_noises = jax.random.normal(cyc_noise_rng, shape=goals.shape, dtype=goals.dtype)
+            cyc_goals = goals
+
+            rev_int_preds = self.network.select('rev_critic')(
+                cyc_goals, observations,
+                actions=actions,
+                commanded_goals=goals,
+                params=grad_params,
+            )
+            shortcut_cyc_noise_preds = cyc_goals + rev_int_preds
+            fwd_int_preds = self.network.select('fwd_critic')(
+                cyc_noises, observations,
+                actions=actions,
+                commanded_goals=goals,
+                params=grad_params,
+            )
+            shortcut_cyc_goal_preds = cyc_noises + fwd_int_preds
+
+            rev_int_cyc_preds = self.network.select('fwd_critic')(
+                shortcut_cyc_noise_preds, observations,
+                actions=actions, commanded_goals=goals,
+                params=grad_params,
+            )
+            fwd_int_cyc_preds = self.network.select('rev_critic')(
+                shortcut_cyc_goal_preds, observations,
+                actions=actions,
+                params=grad_params, commanded_goals=goals,
+            )
+
+            cycle_consistency_distill_loss = jnp.square(rev_int_cyc_preds + rev_int_preds).mean()
+            cycle_consistency_distill_loss += jnp.square(fwd_int_cyc_preds + fwd_int_preds).mean()
+        else:
+            cycle_consistency_distill_loss = 0.0
+
+        critic_loss = fm_loss + sample_distill_loss + log_prob_distill_loss + cycle_consistency_distill_loss
 
         return critic_loss, {
             'critic_loss': critic_loss,
@@ -156,6 +198,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             'future_flow_matching_loss': future_fm_loss,
             'sample_distill_loss': sample_distill_loss,
             'log_prob_distill_loss': log_prob_distill_loss,
+            'cycle_consistency_distill_loss': cycle_consistency_distill_loss,
             'v_mean': flow_q.mean(),
             'v_max': flow_q.max(),
             'v_min': flow_q.min(),
@@ -177,13 +220,13 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         if self.config['log_prob_distill_type'] == 'rev_log_prob':
             q = self.network.select('critic')(
                 batch['actor_goals'], batch['observations'],
-                actions=q_actions,
+                actions=q_actions, commanded_goals=batch['actor_goals']
             )
         elif self.config['log_prob_distill_type'] == 'rev_int':
             rng, q_rng = jax.random.split(rng)
             q = self.compute_shortcut_log_likelihood(
                 batch['actor_goals'], batch['observations'], q_rng,
-                actions=batch['actions'],
+                actions=batch['actions'], commanded_goals=batch['actor_goals']
             )
         else:
             rng, q_rng = jax.random.split(rng)
@@ -386,24 +429,24 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
 
         return log_prob
 
-    def compute_shortcut_log_likelihood(self, goals, observations, key, actions=None):
+    def compute_shortcut_log_likelihood(self, goals, observations, key, actions=None, commanded_goals=None):
         if self.config['div_type'] == 'exact':
             noise_preds = goals + self.network.select('rev_critic')(
-                goals, observations, actions)
+                goals, observations, actions, commanded_goals)
 
-            def shortcut_func(g, s, a):
+            def shortcut_func(g, s, a, cg):
                 shortcut_pred = self.network.select('rev_critic')(
-                    g, s, a)
+                    g, s, a, cg)
 
                 return shortcut_pred
 
-            jac = jax.vmap(jax.jacrev(shortcut_func), in_axes=(0, 0, 0), out_axes=0)(
-                goals, observations, actions)
+            jac = jax.vmap(jax.jacrev(shortcut_func), in_axes=(0, 0, 0, 0), out_axes=0)(
+                goals, observations, actions, commanded_goals)
             div_int = jnp.trace(jac, axis1=-2, axis2=-1)
         else:
             def shortcut_func(g):
                 shortcut_preds = self.network.select('rev_critic')(
-                    g, observations, actions)
+                    g, observations, actions, commanded_goals)
 
                 return shortcut_preds
 
@@ -590,7 +633,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         network_info = dict(
             critic_vf=(critic_vf_def, (ex_goals, ex_times, ex_observations, ex_actions, ex_goals)),
             fwd_critic=(fwd_critic_def, (ex_goals, ex_observations, ex_actions, ex_goals)),
-            rev_critic=(rev_critic_def, (ex_goals, ex_observations, ex_actions)),
+            rev_critic=(rev_critic_def, (ex_goals, ex_observations, ex_actions, ex_goals)),
             actor=(actor_def, (ex_observations, ex_goals)),
             target_actor=(copy.deepcopy(actor_def), (ex_observations, ex_goals)),
         )
@@ -605,7 +648,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
 
         if config['log_prob_distill_type'] in ['rev_log_prob', 'rev_int']:
             target_rev_critic = (copy.deepcopy(rev_critic_def),
-                                 (ex_goals, ex_observations, ex_actions))
+                                 (ex_goals, ex_observations, ex_actions, ex_goals))
             network_info['target_rev_critic'] = target_rev_critic
         else:
             if 'target_critic_vf' not in network_info:
@@ -644,8 +687,8 @@ def get_config():
             agent_name='gctd_fmrl',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
-            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
-            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
+            actor_hidden_dims=(1024, 1024, 1024, 1024),  # Actor network hidden dimensions.
+            value_hidden_dims=(1024, 1024, 1024, 1024),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
@@ -657,6 +700,7 @@ def get_config():
             div_type='exact',  # Divergence estimator type ('exact', 'hutchinson_normal', 'hutchinson_rademacher').
             sample_distill_type='none',  # Distillation type for samples ('none', 'fwd_sample', 'fwd_int')
             log_prob_distill_type='none',  # Distillation type for log probabilities ('none', 'rev_log_prob', 'rev_int').
+            use_cycle_consistency_loss=False,  # Whether to use the cycle consistency loss.
             alpha=0.1,  # BC coefficient.
             const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
