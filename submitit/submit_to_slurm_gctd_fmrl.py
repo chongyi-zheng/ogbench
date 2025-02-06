@@ -56,7 +56,7 @@ def main():
                                             for use_target_actor in [False]:
                                                 for normalize_q_loss in [False]:
                                                     for seed in [10, 20]:
-                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_normalize_observation={normalize_observation}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_div_type={div_type}_log_prob_distill_type={log_prob_distill_type}_sample_distill_type={sample_distill_type}_use_cycle_consistency_loss={use_cycle_consistency_loss}_use_target_actor={use_target_actor}_normalize_q_loss={normalize_q_loss}"
+                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_norm_obs={normalize_observation}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_div_type={div_type}_log_prob_distill_type={log_prob_distill_type}_sample_distill_type={sample_distill_type}_use_cyc_loss={use_cycle_consistency_loss}_use_target_actor={use_target_actor}_normalize_q_loss={normalize_q_loss}"
                                                         log_dir = os.path.expanduser(
                                                             f"{log_root_dir}/exp_logs/ogbench_logs/gctd_fmrl/{exp_name}/{seed}")
 
