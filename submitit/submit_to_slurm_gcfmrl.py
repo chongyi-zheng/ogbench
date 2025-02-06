@@ -33,7 +33,7 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="16G",
+        slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
     )
@@ -48,11 +48,11 @@ def main():
             "antsoccer-arena-navigate-v0"
         ]:
             for normalize_observation in [1]:
-                for alpha in [0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
+                for alpha in [0.003, 0.0003]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for const_std in [False]:
                         for num_flow_steps in [10]:
                             for div_type in ['hutchinson_normal', 'hutchinson_rademacher']:  # both works similar
-                                for distill_type in ['none', 'log_prob']:  # no distillation seems to work better
+                                for distill_type in ['rev_int']:  # no distillation seems to work better
                                     for normalize_q_loss in [True]:  # it is important to normalize Q
                                         for seed in [10, 20]:
                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfmrl_env_name={env_name}_normalize_observation={normalize_observation}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_div_type={div_type}_distill_type={distill_type}_normalize_q_loss={normalize_q_loss}"
