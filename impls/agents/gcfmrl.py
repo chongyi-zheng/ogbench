@@ -28,9 +28,12 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
         actions = batch['actions']
         goals = batch['value_goals']
-        
+
         times = jax.random.uniform(time_rng, shape=(batch_size, ))
-        noises = jax.random.normal(noise_rng, shape=goals.shape, dtype=goals.dtype)
+        if self.config['noise_type'] == 'normal':
+            noises = jax.random.normal(noise_rng, shape=goals.shape, dtype=goals.dtype)
+        else:
+            noises = jnp.roll(batch['value_goals'], shift=1, axis=0)
         path_sample = self.cond_prob_path(x_0=noises, x_1=goals, t=times)
         vf_pred = self.network.select('critic_vf')(
             path_sample.x_t,
@@ -41,21 +44,17 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
         )
         fm_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
 
-        q = self.compute_log_likelihood(
-            goals, observations, q_rng, actions=actions)
+        if self.config['noise_type'] == 'normal':
+            q = self.compute_log_likelihood(
+                goals, observations, q_rng, actions=actions)
+        else:
+            q = self.compute_log_likelihood(
+                goals, observations, q_rng, actions=actions, return_ratio=True)
 
         if self.config['distill_type'] == 'log_prob':
             q_pred = self.network.select('critic')(
                 goals, observations, actions=actions, params=grad_params)
             distill_loss = jnp.square(q - q_pred).mean()
-        # elif self.config['distill_type'] == 'fwd_int':
-        #     rng, noise_rng = jax.random.split(rng)
-        #     noises = jax.random.normal(noise_rng, shape=goals.shape, dtype=goals.dtype)
-        #     flow_goals = self.compute_fwd_flow_samples(
-        #         noises, observations, actions=actions)
-        #     shortcut_goal_preds = noises + self.network.select('critic')(
-        #         noises, observations, actions=actions, params=grad_params)
-        #     distill_loss = jnp.square(shortcut_goal_preds - flow_goals).mean()
         elif self.config['distill_type'] == 'rev_int':
             flow_noises = self.compute_rev_flow_samples(
                 goals, observations, actions=actions)
@@ -93,12 +92,29 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
                 batch['actor_goals'], batch['observations'], actions=q_actions)
         elif self.config['distill_type'] == 'rev_int':
             rng, q_rng = jax.random.split(rng)
-            q = self.compute_shortcut_log_likelihood(
-                batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
+            if self.config['noise_type'] == 'normal':
+                q = self.compute_shortcut_log_likelihood(
+                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions
+                )
+            else:
+                q = self.compute_shortcut_log_likelihood(
+                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions,
+                    return_ratio=True
+                )
         else:
             rng, q_rng = jax.random.split(rng)
-            q = self.compute_log_likelihood(
-                batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
+            if self.config['noise_type'] == 'normal':
+                q = self.compute_log_likelihood(
+                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions
+                )
+            else:
+                q = self.compute_log_likelihood(
+                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions,
+                    return_ratio=True
+                )
+
+            # q = self.compute_log_likelihood(
+            #     batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
 
         # Normalize Q values by the absolute mean to make the loss scale invariant.
         q_loss = -q.mean()
@@ -152,7 +168,8 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
 
         return noises
 
-    def compute_log_likelihood(self, goals, observations, rng, actions=None):
+    def compute_log_likelihood(self, goals, observations, rng, actions=None,
+                               return_ratio=False):
         noisy_goals = goals
         div_int = jnp.zeros(goals.shape[:-1])
         num_flow_steps = self.config['num_flow_steps']
@@ -248,13 +265,18 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
         (noisy_goals, div_int, rng), _ = jax.lax.scan(
             body_fn, (noisy_goals, div_int, rng), jnp.arange(num_flow_steps))
 
-        # Finally, compute log_prob using the final noisy_goals and div_int
-        gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noisy_goals ** 2, axis=-1)
-        log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
+        if return_ratio:
+            log_ratio = div_int
+            return log_ratio
+        else:
+            # Finally, compute log_prob using the final noisy_goals and div_int
+            gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noisy_goals ** 2, axis=-1)
+            log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
 
-        return log_prob
+            return log_prob
 
-    def compute_shortcut_log_likelihood(self, goals, observations, key, actions=None):
+    def compute_shortcut_log_likelihood(self, goals, observations, key, actions=None,
+                                        return_ratio=False):
         if self.config['div_type'] == 'exact':
             noise_preds = goals + self.network.select('critic')(
                 goals, observations, actions)
@@ -286,10 +308,14 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             noise_preds = goals + shortcut_preds
             div_int = jnp.einsum("ij,ij->i", jac_sc_dot_z, z)
 
-        gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noise_preds ** 2, axis=-1)
-        log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
+        if return_ratio:
+            log_ratio = div_int
+            return log_ratio
+        else:
+            gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noise_preds ** 2, axis=-1)
+            log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
 
-        return log_prob
+            return log_prob
 
     @jax.jit
     def total_loss(self, batch, grad_params, rng=None):
@@ -462,6 +488,7 @@ def get_config():
             discount=0.99,  # Discount factor.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
+            noise_type='normal',  # Noise distribution type ('normal', 'marginal')
             num_flow_steps=10,  # Number of steps for solving ODEs using the Euler method.
             div_type='exact',  # Divergence estimator type ('exact', 'hutchinson_normal', 'hutchinson_rademacher').
             distill_type='none',  # Distillation type ('none', 'log_prob', 'rev_int').
