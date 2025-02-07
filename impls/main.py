@@ -43,7 +43,8 @@ flags.DEFINE_integer('video_episodes', 1, 'Number of video episodes for each tas
 flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
 flags.DEFINE_integer('eval_on_cpu', 1, 'Whether to evaluate on CPU.')
 
-flags.DEFINE_integer('normalize_observation', 0, 'Whether to normalize observations.')
+flags.DEFINE_string('obs_norm_type', 'none',
+                    'Type of observation normalization. (none, normal, bounded)')
 flags.DEFINE_float('p_aug', None, 'Probability of applying image augmentation.')
 flags.DEFINE_integer('frame_stack', None, 'Number of frames to stack.')
 
@@ -98,10 +99,11 @@ def main(_):
         config,
     )
 
-    if FLAGS.normalize_observation:
+    if FLAGS.obs_norm_type in ['normal', 'bounded']:
         agent = OfflineObservationNormalizer.create(
             agent,
-            train_dataset
+            train_dataset,
+            normalizer_type=FLAGS.obs_norm_type
         )
 
     # Restore agent.
