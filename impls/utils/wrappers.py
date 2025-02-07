@@ -44,17 +44,28 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
     """
 
     agent: flax.struct.PyTreeNode
+    normalizer_type: str
     mean: np.ndarray
     var: np.ndarray
+    max: np.ndarray
+    min: np.ndarray
     epsilon: float = 1e-8
 
     def _normalize(self, observations):
         if observations is None:
             return None
         else:
-            return (observations - self.mean) / np.sqrt(
-                self.var + self.epsilon
-            )
+            if self.normalizer_type == 'normal':
+                return (observations - self.mean) / np.sqrt(
+                    self.var + self.epsilon
+                )
+            elif self.normalizer_type == 'bounded':
+                return 2 * (observations - self.min) / (
+                    self.max - self.min
+                ) - 1.0
+            else:
+                raise TypeError("Unsupported normalizer type: {}".format(
+                    self.normalizer_type))
 
     def sample_actions(self, observations, goals=None, seed=None, temperature=1.0):
         observations = self._normalize(observations)
@@ -81,16 +92,21 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
         cls,
         agent,
         dataset,
+        normalizer_type='normal',
         epsilon=1e-8,
     ):
         if hasattr(dataset, 'dataset'):
             observations = dataset.dataset['observations']
         else:
             observations = dataset['observations']
-        mean = np.mean(observations, axis=0)
-        var = np.var(observations, axis=0)
+        dataset_mean = np.mean(observations, axis=0)
+        dataset_var = np.var(observations, axis=0)
+        dataset_max = np.max(observations, axis=0)
+        dataset_min = np.min(observations, axis=0)
 
-        return cls(agent=agent, mean=mean, var=var, epsilon=epsilon)
+        return cls(agent=agent, normalizer_type=normalizer_type,
+                   mean=dataset_mean, var=dataset_var, max=dataset_max, min=dataset_min,
+                   epsilon=epsilon)
 
     def __getattr__(self, name):
         if name.startswith('_'):
