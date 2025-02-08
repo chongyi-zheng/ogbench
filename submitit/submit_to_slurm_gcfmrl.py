@@ -47,14 +47,14 @@ def main():
             "humanoidmaze-medium-navigate-v0",
             "antsoccer-arena-navigate-v0"
         ]:
-            for obs_norm_type in ['bounded']:
-                for alpha in [0.003, 0.005, 0.001]:  # when normalize_q_loss = 1, use alpha around 0.003
+            for obs_norm_type in ['bounded', 'normal']:
+                for alpha in [3.0, 0.3, 0.03, 0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for const_std in [False]:
                         for num_flow_steps in [10]:
                             for noise_type in ['marginal']:
-                                for div_type in ['hutchinson_normal', 'hutchinson_rademacher']:  # both works similar
-                                    for distill_type in ['none', 'log_prob', 'rev_int']:  # no distillation seems to work better
-                                        for normalize_q_loss in [True]:  # it is important to normalize Q
+                                for div_type in ['exact', 'hutchinson_normal', 'hutchinson_rademacher']:  # both works similar
+                                    for distill_type in ['none', 'log_prob']:  # no distillation seems to work better
+                                        for normalize_q_loss in [False]:  # it is important to normalize Q
                                             for seed in [10, 20]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfmrl_env_name={env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_noise_type={noise_type}_div_type={div_type}_distill_type={distill_type}_normalize_q_loss={normalize_q_loss}"
                                                 log_dir = os.path.expanduser(
