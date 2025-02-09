@@ -58,7 +58,7 @@ def diffrax_rev_flow_samples(goals, observations, actions=None, num_flow_steps=1
 
     return noises
 
-def compute_log_likelihood(goals, observations, actions, z, return_ratio=False,
+def compute_log_likelihood(goals, observations, actions, rng, return_ratio=False,
                            div_type='hutchinson_normal', num_flow_steps=10):
     """
     Euler method
@@ -82,32 +82,54 @@ def compute_log_likelihood(goals, observations, actions, z, return_ratio=False,
 
         if div_type == 'exact':
             def compute_exact_div(noisy_goals, times, observations, actions):
-                def vf_func(noisy_goal, time, observation, action):
-                    noisy_goal = jnp.expand_dims(noisy_goal, 0)
-                    time = jnp.expand_dims(time, 0)
-                    observation = jnp.expand_dims(observation, 0)
-                    if action is not None:
-                        action = jnp.expand_dims(action, 0)
-                    vf = self.network.select('critic_vf')(
-                        noisy_goal, time, observation, action).squeeze(0)
+                # def vf_func(noisy_goal, time, observation, action):
+                #     noisy_goal = jnp.expand_dims(noisy_goal, 0)
+                #     time = jnp.expand_dims(time, 0)
+                #     observation = jnp.expand_dims(observation, 0)
+                #     if action is not None:
+                #         action = jnp.expand_dims(action, 0)
+                #     vf = self.network.select('critic_vf')(
+                #         noisy_goal, time, observation, action).squeeze(0)
+                #
+                #     return vf
+
+                def vf_func(t, g, obs, a):
+                    noisy_goal = jnp.expand_dims(g, 0)
+                    time = jnp.expand_dims(t, 0)
+                    observation = jnp.expand_dims(obs, 0)
+                    if a is not None:
+                        action = jnp.expand_dims(a, 0)
+                    else:
+                        action = a
+
+                    vf = vector_field(time, noisy_goal, (observation, action)).squeeze(0)
 
                     return vf
 
-                def div_func(noisy_goal, time, observation, action):
-                    jac = jax.jacrev(vf_func)(noisy_goal, time, observation, action)
-                    # jac = jac.reshape([noisy_goal.shape[-1], noisy_goal.shape[-1]])
+                # def div_func(noisy_goal, time, observation, action):
+                #     jac = jax.jacrev(vf_func)(noisy_goal, time, observation, action)
+                #
+                #     # return jnp.trace(jac, axis1=-2, axis2=-1)
+                #     return jac
 
-                    return jnp.trace(jac, axis1=-2, axis2=-1)
-
-                vf = self.network.select('critic_vf')(
-                    noisy_goals, times, observations, actions)
+                # vf = self.network.select('critic_vf')(
+                #     noisy_goals, times, observations, actions)
+                vf = vector_field(times, noisy_goals, (observations, actions))
 
                 if actions is not None:
-                    div = jax.vmap(div_func, in_axes=(0, 0, 0, 0), out_axes=0)(
-                        noisy_goals, times, observations, actions)
+                    # jac = jax.vmap(jax.jacrev(vf_func), in_axes=(0, 0, 0, 0), out_axes=0)(
+                    #     noisy_goals, times, observations, actions)
+                    jac = jax.vmap(
+                        jax.jacrev(vf_func, argnums=1),
+                        in_axes=(None, 0, 0, 0), out_axes=0
+                    )(times, noisy_goals, observations, actions)
                 else:
-                    div = jax.vmap(div_func, in_axes=(0, 0, 0, None), out_axes=0)(
-                        noisy_goals, times, observations, actions)
+                    jac = jax.vmap(
+                        jax.jacrev(vf_func, argnums=1),
+                        in_axes=(None, 0, 0, None), out_axes=0
+                    )(times, noisy_goals, observations, actions)
+
+                div = jnp.trace(jac, axis1=-2, axis2=-1)
 
                 return vf, div
 
@@ -116,33 +138,15 @@ def compute_log_likelihood(goals, observations, actions, z, return_ratio=False,
             def compute_hutchinson_div(noisy_goals, times, observations, actions, rng):
                 # Define vf_func for jvp
                 def vf_func(goals):
-                    # vf = self.network.select('critic_vf')(
-                    #     goals,
-                    #     times,
-                    #     observations,
-                    #     actions=actions,
-                    # )
                     vf = vector_field(times, goals, (observations, actions))
 
-                    # return vf.reshape([-1, *vf.shape[2:]])
                     return vf
 
-                # def vector_field(t, eps, args):
-                #     # $f(t, y(t), args) \mathrm{d}t$
-                #     s, a = args
-                #
-                #     # times = t * jnp.ones(shape=(eps.shape[0], ))
-                #     times = t * jnp.ones_like(eps)
-                #
-                #     return 0.5 * times * eps + s
-
                 # Split RNG and sample noise
-                # z = jax.random.normal(rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
+                z = jax.random.normal(rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
 
                 # Forward (vf) and linearization (jac_vf_dot_z)
                 vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z,))
-                # vf = vf.reshape([-1, *vf.shape[1:]])
-                # jac_vf_dot_z = jac_vf_dot_z.reshape([-1, *jac_vf_dot_z.shape[1:]])
 
                 # Hutchinson's trace estimator
                 # shape assumptions: jac_vf_dot_z, z both (B, D) => div is shape (B,)
@@ -176,62 +180,82 @@ def compute_log_likelihood(goals, observations, actions, z, return_ratio=False,
 
         return log_prob
 
-def diffrax_compute_log_likelihood(goals, observations, actions, z, return_ratio=False,
+def diffrax_compute_log_likelihood(goals, observations, actions, rng, return_ratio=False,
                                    div_type='hutchinson_normal', num_flow_steps=10):
 
-    def vf_func(times, noise_div_int, carry):
-        noises, _ = noise_div_int
-        observations, actions, z = carry
-
-        # Split RNG and sample noise
-        # rng, div_rng = jax.random.split(rng)
-        # z = jax.random.normal(div_rng, shape=noises.shape, dtype=noises.dtype)
-
-        # def vf_func(goals):
-        #     # vf = self.network.select('critic_vf')(
-        #     #     goals,
-        #     #     times,
-        #     #     observations,
-        #     #     actions=actions,
-        #     # )
-        #     vf = vector_field(times, goals, (observations, actions))
-        #
-        #     # return vf.reshape([-1, *vf.shape[2:]])
-        #     return vf
-
-        # Forward (vf) and linearization (jac_vf_dot_z)
-        vf, jac_vf_dot_z = jax.jvp(
-            lambda n: vector_field(times, n, (observations, actions)),
-            (noises, ), (z,)
-        )
-        div = jnp.einsum("ij,ij->i", jac_vf_dot_z, z)
-
-        return (vf, div)
-
     if div_type == 'exact':
-        raise NotImplementedError
+        def vf_func(times, noise_div_int, carry):
+            noises, _ = noise_div_int
+            observations, actions, _ = carry
+            def single_vf(t, g, obs, a):
+                noisy_goal = jnp.expand_dims(g, 0)
+                time = jnp.expand_dims(t, 0)
+                observation = jnp.expand_dims(obs, 0)
+                if a is not None:
+                    action = jnp.expand_dims(a, 0)
+                else:
+                    action = a
+
+                vf = vector_field(time, noisy_goal, (observation, action)).squeeze(0)
+
+                return vf
+
+            vf = vector_field(times, noises, (observations, actions))
+
+            if actions is not None:
+                jac = jax.vmap(
+                    jax.jacrev(single_vf, argnums=1),
+                    in_axes=(None, 0, 0, 0), out_axes=0
+                )(times, noises, observations, actions)
+            else:
+                jac = jax.vmap(
+                    jax.jacrev(vf_func, argnums=1),
+                    in_axes=(None, 0, 0, None), out_axes=0
+                )(times, noises, observations, actions)
+
+            div = jnp.trace(jac, axis1=-2, axis2=-1)
+
+            return vf, div
+
     else:
-        term = ODETerm(vf_func)
-        # solver = Dopri5()
-        solver = Euler()
-        solution = diffeqsolve(
-            term, solver,
-            t0=1.0, t1=0.0, dt0=-1 / num_flow_steps,
-            y0=(goals, jnp.zeros(goals.shape[:-1])),
-            args=(observations, actions, z)
-        )
-        (noises, div_int) = jax.tree_map(
-            lambda x: x[-1], solution.ys)
+        def vf_func(times, noise_div_int, carry):
+            noises, _ = noise_div_int
+            observations, actions, rng = carry
 
-        if return_ratio:
-            log_ratio = div_int
-            return log_ratio
-        else:
-            # Finally, compute log_prob using the final noisy_goals and div_int
-            gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
-            log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
+            # Split RNG and sample noise
+            rng, div_rng = jax.random.split(rng)
+            z = jax.random.normal(div_rng, shape=noises.shape, dtype=noises.dtype)
 
-            return log_prob
+            # Forward (vf) and linearization (jac_vf_dot_z)
+            vf, jac_vf_dot_z = jax.jvp(
+                lambda n: vector_field(times, n, (observations, actions)),
+                (noises,), (z,)
+            )
+            div = jnp.einsum("ij,ij->i", jac_vf_dot_z, z)
+
+            return (vf, div)
+
+    term = ODETerm(vf_func)
+    # solver = Dopri5()
+    solver = Euler()
+    solution = diffeqsolve(
+        term, solver,
+        t0=1.0, t1=0.0, dt0=-1 / num_flow_steps,
+        y0=(goals, jnp.zeros(goals.shape[:-1])),
+        args=(observations, actions, rng)
+    )
+    (noises, div_int) = jax.tree.map(
+        lambda x: x[-1], solution.ys)
+
+    if return_ratio:
+        log_ratio = div_int
+        return log_ratio
+    else:
+        # Finally, compute log_prob using the final noisy_goals and div_int
+        gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
+        log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
+
+        return log_prob
 
 
 def main():
@@ -250,9 +274,9 @@ def main():
 
     key, log_p_key, diffrax_log_p_key = jax.random.split(key, 3)
     log_p = compute_log_likelihood(
-        goals, observations, actions, log_p_key, return_ratio=True)
+        goals, observations, actions, log_p_key, div_type='exact', return_ratio=True)
     diffrax_log_p = diffrax_compute_log_likelihood(
-        goals, observations, actions, diffrax_log_p_key, return_ratio=True)
+        goals, observations, actions, diffrax_log_p_key, div_type='exact', return_ratio=True)
 
     assert jnp.allclose(log_p, diffrax_log_p)
 
