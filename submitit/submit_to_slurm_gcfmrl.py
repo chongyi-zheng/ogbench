@@ -27,7 +27,7 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="gcfmrl",
-        slurm_time=int(10 * 60),  # minute
+        slurm_time=int(12 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
@@ -50,8 +50,8 @@ def main():
             for obs_norm_type in ['normal']:
                 for alpha in [0.03, 0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for const_std in [False]:
-                        for ode_solver_type in ['euler', 'dopri5', 'tsit5']:
-                            for ode_adjoint_type in ['recursive_checkpoint', 'direct', 'implicit']:
+                        for ode_solver_type in ['euler']:
+                            for ode_adjoint_type in ['recursive_checkpoint']:
                                 for num_flow_steps in [10]:
                                     for noise_type in ['normal']:
                                         for div_type in ['exact', 'hutchinson_normal', 'hutchinson_rademacher']:  # both works similar

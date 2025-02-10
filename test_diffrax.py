@@ -292,7 +292,7 @@ def diffrax_compute_log_likelihood(goals, observations, actions, rng, return_rat
 
 def main():
     key = jax.random.PRNGKey(np.random.randint(2 ** 32 - 1))
-    shape = (16, 2)
+    shape = (1024, 2)
 
     key, goal_key, obs_key, action_key = jax.random.split(key, 4)
     goals = jax.random.normal(goal_key, shape=shape)
@@ -304,11 +304,22 @@ def main():
 
     # assert jnp.allclose(noises, diffrax_noises)
 
+    import time
+
     key, log_p_key, diffrax_log_p_key = jax.random.split(key, 3)
+    start_time = time.time()
     log_p = compute_log_likelihood(
         goals, observations, actions, diffrax_log_p_key, div_type='hutchinson_normal', return_ratio=True)
+    jax.block_until_ready(log_p)
+    end_time = time.time()
+    print("compute_log_likelihood time: {}".format(end_time - start_time))
+
+    start_time = time.time()
     diffrax_log_p = diffrax_compute_log_likelihood(
         goals, observations, actions, diffrax_log_p_key, div_type='hutchinson_normal', return_ratio=True)
+    jax.block_until_ready(diffrax_log_p)
+    end_time = time.time()
+    print("diffrax_compute_log_likelihood time: {}".format(end_time - start_time))
 
     assert jnp.allclose(log_p, diffrax_log_p)
 
