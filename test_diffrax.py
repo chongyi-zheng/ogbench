@@ -59,7 +59,8 @@ def diffrax_rev_flow_samples(goals, observations, actions=None, num_flow_steps=1
     return noises
 
 def compute_log_likelihood(goals, observations, actions, rng, return_ratio=False,
-                           div_type='hutchinson_normal', num_flow_steps=10):
+                           div_type='hutchinson_normal', num_flow_steps=10,
+                           num_hutchinson_ests=32):
     """
     Euler method
     """
@@ -70,11 +71,7 @@ def compute_log_likelihood(goals, observations, actions, rng, return_ratio=False
 
     # Define the body function to be scanned
     def body_fn(carry, i):
-        """
-        carry: (noisy_goals, div_int, rng)
-        i: current step index
-        """
-        noisy_goals, div_int, rng = carry
+        noisy_goals, div_int, z = carry
 
         # Time for this iteration
         # times = 1.0 - jnp.full(noisy_goals.shape[:-1], i * step_size)
@@ -135,7 +132,7 @@ def compute_log_likelihood(goals, observations, actions, rng, return_ratio=False
 
             vf, div = compute_exact_div(noisy_goals, times, observations, actions)
         else:
-            def compute_hutchinson_div(noisy_goals, times, observations, actions, rng):
+            def compute_hutchinson_div(noisy_goals, times, observations, actions, z):
                 # Define vf_func for jvp
                 def vf_func(goals):
                     vf = vector_field(times, goals, (observations, actions))
@@ -143,19 +140,36 @@ def compute_log_likelihood(goals, observations, actions, rng, return_ratio=False
                     return vf
 
                 # Split RNG and sample noise
-                z = jax.random.normal(rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
+                # z = jax.random.normal(rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
 
                 # Forward (vf) and linearization (jac_vf_dot_z)
-                vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z,))
+                # vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z,))
+
+                def single_jvp(z):
+                    vf, jac_vf_dot_z = jax.jvp(
+                        lambda n: vector_field(times, n, (observations, actions)),
+                        (noisy_goals,), (z,)
+                    )
+
+                    return vf, jac_vf_dot_z
+
+                # vf, jac_vf_dot_z = jax.jvp(
+                #     lambda n: vector_field(times, n, (observations, actions)),
+                #     (noises,), (z,)
+                # )
+                vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
+                div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
 
                 # Hutchinson's trace estimator
                 # shape assumptions: jac_vf_dot_z, z both (B, D) => div is shape (B,)
-                div = jnp.einsum("ij,ij->i", jac_vf_dot_z, z)
+                # div = jnp.einsum("ij,ij->i", jac_vf_dot_z, z)
+                vf = vf[..., 0]
+                div = div.mean(axis=-1)
 
                 return vf, div
 
-            rng, div_rng = jax.random.split(rng)
-            vf, div = compute_hutchinson_div(noisy_goals, times, observations, actions, div_rng)
+            # rng, div_rng = jax.random.split(rng)
+            vf, div = compute_hutchinson_div(noisy_goals, times, observations, actions, z)
 
         # Update goals and divergence integral. We need to consider Q ensemble here.
         # new_noisy_goals = jnp.min(noisy_goals[None] - vf * step_size, axis=0)
@@ -164,11 +178,13 @@ def compute_log_likelihood(goals, observations, actions, rng, return_ratio=False
         new_div_int = div_int - div * step_size
 
         # Return updated carry and scan output
-        return (new_noisy_goals, new_div_int, rng), None
+        return (new_noisy_goals, new_div_int, z), None
 
     # Use lax.scan to iterate over num_flow_steps
-    (noisy_goals, div_int, rng), _ = jax.lax.scan(
-        body_fn, (noisy_goals, div_int, rng), jnp.arange(num_flow_steps))
+    rng, div_rng = jax.random.split(rng)
+    z = jax.random.normal(div_rng, shape=(*goals.shape, num_hutchinson_ests), dtype=goals.dtype)
+    (noisy_goals, div_int, _), _ = jax.lax.scan(
+        body_fn, (noisy_goals, div_int, z), jnp.arange(num_flow_steps))
 
     if return_ratio:
         log_ratio = div_int
@@ -180,8 +196,10 @@ def compute_log_likelihood(goals, observations, actions, rng, return_ratio=False
 
         return log_prob
 
+
 def diffrax_compute_log_likelihood(goals, observations, actions, rng, return_ratio=False,
-                                   div_type='hutchinson_normal', num_flow_steps=10):
+                                   div_type='hutchinson_normal', num_flow_steps=10,
+                                   num_hutchinson_ests=32):
 
     if div_type == 'exact':
         def vf_func(times, noise_div_int, carry):
@@ -220,31 +238,45 @@ def diffrax_compute_log_likelihood(goals, observations, actions, rng, return_rat
     else:
         def vf_func(times, noise_div_int, carry):
             noises, _ = noise_div_int
-            observations, actions, rng = carry
+            observations, actions, z = carry
 
             # Split RNG and sample noise
-            rng, div_rng = jax.random.split(rng)
-            z = jax.random.normal(div_rng, shape=noises.shape, dtype=noises.dtype)
+            # rng, div_rng = jax.random.split(rng)
+            # z = jax.random.normal(div_rng, shape=noises.shape, dtype=noises.dtype)
 
             # Forward (vf) and linearization (jac_vf_dot_z)
-            vf, jac_vf_dot_z = jax.jvp(
-                lambda n: vector_field(times, n, (observations, actions)),
-                (noises,), (z,)
-            )
-            div = jnp.einsum("ij,ij->i", jac_vf_dot_z, z)
+            def single_jvp(z):
+                vf, jac_vf_dot_z = jax.jvp(
+                    lambda n: vector_field(times, n, (observations, actions)),
+                    (noises,), (z,)
+                )
 
-            return (vf, div)
+                return vf, jac_vf_dot_z
+
+            # vf, jac_vf_dot_z = jax.jvp(
+            #     lambda n: vector_field(times, n, (observations, actions)),
+            #     (noises,), (z,)
+            # )
+            vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
+            div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
+
+            vf = vf[..., 0]
+            div = div.mean(axis=-1)
+
+            return vf, div
 
     term = ODETerm(vf_func)
     # solver = Dopri5()
     solver = Euler()
+    rng, div_rng = jax.random.split(rng)
+    z = jax.random.normal(div_rng, shape=(*goals.shape, num_hutchinson_ests), dtype=goals.dtype)
     solution = diffeqsolve(
         term, solver,
         t0=1.0, t1=0.0, dt0=-1 / num_flow_steps,
         y0=(goals, jnp.zeros(goals.shape[:-1])),
-        args=(observations, actions, rng)
+        args=(observations, actions, z)
     )
-    (noises, div_int) = jax.tree.map(
+    noises, div_int = jax.tree.map(
         lambda x: x[-1], solution.ys)
 
     if return_ratio:
@@ -274,9 +306,9 @@ def main():
 
     key, log_p_key, diffrax_log_p_key = jax.random.split(key, 3)
     log_p = compute_log_likelihood(
-        goals, observations, actions, log_p_key, div_type='exact', return_ratio=True)
+        goals, observations, actions, diffrax_log_p_key, div_type='hutchinson_normal', return_ratio=True)
     diffrax_log_p = diffrax_compute_log_likelihood(
-        goals, observations, actions, diffrax_log_p_key, div_type='exact', return_ratio=True)
+        goals, observations, actions, diffrax_log_p_key, div_type='hutchinson_normal', return_ratio=True)
 
     assert jnp.allclose(log_p, diffrax_log_p)
 
