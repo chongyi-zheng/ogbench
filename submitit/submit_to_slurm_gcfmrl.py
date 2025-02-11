@@ -44,13 +44,13 @@ def main():
             # "pointmaze-medium-navigate-v0",
             # "pointmaze-large-navigate-v0",
             "antmaze-large-navigate-v0",
-            # "humanoidmaze-medium-navigate-v0",
-            # "antsoccer-arena-navigate-v0"
+            "humanoidmaze-medium-navigate-v0",
+            "antsoccer-arena-navigate-v0"
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [0.03, 0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
+                for alpha in [0.3, 0.03, 0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for const_std in [False]:
-                        for ode_solver_type in ['euler']:
+                        for ode_solver_type in ['dopri5']:
                             for ode_adjoint_type in ['recursive_checkpoint']:
                                 for num_flow_steps in [10]:
                                     for noise_type in ['normal']:

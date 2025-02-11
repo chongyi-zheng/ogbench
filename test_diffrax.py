@@ -3,6 +3,7 @@ from diffrax import diffeqsolve, ODETerm, Dopri5, Euler
 import numpy as np
 import jax.numpy as jnp
 import jax
+from jax.experimental.ode import odeint
 
 
 def vector_field(t, eps, args):
@@ -266,8 +267,8 @@ def diffrax_compute_log_likelihood(goals, observations, actions, rng, return_rat
             return vf, div
 
     term = ODETerm(vf_func)
-    # solver = Dopri5()
-    solver = Euler()
+    solver = Dopri5()
+    # solver = Euler()
     rng, div_rng = jax.random.split(rng)
     z = jax.random.normal(div_rng, shape=(*goals.shape, num_hutchinson_ests), dtype=goals.dtype)
     solution = diffeqsolve(
@@ -289,6 +290,101 @@ def diffrax_compute_log_likelihood(goals, observations, actions, rng, return_rat
 
         return log_prob
 
+def jax_compute_log_likelihood(goals, observations, actions, rng, return_ratio=False,
+                                   div_type='hutchinson_normal', num_flow_steps=10,
+                                   num_hutchinson_ests=32):
+    # def odeint(func, y0, t, *args, rtol=1.4e-8, atol=1.4e-8, mxstep=jnp.inf, hmax=jnp.inf):
+    # func(y, t, *args)
+
+    if div_type == 'exact':
+        def vf_func(noise_div_int, times, carry):
+            noises, _ = noise_div_int
+            observations, actions, _ = carry
+
+            def single_vf(t, g, obs, a):
+                noisy_goal = jnp.expand_dims(g, 0)
+                time = jnp.expand_dims(t, 0)
+                observation = jnp.expand_dims(obs, 0)
+                if a is not None:
+                    action = jnp.expand_dims(a, 0)
+                else:
+                    action = a
+
+                vf = vector_field(time, noisy_goal, (observation, action)).squeeze(0)
+
+                return vf
+
+            vf = vector_field(times, noises, (observations, actions))
+
+            if actions is not None:
+                jac = jax.vmap(
+                    jax.jacrev(single_vf, argnums=1),
+                    in_axes=(None, 0, 0, 0), out_axes=0
+                )(times, noises, observations, actions)
+            else:
+                jac = jax.vmap(
+                    jax.jacrev(vf_func, argnums=1),
+                    in_axes=(None, 0, 0, None), out_axes=0
+                )(times, noises, observations, actions)
+
+            div = jnp.trace(jac, axis1=-2, axis2=-1)
+
+            return vf, div
+
+    else:
+        def vf_func(noise_div_int, times, observations, actions, z):
+            noises, _ = noise_div_int
+            # observations, actions, z = carry
+
+            # Split RNG and sample noise
+            # rng, div_rng = jax.random.split(rng)
+            # z = jax.random.normal(div_rng, shape=noises.shape, dtype=noises.dtype)
+
+            # Forward (vf) and linearization (jac_vf_dot_z)
+            def single_jvp(z):
+                vf, jac_vf_dot_z = jax.jvp(
+                    lambda n: vector_field(times, n, (observations, actions)),
+                    (noises,), (z,)
+                )
+
+                return vf, jac_vf_dot_z
+
+            # vf, jac_vf_dot_z = jax.jvp(
+            #     lambda n: vector_field(times, n, (observations, actions)),
+            #     (noises,), (z,)
+            # )
+            vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
+            div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
+
+            vf = vf[..., 0]
+            div = div.mean(axis=-1)
+
+            return vf, div
+
+    rng, div_rng = jax.random.split(rng)
+    z = jax.random.normal(div_rng, shape=(*goals.shape, num_hutchinson_ests), dtype=goals.dtype)
+    # reference: https://github.com/jax-ml/jax/issues/7269#issuecomment-879190286
+    sol = odeint(
+        lambda y, t, *args: jax.tree.map(lambda x: -x, vf_func(y, -t, *args)),
+        (goals, jnp.zeros(goals.shape[:-1], dtype=goals.dtype)),
+        -jnp.array([1.0, 0.0], dtype=goals.dtype),
+        observations, actions, z,
+    )
+
+    # odeint(lambda x, t: -f(x, -t), x0, -t)
+
+    noises, div_int = jax.tree.map(
+        lambda x: x[-1], sol)
+
+    if return_ratio:
+        log_ratio = div_int
+        return log_ratio
+    else:
+        # Finally, compute log_prob using the final noisy_goals and div_int
+        gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
+        log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
+
+        return log_prob
 
 def main():
     key = jax.random.PRNGKey(np.random.randint(2 ** 32 - 1))
@@ -308,18 +404,28 @@ def main():
 
     key, log_p_key, diffrax_log_p_key = jax.random.split(key, 3)
     start_time = time.time()
-    log_p = compute_log_likelihood(
-        goals, observations, actions, diffrax_log_p_key, div_type='hutchinson_normal', return_ratio=True)
-    jax.block_until_ready(log_p)
+    for _ in range(10):
+        log_p = compute_log_likelihood(
+            goals, observations, actions, diffrax_log_p_key, div_type='hutchinson_normal', return_ratio=True)
+        jax.block_until_ready(log_p)
     end_time = time.time()
     print("compute_log_likelihood time: {}".format(end_time - start_time))
 
     start_time = time.time()
-    diffrax_log_p = diffrax_compute_log_likelihood(
-        goals, observations, actions, diffrax_log_p_key, div_type='hutchinson_normal', return_ratio=True)
-    jax.block_until_ready(diffrax_log_p)
+    for _ in range(10):
+        diffrax_log_p = diffrax_compute_log_likelihood(
+            goals, observations, actions, diffrax_log_p_key, div_type='hutchinson_normal', return_ratio=True)
+        jax.block_until_ready(diffrax_log_p)
     end_time = time.time()
     print("diffrax_compute_log_likelihood time: {}".format(end_time - start_time))
+
+    start_time = time.time()
+    for _ in range(10):
+        jax_log_p = jax_compute_log_likelihood(
+            goals, observations, actions, diffrax_log_p_key, div_type='hutchinson_normal', return_ratio=True)
+        jax.block_until_ready(jax_log_p)
+    end_time = time.time()
+    print("jax_compute_log_likelihood time: {}".format(end_time - start_time))
 
     assert jnp.allclose(log_p, diffrax_log_p)
 
