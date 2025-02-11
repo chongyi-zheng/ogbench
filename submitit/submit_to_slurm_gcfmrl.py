@@ -44,14 +44,14 @@ def main():
             # "pointmaze-medium-navigate-v0",
             # "pointmaze-large-navigate-v0",
             "antmaze-large-navigate-v0",
-            "humanoidmaze-medium-navigate-v0",
-            "antsoccer-arena-navigate-v0"
+            # "humanoidmaze-medium-navigate-v0",
+            # "antsoccer-arena-navigate-v0"
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [0.3, 0.03, 0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
+                for alpha in [0.03, 0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for const_std in [False]:
-                        for ode_solver_type in ['dopri5']:
-                            for ode_adjoint_type in ['recursive_checkpoint']:
+                        for ode_solver_type in ['euler', 'dopri5', 'tsit5']:
+                            for ode_adjoint_type in ['recursive_checkpoint', 'direct', 'back_solve']:
                                 for num_flow_steps in [10]:
                                     for noise_type in ['normal']:
                                         for div_type in ['exact', 'hutchinson_normal', 'hutchinson_rademacher']:  # both works similar
@@ -74,12 +74,12 @@ def main():
                                                             conda activate ogbench;
                                                             which python;
                                                             echo $CONDA_PREFIX;
-                
+
                                                             echo job_id: $SLURM_ARRAY_JOB_ID;
                                                             echo task_id: $SLURM_ARRAY_TASK_ID;
                                                             squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
                                                             echo seed: {seed};
-                
+
                                                             export PROJECT_DIR=$PWD;
                                                             export PYTHONPATH=$HOME/research/ogbench/impls;
                                                             export PATH="$PATH":"$CONDA_PREFIX"/bin;
@@ -88,7 +88,8 @@ def main():
                                                             export PYOPENGL_PLATFORM=egl;
                                                             export EGL_DEVICE_ID=0;
                                                             export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
-                
+                                                            EQX_ON_ERROR=nan;
+
                                                             rm -rf {log_dir};
                                                             mkdir -p {log_dir};
                                                             python $PROJECT_DIR/impls/main.py \
@@ -112,7 +113,7 @@ def main():
                                                                 --seed={seed} \
                                                                 --save_dir={log_dir} \
                                                             2>&1 | tee {log_dir}/stream.log;
-                
+
                                                             export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
                                                             echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
                                                             echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";

@@ -336,215 +336,85 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
     #     else:
     #         return log_prob
 
-    # def compute_log_likelihood(self, goals, observations, key, actions=None,
-    #                            info=False):
-    #     if self.config['div_type'] == 'exact':
-    #         @jax.jit
-    #         def vector_field(time, noise_div_int, carry):
-    #             noises, _ = noise_div_int
-    #             observations, actions, _ = carry
-    #
-    #             # Forward (vf) and linearization (jac_vf_dot_z)
-    #             times = jnp.full(noises.shape[:-1], time)
-    #
-    #             def single_vf(t, n, obs, a):
-    #                 noise = jnp.expand_dims(n, 0)
-    #                 time = jnp.expand_dims(t, 0)
-    #                 observation = jnp.expand_dims(obs, 0)
-    #                 if a is not None:
-    #                     action = jnp.expand_dims(a, 0)
-    #                 else:
-    #                     action = a
-    #
-    #                 vf = self.network.select('critic_vf')(
-    #                     noise, time, observation, action).squeeze(0)
-    #
-    #                 return vf
-    #
-    #             vf = self.network.select('critic_vf')(
-    #                 noises, times, observations, actions)
-    #
-    #             if actions is not None:
-    #                 jac = jax.vmap(
-    #                     jax.jacrev(single_vf, argnums=1),
-    #                     in_axes=(0, 0, 0, 0), out_axes=0
-    #                 )(times, noises, observations, actions)
-    #             else:
-    #                 jac = jax.vmap(
-    #                     jax.jacrev(single_vf, argnums=1),
-    #                     in_axes=(0, 0, 0, None), out_axes=0
-    #                 )(times, noises, observations, actions)
-    #
-    #             div = jnp.trace(jac, axis1=-2, axis2=-1)
-    #
-    #             return vf, div
-    #     else:
-    #
-    #         @jax.jit
-    #         def vector_field(time, noise_div_int, carry):
-    #             noises, _ = noise_div_int
-    #             observations, actions, z = carry
-    #
-    #             # Split RNG and sample noise
-    #             # key, z_key = jax.random.split(key)
-    #             # if self.config['div_type'] == 'hutchinson_normal':
-    #             #     z = jax.random.normal(z_key, shape=goals.shape, dtype=goals.dtype)
-    #             # elif self.config['div_type'] == 'hutchinson_rademacher':
-    #             #     z = jax.random.rademacher(z_key, shape=goals.shape, dtype=goals.dtype)
-    #
-    #             # Forward (vf) and linearization (jac_vf_dot_z)
-    #             times = jnp.full(noises.shape[:-1], time)
-    #             # vf, jac_vf_dot_z = jax.jvp(
-    #             #     lambda n: self.network.select('critic_vf')(n, times, observations, actions),
-    #             #     (noises,), (z,)
-    #             # )
-    #
-    #             def single_jvp(z):
-    #                 vf, jac_vf_dot_z = jax.jvp(
-    #                     lambda n: self.network.select('critic_vf')(n, times, observations, actions),
-    #                     (noises,), (z,)
-    #                 )
-    #
-    #                 return vf, jac_vf_dot_z
-    #
-    #             vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
-    #             div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
-    #
-    #             vf = vf[..., 0]  # vf are the same along the final dimension
-    #             div = div.mean(axis=-1)
-    #
-    #             return vf, div
-    #
-    #     key, z_key = jax.random.split(key)
-    #     if self.config['div_type'] == 'hutchinson_normal':
-    #         z = jax.random.normal(
-    #             z_key, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
-    #     elif self.config['div_type'] == 'hutchinson_rademacher':
-    #         z = jax.random.rademacher(
-    #             z_key, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
-    #     else:
-    #         z = None
-    #
-    #     ode_term = ODETerm(vector_field)
-    #     ode_sol = diffeqsolve(
-    #         ode_term, self.ode_solver,
-    #         t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
-    #         y0=(goals, jnp.zeros(goals.shape[:-1])),
-    #         args=(observations, actions, z),
-    #         adjoint=self.ode_adjoint,
-    #     )
-    #     noises, div_int = jax.tree.map(
-    #         lambda x: x[-1], ode_sol.ys)
-    #
-    #     # Finally, compute log_prob using the final noisy_goals and div_int
-    #     gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
-    #     log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
-    #
-    #     if info:
-    #         return log_prob, noises, div_int
-    #     else:
-    #         return log_prob
-
-    # def compute_log_likelihood(self, goals, observations, key, actions=None,
-    #                            info=False):
-    #     if self.config['div_type'] == 'exact':
-    #         @jax.jit
-    #         def vector_field(time, noise_div_int, carry):
-    #             noises, _ = noise_div_int
-    #             observations, actions, _ = carry
-    #
-    #             # Forward (vf) and linearization (jac_vf_dot_z)
-    #             times = jnp.full(noises.shape[:-1], time)
-    #
-    #             def single_vf(t, n, obs, a):
-    #                 noise = jnp.expand_dims(n, 0)
-    #                 time = jnp.expand_dims(t, 0)
-    #                 observation = jnp.expand_dims(obs, 0)
-    #                 if a is not None:
-    #                     action = jnp.expand_dims(a, 0)
-    #                 else:
-    #                     action = a
-    #
-    #                 vf = self.network.select('critic_vf')(
-    #                     noise, time, observation, action).squeeze(0)
-    #
-    #                 return vf
-    #
-    #             vf = self.network.select('critic_vf')(
-    #                 noises, times, observations, actions)
-    #
-    #             if actions is not None:
-    #                 jac = jax.vmap(
-    #                     jax.jacrev(single_vf, argnums=1),
-    #                     in_axes=(0, 0, 0, 0), out_axes=0
-    #                 )(times, noises, observations, actions)
-    #             else:
-    #                 jac = jax.vmap(
-    #                     jax.jacrev(single_vf, argnums=1),
-    #                     in_axes=(0, 0, 0, None), out_axes=0
-    #                 )(times, noises, observations, actions)
-    #
-    #             div = jnp.trace(jac, axis1=-2, axis2=-1)
-    #
-    #             return vf, div
-    #     else:
-    #
-    #         @jax.jit
-    #         def vector_field(time, noise_div_int, carry):
-    #             noises, _ = noise_div_int
-    #             observations, actions, z = carry
-    #
-    #             # Forward (vf) and linearization (jac_vf_dot_z)
-    #             times = jnp.full(noises.shape[:-1], time)
-    #
-    #             def single_jvp(z):
-    #                 vf, jac_vf_dot_z = jax.jvp(
-    #                     lambda n: self.network.select('critic_vf')(n, times, observations, actions),
-    #                     (noises,), (z,)
-    #                 )
-    #
-    #                 return vf, jac_vf_dot_z
-    #
-    #             vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
-    #             div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
-    #
-    #             vf = vf[..., 0]  # vf are the same along the final dimension
-    #             div = div.mean(axis=-1)
-    #
-    #             return vf, div
-    #
-    #     key, z_key = jax.random.split(key)
-    #     if self.config['div_type'] == 'hutchinson_normal':
-    #         z = jax.random.normal(
-    #             z_key, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
-    #     elif self.config['div_type'] == 'hutchinson_rademacher':
-    #         z = jax.random.rademacher(
-    #             z_key, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
-    #     else:
-    #         z = None
-    #
-    #     ode_term = ODETerm(vector_field)
-    #     ode_sol = diffeqsolve(
-    #         ode_term, self.ode_solver,
-    #         t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
-    #         y0=(goals, jnp.zeros(goals.shape[:-1])),
-    #         args=(observations, actions, z),
-    #         adjoint=self.ode_adjoint,
-    #     )
-    #     noises, div_int = jax.tree.map(
-    #         lambda x: x[-1], ode_sol.ys)
-    #
-    #     # Finally, compute log_prob using the final noisy_goals and div_int
-    #     gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
-    #     log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
-    #
-    #     if info:
-    #         return log_prob, noises, div_int
-    #     else:
-    #         return log_prob
-
     def compute_log_likelihood(self, goals, observations, key, actions=None,
                                info=False):
+        if self.config['div_type'] == 'exact':
+            @jax.jit
+            def vector_field(time, noise_div_int, carry):
+                noises, _ = noise_div_int
+                observations, actions, _ = carry
+
+                # Forward (vf) and linearization (jac_vf_dot_z)
+                times = jnp.full(noises.shape[:-1], time)
+
+                def single_vf(t, n, obs, a):
+                    noise = jnp.expand_dims(n, 0)
+                    time = jnp.expand_dims(t, 0)
+                    observation = jnp.expand_dims(obs, 0)
+                    if a is not None:
+                        action = jnp.expand_dims(a, 0)
+                    else:
+                        action = a
+
+                    vf = self.network.select('critic_vf')(
+                        noise, time, observation, action).squeeze(0)
+
+                    return vf
+
+                vf = self.network.select('critic_vf')(
+                    noises, times, observations, actions)
+
+                if actions is not None:
+                    jac = jax.vmap(
+                        jax.jacrev(single_vf, argnums=1),
+                        in_axes=(0, 0, 0, 0), out_axes=0
+                    )(times, noises, observations, actions)
+                else:
+                    jac = jax.vmap(
+                        jax.jacrev(single_vf, argnums=1),
+                        in_axes=(0, 0, 0, None), out_axes=0
+                    )(times, noises, observations, actions)
+
+                div = jnp.trace(jac, axis1=-2, axis2=-1)
+
+                return vf, div
+        else:
+
+            @jax.jit
+            def vector_field(time, noise_div_int, carry):
+                noises, _ = noise_div_int
+                observations, actions, z = carry
+
+                # Split RNG and sample noise
+                # key, z_key = jax.random.split(key)
+                # if self.config['div_type'] == 'hutchinson_normal':
+                #     z = jax.random.normal(z_key, shape=goals.shape, dtype=goals.dtype)
+                # elif self.config['div_type'] == 'hutchinson_rademacher':
+                #     z = jax.random.rademacher(z_key, shape=goals.shape, dtype=goals.dtype)
+
+                # Forward (vf) and linearization (jac_vf_dot_z)
+                times = jnp.full(noises.shape[:-1], time)
+                # vf, jac_vf_dot_z = jax.jvp(
+                #     lambda n: self.network.select('critic_vf')(n, times, observations, actions),
+                #     (noises,), (z,)
+                # )
+
+                def single_jvp(z):
+                    vf, jac_vf_dot_z = jax.jvp(
+                        lambda n: self.network.select('critic_vf')(n, times, observations, actions),
+                        (noises,), (z,)
+                    )
+
+                    return vf, jac_vf_dot_z
+
+                vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
+                div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
+
+                vf = vf[..., 0]  # vf are the same along the final dimension
+                div = div.mean(axis=-1)
+
+                return vf, div
+
         key, z_key = jax.random.split(key)
         if self.config['div_type'] == 'hutchinson_normal':
             z = jax.random.normal(
@@ -555,16 +425,17 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
         else:
             z = None
 
-        # reference: https://github.com/jax-ml/jax/issues/7269#issuecomment-879190286
-        sol = odeint(
-            lambda y, t, *args: jax.tree.map(lambda x: -x, self.vector_field_func(y, -t, *args)),
-            (goals, jnp.zeros(goals.shape[:-1], dtype=goals.dtype)),
-            -jnp.array([1.0, 0.0], dtype=goals.dtype),
-            observations, actions, z,
+        ode_term = ODETerm(vector_field)
+        ode_sol = diffeqsolve(
+            ode_term, self.ode_solver,
+            t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
+            y0=(goals, jnp.zeros(goals.shape[:-1])),
+            args=(observations, actions, z),
+            adjoint=self.ode_adjoint,
+            throw=False,  # (chongyi): setting throw to false is important for speed
         )
-
         noises, div_int = jax.tree.map(
-            lambda x: x[-1], sol)
+            lambda x: x[-1], ode_sol.ys)
 
         # Finally, compute log_prob using the final noisy_goals and div_int
         gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
@@ -574,6 +445,136 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             return log_prob, noises, div_int
         else:
             return log_prob
+
+    # def compute_log_likelihood(self, goals, observations, key, actions=None,
+    #                            info=False):
+    #     if self.config['div_type'] == 'exact':
+    #         @jax.jit
+    #         def vector_field(time, noise_div_int, carry):
+    #             noises, _ = noise_div_int
+    #             observations, actions, _ = carry
+    #
+    #             # Forward (vf) and linearization (jac_vf_dot_z)
+    #             times = jnp.full(noises.shape[:-1], time)
+    #
+    #             def single_vf(t, n, obs, a):
+    #                 noise = jnp.expand_dims(n, 0)
+    #                 time = jnp.expand_dims(t, 0)
+    #                 observation = jnp.expand_dims(obs, 0)
+    #                 if a is not None:
+    #                     action = jnp.expand_dims(a, 0)
+    #                 else:
+    #                     action = a
+    #
+    #                 vf = self.network.select('critic_vf')(
+    #                     noise, time, observation, action).squeeze(0)
+    #
+    #                 return vf
+    #
+    #             vf = self.network.select('critic_vf')(
+    #                 noises, times, observations, actions)
+    #
+    #             if actions is not None:
+    #                 jac = jax.vmap(
+    #                     jax.jacrev(single_vf, argnums=1),
+    #                     in_axes=(0, 0, 0, 0), out_axes=0
+    #                 )(times, noises, observations, actions)
+    #             else:
+    #                 jac = jax.vmap(
+    #                     jax.jacrev(single_vf, argnums=1),
+    #                     in_axes=(0, 0, 0, None), out_axes=0
+    #                 )(times, noises, observations, actions)
+    #
+    #             div = jnp.trace(jac, axis1=-2, axis2=-1)
+    #
+    #             return vf, div
+    #     else:
+    #
+    #         @jax.jit
+    #         def vector_field(time, noise_div_int, carry):
+    #             noises, _ = noise_div_int
+    #             observations, actions, z = carry
+    #
+    #             # Forward (vf) and linearization (jac_vf_dot_z)
+    #             times = jnp.full(noises.shape[:-1], time)
+    #
+    #             def single_jvp(z):
+    #                 vf, jac_vf_dot_z = jax.jvp(
+    #                     lambda n: self.network.select('critic_vf')(n, times, observations, actions),
+    #                     (noises,), (z,)
+    #                 )
+    #
+    #                 return vf, jac_vf_dot_z
+    #
+    #             vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
+    #             div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
+    #
+    #             vf = vf[..., 0]  # vf are the same along the final dimension
+    #             div = div.mean(axis=-1)
+    #
+    #             return vf, div
+    #
+    #     key, z_key = jax.random.split(key)
+    #     if self.config['div_type'] == 'hutchinson_normal':
+    #         z = jax.random.normal(
+    #             z_key, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
+    #     elif self.config['div_type'] == 'hutchinson_rademacher':
+    #         z = jax.random.rademacher(
+    #             z_key, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
+    #     else:
+    #         z = None
+    #
+    #     ode_term = ODETerm(vector_field)
+    #     ode_sol = diffeqsolve(
+    #         ode_term, self.ode_solver,
+    #         t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
+    #         y0=(goals, jnp.zeros(goals.shape[:-1])),
+    #         args=(observations, actions, z),
+    #         adjoint=self.ode_adjoint,
+    #     )
+    #     noises, div_int = jax.tree.map(
+    #         lambda x: x[-1], ode_sol.ys)
+    #
+    #     # Finally, compute log_prob using the final noisy_goals and div_int
+    #     gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
+    #     log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
+    #
+    #     if info:
+    #         return log_prob, noises, div_int
+    #     else:
+    #         return log_prob
+
+    # def compute_log_likelihood(self, goals, observations, key, actions=None,
+    #                            info=False):
+    #     key, z_key = jax.random.split(key)
+    #     if self.config['div_type'] == 'hutchinson_normal':
+    #         z = jax.random.normal(
+    #             z_key, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
+    #     elif self.config['div_type'] == 'hutchinson_rademacher':
+    #         z = jax.random.rademacher(
+    #             z_key, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
+    #     else:
+    #         z = None
+    #
+    #     # reference: https://github.com/jax-ml/jax/issues/7269#issuecomment-879190286
+    #     sol = odeint(
+    #         lambda y, t, *args: jax.tree.map(lambda x: -x, self.vector_field_func(y, -t, *args)),
+    #         (goals, jnp.zeros(goals.shape[:-1], dtype=goals.dtype)),
+    #         -jnp.array([1.0, 0.0], dtype=goals.dtype),
+    #         observations, actions, z,
+    #     )
+    #
+    #     noises, div_int = jax.tree.map(
+    #         lambda x: x[-1], sol)
+    #
+    #     # Finally, compute log_prob using the final noisy_goals and div_int
+    #     gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
+    #     log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
+    #
+    #     if info:
+    #         return log_prob, noises, div_int
+    #     else:
+    #         return log_prob
 
     @jax.jit
     def total_loss(self, batch, grad_params, rng=None):
@@ -849,7 +850,7 @@ def get_config():
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             discount=0.99,  # Discount factor.
-            ode_solver_type='euler',  # Type of ODE solver ('euler', 'dopri5').
+            ode_solver_type='euler',  # Type of ODE solver ('euler', 'dopri5', 'tsit5').
             ode_adjoint_type='recursive_checkpoint',  # Type of ODE adjoint ('recursive_checkpoint', 'direct', 'back_solve').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
