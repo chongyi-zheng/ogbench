@@ -3,7 +3,7 @@ from typing import Any
 import flax
 import jax
 import jax.numpy as jnp
-from jax.experimental.ode import odeint
+# from jax.experimental.ode import odeint
 import ml_collections
 import optax
 from diffrax import (
@@ -37,6 +37,8 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
 
         batch_size = batch['observations'].shape[0]
         observations = batch['observations']
+        dataset_obs_mean = batch['dataset_obs_mean']
+        dataset_obs_var = batch['dataset_obs_var']
         actions = batch['actions']
         goals = batch['value_goals']
 
@@ -57,12 +59,16 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
 
         if self.config['noise_type'] == 'normal':
             flow_log_prob, flow_noise, flow_div_int = self.compute_log_likelihood(
-                goals, observations, q_rng, actions=actions, info=True)
+                goals, observations,
+                dataset_obs_mean, dataset_obs_var,
+                q_rng, actions=actions, info=True)
         else:
-            _, flow_noise, flow_div_int = self.compute_log_likelihood(
-                goals, observations, q_rng, actions=actions, info=True)
+            flow_log_prob, flow_noise, flow_div_int = self.compute_log_likelihood(
+                goals, observations,
+                dataset_obs_mean, dataset_obs_var,
+                q_rng, actions=actions, info=True)
             # TODO (chongyi): flow_div_int is not exactly equivalent to flow_log_prob in this case
-            flow_log_prob = flow_div_int
+            # flow_log_prob = flow_div_int
 
         if self.config['distill_type'] == 'log_prob':
             assert self.config['noise_type'] != 'marginal'
@@ -128,11 +134,15 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             rng, q_rng = jax.random.split(rng)
             if self.config['noise_type'] == 'normal':
                 q = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions
+                    batch['actor_goals'], batch['observations'],
+                    batch['dataset_obs_mean'], batch['dataset_obs_var'],
+                    q_rng, actions=q_actions
                 )
             else:
                 _, _, q = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'], q_rng, actions=q_actions, info=True
+                    batch['actor_goals'], batch['observations'],
+                    batch['dataset_obs_mean'], batch['dataset_obs_var'],
+                    q_rng, actions=q_actions, info=True
                 )
 
             # q = self.compute_log_likelihood(
@@ -336,7 +346,9 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
     #     else:
     #         return log_prob
 
-    def compute_log_likelihood(self, goals, observations, key, actions=None,
+    def compute_log_likelihood(self, goals, observations,
+                               dataset_obs_mean, dataset_obs_var,
+                               key, actions=None,
                                info=False):
         if self.config['div_type'] == 'exact':
             @jax.jit
@@ -438,7 +450,16 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             lambda x: x[-1], ode_sol.ys)
 
         # Finally, compute log_prob using the final noisy_goals and div_int
-        gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
+        if self.config['noise_type'] == 'normal':
+            gaussian_log_prob = -0.5 * jnp.sum(
+                jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
+        else:
+            # gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
+            gaussian_log_prob = -0.5 * jnp.sum(
+                jnp.log(2 * jnp.pi) + jnp.log(dataset_obs_var[None])
+                + (noises - dataset_obs_mean[None]) ** 2 / dataset_obs_var[None],
+                axis=-1
+            )
         log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
 
         if info:
@@ -844,8 +865,8 @@ def get_config():
             agent_name='gcfmrl',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
-            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
-            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
+            actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
+            value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.

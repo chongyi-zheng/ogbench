@@ -1,3 +1,4 @@
+from typing import Any
 
 import numpy as np
 import flax
@@ -43,7 +44,7 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
     This wrapper will normalize observations s.t. each coordinate is centered with unit variance.
     """
 
-    agent: flax.struct.PyTreeNode
+    agent: Any
     normalizer_type: str
     mean: np.ndarray
     var: np.ndarray
@@ -51,7 +52,7 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
     min: np.ndarray
     epsilon: float = 1e-8
 
-    def _normalize(self, observations):
+    def normalize(self, observations):
         if observations is None:
             return None
         else:
@@ -68,8 +69,8 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
                     self.normalizer_type))
 
     def sample_actions(self, observations, goals=None, seed=None, temperature=1.0):
-        observations = self._normalize(observations)
-        goals = self._normalize(goals)
+        observations = self.normalize(observations)
+        goals = self.normalize(goals)
 
         try:
             return self.agent.sample_actions(observations, goals, seed=seed, temperature=temperature)
@@ -77,12 +78,12 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
             return self.agent.sample_actions(observations, seed=seed, temperature=temperature)
 
     def update(self, batch):
-        batch['observations'] = self._normalize(batch['observations'])
-        batch['next_observations'] = self._normalize(batch['next_observations'])
+        batch['observations'] = self.normalize(batch['observations'])
+        batch['next_observations'] = self.normalize(batch['next_observations'])
         if 'value_goals' in batch:
-            batch['value_goals'] = self._normalize(batch['value_goals'])
+            batch['value_goals'] = self.normalize(batch['value_goals'])
         if 'actor_goals' in batch:
-            batch['actor_goals'] = self._normalize(batch['actor_goals'])
+            batch['actor_goals'] = self.normalize(batch['actor_goals'])
         agent, info = self.agent.update(batch)
 
         return self.replace(agent=agent), info
