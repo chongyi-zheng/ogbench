@@ -27,7 +27,7 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="gcfmrl",
-        slurm_time=int(12 * 60),  # minute
+        slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
@@ -54,7 +54,7 @@ def main():
                             for ode_adjoint_type in ['recursive_checkpoint', 'direct', 'back_solve']:
                                 for num_flow_steps in [10]:
                                     for noise_type in ['marginal']:
-                                        for div_type in ['exact', 'hutchinson_normal', 'hutchinson_rademacher']:  # both works similar
+                                        for div_type in ['exact', 'hutchinson_normal']:  # both works similar
                                             for distill_type in ['none', 'log_prob', 'noise_div_int']:  # no distillation seems to work better
                                                 for normalize_q_loss in [True]:  # it is important to normalize Q
                                                     for seed in [10, 20]:

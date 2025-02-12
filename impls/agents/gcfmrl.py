@@ -71,12 +71,12 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             # flow_log_prob = flow_div_int
 
         if self.config['distill_type'] == 'log_prob':
-            assert self.config['noise_type'] != 'marginal'
+            # assert self.config['noise_type'] != 'marginal'
             log_prob_pred = self.network.select('critic')(
                 goals, observations, actions=actions, params=grad_params)
             distill_loss = jnp.square(flow_log_prob - log_prob_pred).mean()
         elif self.config['distill_type'] == 'noise_div_int':
-            assert self.config['noise_type'] != 'marginal'
+            # assert self.config['noise_type'] != 'marginal'
             shortcut_noise_pred = self.network.select('critic_noise')(
                 goals, observations, actions=actions, params=grad_params)
             noise_distill_loss = jnp.square(shortcut_noise_pred - flow_noise).mean()
@@ -115,17 +115,26 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
 
         if self.config['distill_type'] == 'log_prob':
-            assert self.config['noise_type'] != 'marginal'
+            # assert self.config['noise_type'] != 'marginal'
             q = self.network.select('critic')(
                 batch['actor_goals'], batch['observations'], actions=q_actions)
         elif self.config['distill_type'] == 'noise_div_int':
-            assert self.config['noise_type'] != 'marginal'
+            # assert self.config['noise_type'] != 'marginal'
             shortcut_noise_pred = self.network.select('critic_noise')(
                 batch['actor_goals'], batch['observations'], actions=q_actions)
             shortcut_div_int_pred = self.network.select('critic_div')(
                 batch['actor_goals'], batch['observations'], actions=q_actions)
 
-            gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + shortcut_noise_pred ** 2, axis=-1)
+            if self.config['noise_type'] == 'normal':
+                gaussian_log_prob = -0.5 * jnp.sum(
+                    jnp.log(2 * jnp.pi) + shortcut_noise_pred ** 2, axis=-1)
+            else:
+                # gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
+                gaussian_log_prob = -0.5 * jnp.sum(
+                    jnp.log(2 * jnp.pi) + jnp.log(batch['dataset_obs_var'][None])
+                    + (shortcut_noise_pred - batch['dataset_obs_mean'][None]) ** 2 / batch['dataset_obs_var'][None],
+                    axis=-1
+                )
             q = gaussian_log_prob + shortcut_div_int_pred  # log p_1(g | s, a)
         elif self.config['distill_type'] == 'div_int':
             q = self.network.select('critic')(
@@ -136,13 +145,13 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
                 q = self.compute_log_likelihood(
                     batch['actor_goals'], batch['observations'],
                     batch['dataset_obs_mean'], batch['dataset_obs_var'],
-                    q_rng, actions=q_actions
+                    q_rng, actions=q_actions,
                 )
             else:
-                _, _, q = self.compute_log_likelihood(
+                q = self.compute_log_likelihood(
                     batch['actor_goals'], batch['observations'],
                     batch['dataset_obs_mean'], batch['dataset_obs_var'],
-                    q_rng, actions=q_actions, info=True
+                    q_rng, actions=q_actions,
                 )
 
             # q = self.compute_log_likelihood(
@@ -351,7 +360,6 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
                                key, actions=None,
                                info=False):
         if self.config['div_type'] == 'exact':
-            @jax.jit
             def vector_field(time, noise_div_int, carry):
                 noises, _ = noise_div_int
                 observations, actions, _ = carry
@@ -392,7 +400,6 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
                 return vf, div
         else:
 
-            @jax.jit
             def vector_field(time, noise_div_int, carry):
                 noises, _ = noise_div_int
                 observations, actions, z = carry

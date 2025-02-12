@@ -107,7 +107,7 @@ def main(_):
             normalizer_type=FLAGS.obs_norm_type
         )
 
-    if config['agent_name'] == 'gcfmrl':
+    if config['agent_name'] in ['gcfmrl', 'gctd_fmrl']:
         dataset_observations = train_dataset.dataset['observations']
         if FLAGS.obs_norm_type in ['normal', 'bounded']:
             dataset_observations = agent.normalize(dataset_observations)
@@ -126,7 +126,7 @@ def main(_):
     for i in tqdm.tqdm(range(1, FLAGS.train_steps + 1), smoothing=0.1, dynamic_ncols=True):
         # Update agent.
         batch = train_dataset.sample(config['batch_size'])
-        if config['agent_name'] == 'gcfmrl':
+        if config['agent_name'] in ['gcfmrl', 'gctd_fmrl']:
             batch['dataset_obs_mean'] = dataset_obs_mean
             batch['dataset_obs_var'] = dataset_obs_var
         agent, update_info = agent.update(batch)
@@ -136,7 +136,7 @@ def main(_):
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
             if val_dataset is not None:
                 val_batch = val_dataset.sample(config['batch_size'])
-                if config['agent_name'] == 'gcfmrl':
+                if config['agent_name'] in ['gcfmrl', 'gctd_fmrl']:
                     val_batch['dataset_obs_mean'] = dataset_obs_mean
                     val_batch['dataset_obs_var'] = dataset_obs_var
                 _, val_info = agent.total_loss(val_batch, grad_params=None)
