@@ -45,7 +45,7 @@ def main():
             "pointmaze-large-navigate-v0",
             # "antmaze-large-navigate-v0"
         ]:
-            for normalize_observation in [1]:
+            for obs_norm_type in ['normal']:
                 for alpha in [0.003]:
                     for const_std in [False]:
                         for ode_solver_type in ['euler', 'dopri5', 'tsit5']:
@@ -57,7 +57,7 @@ def main():
                                                 for log_prob_distill_type in ['log_prob', 'noise_div_int']:
                                                     for normalize_q_loss in [True]:
                                                         for seed in [10, 20]:
-                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_norm_obs={normalize_observation}_alpha={alpha}_const_std={const_std}_solver_type={ode_solver_type}_adjoint_type={ode_adjoint_type}_num_flow_steps={num_flow_steps}_noise_type={noise_type}_div_type={div_type}_log_prob_distill_type={log_prob_distill_type}_sample_distill_type={sample_distill_type}_normalize_q_loss={normalize_q_loss}"
+                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_const_std={const_std}_solver_type={ode_solver_type}_adjoint_type={ode_adjoint_type}_num_flow_steps={num_flow_steps}_noise_type={noise_type}_div_type={div_type}_log_prob_distill={log_prob_distill_type}_sample_distill={sample_distill_type}_norm_q={normalize_q_loss}"
                                                             log_dir = os.path.expanduser(
                                                                 f"{log_root_dir}/exp_logs/ogbench_logs/gctd_fmrl/{exp_name}/{seed}")
 
@@ -95,7 +95,7 @@ def main():
                                                                     --enable_wandb=1 \
                                                                     --env_name={env_name} \
                                                                     --dataset_class=GCDataset \
-                                                                    --normalize_observation={normalize_observation} \
+                                                                    --obs_norm_type={obs_norm_type} \
                                                                     --eval_episodes=50 \
                                                                     --eval_on_cpu=0 \
                                                                     --eval_temperature=0.0 \
