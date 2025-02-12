@@ -57,7 +57,7 @@ def main():
                                                 for log_prob_distill_type in ['log_prob', 'noise_div_int']:
                                                     for normalize_q_loss in [True]:
                                                         for seed in [10, 20]:
-                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_const_std={const_std}_solver_type={ode_solver_type}_adjoint_type={ode_adjoint_type}_num_flow_steps={num_flow_steps}_noise_type={noise_type}_div_type={div_type}_log_prob_distill={log_prob_distill_type}_sample_distill={sample_distill_type}_norm_q={normalize_q_loss}"
+                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_gctd_fmrl_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_const_std={const_std}_solver={ode_solver_type}_adjoint={ode_adjoint_type}_flow_steps={num_flow_steps}_noise={noise_type}_div={div_type}_log_prob_distill={log_prob_distill_type}_sample_distill={sample_distill_type}_norm_q={normalize_q_loss}"
                                                             log_dir = os.path.expanduser(
                                                                 f"{log_root_dir}/exp_logs/ogbench_logs/gctd_fmrl/{exp_name}/{seed}")
 
