@@ -115,9 +115,9 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
 
         rng, noise_rng, time_rng = jax.random.split(rng, 3)
         if self.config['noise_type'] == 'normal':
-            noises = jax.random.normal(noise_rng, shape=goals.shape, dtype=goals.dtype)
+            noises = jax.random.normal(noise_rng, shape=actions.shape, dtype=actions.dtype)
         else:
-            noises = jnp.roll(batch['actor_goals'], shift=1, axis=0)
+            noises = jnp.roll(actions, shift=1, axis=0)
         # noises = jax.random.normal(noise_rng, shape=actions.shape, dtype=actions.dtype)
         times = jax.random.uniform(time_rng, shape=(batch_size, ))
         path_sample = self.cond_prob_path(x_0=noises, x_1=actions, t=times)

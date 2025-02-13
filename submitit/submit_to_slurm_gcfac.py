@@ -49,11 +49,11 @@ def main():
             # "antsoccer-arena-navigate-v0"
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [10.0]:  # when normalize_q_loss = 1, use alpha around 0.003
+                for alpha in [10.0, 0.001]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for ode_solver_type in ['euler']:
                         for ode_adjoint_type in ['recursive_checkpoint']:
                             for num_flow_steps in [10]:
-                                for noise_type in ['normal', 'marginal']:
+                                for noise_type in ['normal']:
                                     for div_type in ['exact', 'hutchinson_rademacher']:  # both works similar
                                         for distill_type in ['log_prob', 'noise_div_int']:  # no distillation seems to work better
                                             for actor_distill_type in ['fwd_sample', 'fwd_int']:
