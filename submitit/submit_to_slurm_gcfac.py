@@ -58,9 +58,9 @@ def main():
                                             for actor_distill_type in ['fwd_sample', 'fwd_int']:
                                                 for normalize_q_loss in [True]:  # it is important to normalize Q
                                                     for seed in [10, 20]:
-                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfmrl_env_name={env_name}_obs_norm={obs_norm_type}_alpha={alpha}_solver={ode_solver_type}_adjoint={ode_adjoint_type}_num_flow_steps={num_flow_steps}_noise={noise_type}_div={div_type}_distill={distill_type}_actor_distill={actor_distill_type}_norm_q_loss={normalize_q_loss}"
+                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfac_env_name={env_name}_obs_norm={obs_norm_type}_alpha={alpha}_solver={ode_solver_type}_adjoint={ode_adjoint_type}_num_flow_steps={num_flow_steps}_noise={noise_type}_div={div_type}_distill={distill_type}_actor_distill={actor_distill_type}_norm_q_loss={normalize_q_loss}"
                                                         log_dir = os.path.expanduser(
-                                                            f"{log_root_dir}/exp_logs/ogbench_logs/gcfmrl/{exp_name}/{seed}")
+                                                            f"{log_root_dir}/exp_logs/ogbench_logs/gcfac/{exp_name}/{seed}")
 
                                                         # change the log folder of slurm executor
                                                         submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -100,7 +100,7 @@ def main():
                                                                 --eval_episodes=50 \
                                                                 --eval_on_cpu=0 \
                                                                 --eval_temperature=0.0 \
-                                                                --agent=impls/agents/gcfmrl.py \
+                                                                --agent=impls/agents/gcfac.py \
                                                                 --agent.alpha={alpha} \
                                                                 --agent.ode_solver_type={ode_solver_type} \
                                                                 --agent.ode_adjoint_type={ode_adjoint_type} \
