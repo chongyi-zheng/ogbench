@@ -54,7 +54,7 @@ def main():
                             for ode_adjoint_type in ['recursive_checkpoint', 'direct', 'back_solve']:
                                 for num_flow_steps in [10]:
                                     for noise_type in ['marginal']:
-                                        for div_type in ['exact', 'hutchinson_normal']:  # both works similar
+                                        for div_type in ['exact', 'hutchinson_rademacher']:  # both works similar
                                             for distill_type in ['none', 'log_prob', 'noise_div_int']:  # no distillation seems to work better
                                                 for normalize_q_loss in [True]:  # it is important to normalize Q
                                                     for seed in [10, 20]:

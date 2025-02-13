@@ -271,26 +271,26 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
 
         return noises
 
-    def compute_rev_flow_samples(self, goals, observations, actions=None):
-        def vector_field(time, noises, carry):
-            (observations, actions) = carry
-            times = jnp.full(noises.shape[:-1], time)
-
-            vf = self.network.select('critic_vf')(
-                noises, times, observations, actions=actions)
-
-            return vf
-
-        ode_term = ODETerm(vector_field)
-        ode_sol = diffeqsolve(
-            ode_term, self.ode_solver,
-            t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
-            y0=goals, args=(observations, actions),
-            adjoint=self.ode_adjoint,
-        )
-        noises = ode_sol.ys[-1]
-
-        return noises
+    # def compute_rev_flow_samples(self, goals, observations, actions=None):
+    #     def vector_field(time, noises, carry):
+    #         (observations, actions) = carry
+    #         times = jnp.full(noises.shape[:-1], time)
+    #
+    #         vf = self.network.select('critic_vf')(
+    #             noises, times, observations, actions=actions)
+    #
+    #         return vf
+    #
+    #     ode_term = ODETerm(vector_field)
+    #     ode_sol = diffeqsolve(
+    #         ode_term, self.ode_solver,
+    #         t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
+    #         y0=goals, args=(observations, actions),
+    #         adjoint=self.ode_adjoint,
+    #     )
+    #     noises = ode_sol.ys[-1]
+    #
+    #     return noises
 
     # def compute_rev_flow_samples(self, goals, observations, actions=None):
     #     noises = goals
