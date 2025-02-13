@@ -2,6 +2,7 @@ from agents.crl import CRLAgent
 from agents.crl_infonce import CRLInfoNCEAgent
 from agents.fmrl import FMRLAgent
 from agents.fql import FQLAgent
+from agents.gcfac import GCFlowActorCriticAgent
 from agents.gcfmrl import GCFMRLAgent
 from agents.gcbc import GCBCAgent
 from agents.gciql import GCIQLAgent
@@ -21,6 +22,7 @@ agents = dict(
     crl_infonce=CRLInfoNCEAgent,
     fmrl=FMRLAgent,
     fql=FQLAgent,
+    gcfac=GCFlowActorCriticAgent,
     gcfmrl=GCFMRLAgent,
     gcbc=GCBCAgent,
     gciql=GCIQLAgent,

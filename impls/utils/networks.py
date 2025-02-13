@@ -805,6 +805,73 @@ class GCFMBilinearVectorField(nn.Module):
         return vf
 
 
+class GCActorVectorField(nn.Module):
+    """Actor vector field network for flow matching.
+
+    Attributes:
+        hidden_dims: Hidden layer dimensions.
+        action_dim: Action dimension.
+        layer_norm: Whether to apply layer normalization.
+    """
+
+    action_dim: int
+    hidden_dims: Sequence[int]
+    network_type: str = 'mlp'
+    layer_norm: bool = False
+    num_ensembles: int = 1
+    state_encoder: nn.Module = None
+    goal_encoder: nn.Module = None
+
+    def setup(self):
+        if self.network_type == 'mlp':
+            network_module = MLP
+        else:
+            raise NotImplementedError
+
+        if self.num_ensembles > 1:
+            network_module = ensemblize(network_module, self.num_ensembles)
+
+        if self.network_type == 'mlp':
+            velocity_field_net = network_module(
+                (*self.hidden_dims, self.action_dim),
+                activate_final=False,
+                layer_norm=self.layer_norm
+            )
+        else:
+            raise NotImplementedError
+
+        self.velocity_field_net = velocity_field_net
+
+    @nn.compact
+    def __call__(self, noisy_actions, times, observations, goals=None):
+        """Return the vectors at the given states, actions, and times.
+
+        Args:
+            noisy_actions: Actions.
+            observations: Observations.
+            times: Times (optional).
+            goals: Goals (optional).
+        """
+        if self.goal_encoder is not None and goals is not None:
+            goals = self.goal_encoder(goals)
+
+        if self.state_encoder is not None:
+            observations = self.state_encoder(observations)
+
+        conds = observations
+        if goals is not None:
+            conds = jnp.concatenate([conds, goals], axis=-1)
+
+        if len(times.shape) == 1:
+            times = jnp.expand_dims(times, axis=-1)
+
+        inputs = jnp.concatenate([noisy_actions, times, conds], axis=-1)
+
+        vf = self.velocity_field_net(inputs)
+
+        return vf
+
+
 class GCFMValue(nn.Module):
     """Goal-conditioned flow matching value/critic function.
 
