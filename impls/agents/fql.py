@@ -229,7 +229,10 @@ class FQLAgent(flax.struct.PyTreeNode):
         seed, noise_seed = jax.random.split(seed)
         noises = jax.random.normal(
             noise_seed, shape=(observations.shape[0], action_dim), dtype=observations.dtype)
-        actions = noises + self.network.select('actor')(noises, observations)
+        if self.config['distill_type'] == 'fwd_sample':
+            actions = self.network.select('actor')(noises, observations)
+        elif self.config['distill_type'] == 'fwd_int':
+            actions = noises + self.network.select('actor')(noises, observations)
         actions = jnp.clip(actions, -1, 1)
         actions = actions.squeeze()
 
