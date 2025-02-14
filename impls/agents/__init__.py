@@ -11,6 +11,7 @@ from agents.gcsarsaql import GCSARSAQLAgent
 from agents.gcmciql import GCMCIQLAgent
 from agents.gcivl import GCIVLAgent
 from agents.hiql import HIQLAgent
+from agents.mcfac import MCFACAgent
 from agents.qrl import QRLAgent
 from agents.rg_fmrl import RewardGuidedFMRLAgent
 from agents.sac import SACAgent
@@ -32,6 +33,7 @@ agents = dict(
     gcmciql=GCMCIQLAgent,
     gcivl=GCIVLAgent,
     hiql=HIQLAgent,
+    mcfac=MCFACAgent,
     qrl=QRLAgent,
     rg_fmrl=RewardGuidedFMRLAgent,
     sac=SACAgent,

@@ -13,8 +13,8 @@ from utils.networks import GCDiscreteActor, GCFMVectorField, GCFMValue, GCValue
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
-class FACAgent(flax.struct.PyTreeNode):
-    """Flow Actor Critic agent."""
+class MCFACAgent(flax.struct.PyTreeNode):
+    """Monte Carlo Flow Actor Critic agent."""
 
     rng: Any
     network: Any
@@ -63,57 +63,22 @@ class FACAgent(flax.struct.PyTreeNode):
 
         batch_size = batch['observations'].shape[0]
         observations = batch['observations']
-        next_observations = batch['next_observations']
+        # next_observations = batch['next_observations']
         actions = batch['actions']
+        goals = batch['value_goals']
 
         # critic flow matching
-        rng, next_time_rng, next_noise_rng = jax.random.split(rng, 3)
-        times = jax.random.uniform(next_time_rng, shape=(batch_size, ), dtype=next_observations.dtype)
-        noises = jax.random.normal(next_noise_rng, shape=next_observations.shape, dtype=next_observations.dtype)
-        next_path_sample = self.cond_prob_path(x_0=noises, x_1=next_observations, t=times)
-        next_vf_pred = self.network.select('critic_vf')(
-            next_path_sample.x_t,
-            times,
+        rng, noise_rng, time_rng = jax.random.split(rng, 3)
+        critic_noises = jax.random.normal(noise_rng, shape=observations.shape, dtype=observations.dtype)
+        critic_times = jax.random.uniform(time_rng, shape=(batch_size, ))
+        critic_path_sample = self.cond_prob_path(x_0=critic_noises, x_1=goals, t=critic_times)
+        critic_vf_pred = self.network.select('critic_vf')(
+            critic_path_sample.x_t,
+            critic_times,
             observations, actions,
             params=grad_params,
         )
-        next_loss = jnp.square(next_vf_pred - next_path_sample.dx_t).mean()
-
-        rng, next_noise_rng = jax.random.split(rng)
-        next_noises = jax.random.normal(next_noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
-        if self.config['distill_type'] == 'fwd_sample':
-            next_actions = self.network.select('actor')(next_noises, batch['next_observations'])
-        elif self.config['distill_type'] == 'fwd_int':
-            next_action_vfs = self.network.select('actor')(next_noises, batch['next_observations'])
-            next_actions = next_noises + next_action_vfs
-        next_actions = jnp.clip(next_actions, -1, 1)
-
-        rng, future_goal_rng = jax.random.split(rng)
-        future_goal_noises = jax.random.normal(
-            future_goal_rng, shape=observations.shape, dtype=observations.dtype)
-        future_flow_goals = self.compute_fwd_flow_goals(
-            future_goal_noises, next_observations, next_actions,
-            use_target_network=True
-        )
-        future_flow_goals = jax.lax.stop_gradient(future_flow_goals)
-
-        rng, future_time_rng, future_noise_rng = jax.random.split(rng, 3)
-        # future_times = jax.random.uniform(
-        #     future_time_rng, shape=(batch_size,), dtype=future_flow_goals.dtype)
-        # future_noises = jax.random.normal(
-        #     future_noise_rng, shape=future_flow_goals.shape, dtype=future_flow_goals.dtype)
-        future_path_sample = self.cond_prob_path(
-            x_0=noises, x_1=future_flow_goals, t=times)
-        future_vf_pred = self.network.select('critic_vf')(
-            future_path_sample.x_t,
-            times,
-            observations, actions,
-            params=grad_params,
-        )
-        future_loss = jnp.square(future_vf_pred - future_path_sample.dx_t).mean()
-
-        critic_flow_matching_loss = ((1 - self.config['discount']) * next_loss +
-                                     self.config['discount'] * future_loss)
+        critic_flow_matching_loss = jnp.square(critic_vf_pred - critic_path_sample.dx_t).mean()
 
         # actor flow matching
         rng, noise_rng, time_rng = jax.random.split(rng, 3)
@@ -133,8 +98,6 @@ class FACAgent(flax.struct.PyTreeNode):
         return flow_matching_loss, {
             'flow_matching_loss': flow_matching_loss,
             'critic_flow_matching_loss': critic_flow_matching_loss,
-            'critic_next_flow_matching_loss': next_loss,
-            'critic_future_flow_matching_loss': future_loss,
             'actor_flow_matching_loss': actor_flow_matching_loss,
         }
 
@@ -455,7 +418,7 @@ def get_config():
     config = ml_collections.ConfigDict(
         dict(
             # Agent hyperparameters.
-            agent_name='fac',  # Agent name.
+            agent_name='mcfac',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
@@ -476,6 +439,18 @@ def get_config():
             vf_q_loss=False,  # Whether to use vector fields to compute Q in the Q loss.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
+            # Dataset hyperparameters.
+            relabel_reward=False,  # Whether to relabel the reward.
+            value_p_curgoal=0.0,  # Probability of using the current state as the value goal.
+            value_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the value goal.
+            value_p_randomgoal=0.0,  # Probability of using a random state as the value goal.
+            value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
+            num_value_goals=1,  # Number of value goals to sample
+            actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
+            actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
+            actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
+            actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
+            num_actor_goals=1,  # Number of actor goals to sample
         )
     )
     return config
