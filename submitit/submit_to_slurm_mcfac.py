@@ -94,6 +94,7 @@ def main():
                                                             --env_name={env_name} \
                                                             --obs_norm_type={obs_norm_type} \
                                                             --eval_episodes=50 \
+                                                            --dataset_class=GCDataset \
                                                             --agent=impls/agents/mcfac.py \
                                                             --agent.discount={discount} \
                                                             --agent.alpha={alpha} \
