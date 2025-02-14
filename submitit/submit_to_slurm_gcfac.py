@@ -36,28 +36,28 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=24,
     )
 
     # ddpgbc hyperparameters: normalize_observation, alpha, const_std, num_flow_steps, exact_divergence, distill_type
     with executor.batch():  # job array
         for env_name in [
-            # "pointmaze-medium-navigate-v0",
+            "pointmaze-medium-navigate-v0",
             # "pointmaze-large-navigate-v0",
-            "antmaze-large-navigate-v0",
+            # "antmaze-large-navigate-v0",
             # "humanoidmaze-medium-navigate-v0",
             # "antsoccer-arena-navigate-v0"
         ]:
-            for obs_norm_type in ['none', 'normal']:
-                for alpha in [10.0]:  # when normalize_q_loss = 1, use alpha around 0.003
+            for obs_norm_type in ['normal']:
+                for alpha in [0.3, 0.003, 0.0003]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for ode_solver_type in ['euler']:
                         for ode_adjoint_type in ['recursive_checkpoint']:
                             for num_flow_steps in [10]:
                                 for noise_type in ['normal']:
                                     for div_type in ['exact', 'hutchinson_rademacher']:  # both works similar
-                                        for distill_type in ['log_prob', 'noise_div_int']:  # no distillation seems to work better
+                                        for distill_type in ['none', 'log_prob', 'noise_div_int']:  # no distillation seems to work better
                                             for actor_distill_type in ['fwd_sample', 'fwd_int']:
-                                                for normalize_q_loss in [False]:  # it is important to normalize Q
+                                                for normalize_q_loss in [True]:  # it is important to normalize Q
                                                     for seed in [20]:
                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfac_env_name={env_name}_obs_norm={obs_norm_type}_alpha={alpha}_solver={ode_solver_type}_adjoint={ode_adjoint_type}_num_flow_steps={num_flow_steps}_noise={noise_type}_div={div_type}_distill={distill_type}_actor_distill={actor_distill_type}_norm_q_loss={normalize_q_loss}"
                                                         log_dir = os.path.expanduser(

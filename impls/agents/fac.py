@@ -82,9 +82,9 @@ class FACAgent(flax.struct.PyTreeNode):
         rng, next_noise_rng = jax.random.split(rng)
         next_noises = jax.random.normal(next_noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
         if self.config['distill_type'] == 'fwd_sample':
-            next_actions = self.network.select('actor')(next_noises, batch['next_observations'])
+            next_actions = self.network.select('actor')(next_noises, next_observations)
         elif self.config['distill_type'] == 'fwd_int':
-            next_action_vfs = self.network.select('actor')(next_noises, batch['next_observations'])
+            next_action_vfs = self.network.select('actor')(next_noises, next_observations)
             next_actions = next_noises + next_action_vfs
         next_actions = jnp.clip(next_actions, -1, 1)
 

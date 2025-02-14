@@ -3,7 +3,6 @@ from typing import Any
 import flax
 import jax
 import jax.numpy as jnp
-# from jax.experimental.ode import odeint
 import ml_collections
 import optax
 from diffrax import (
@@ -74,7 +73,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             # assert self.config['noise_type'] != 'marginal'
             log_prob_pred = self.network.select('critic')(
                 goals, observations, actions=actions, params=grad_params)
-            distill_loss = jnp.square(flow_log_prob - log_prob_pred).mean()
+            distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
         elif self.config['distill_type'] == 'noise_div_int':
             # assert self.config['noise_type'] != 'marginal'
             shortcut_noise_pred = self.network.select('critic_noise')(
@@ -872,8 +871,8 @@ def get_config():
             agent_name='gcfmrl',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
-            actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
-            value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
+            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
+            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.

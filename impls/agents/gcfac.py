@@ -3,7 +3,6 @@ from typing import Any
 import flax
 import jax
 import jax.numpy as jnp
-# from jax.experimental.ode import odeint
 import ml_collections
 import optax
 from diffrax import (
@@ -14,7 +13,7 @@ from diffrax import (
 
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, GCDiscreteActor, GCFMVectorField, GCFMValue, GCActorVectorField
+from utils.networks import GCFMVectorField, GCFMValue, GCActorVectorField
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
@@ -151,8 +150,6 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         rng, noise_rng = jax.random.split(rng)
         noises = jax.random.normal(
             noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
-        # q_action_vfs = self.network.select('actor')(
-        #     noises, batch['observations'], batch['actor_goals'], params=grad_params)
         if self.config['actor_distill_type'] == 'fwd_sample':
             q_actions = self.network.select('actor')(
                 noises, batch['observations'], batch['actor_goals'], params=grad_params)
@@ -270,203 +267,6 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         noises = ode_sol.ys[-1]
 
         return noises
-
-    # def compute_rev_flow_samples(self, goals, observations, actions=None):
-    #     def vector_field(time, noises, carry):
-    #         (observations, actions) = carry
-    #         times = jnp.full(noises.shape[:-1], time)
-    #
-    #         vf = self.network.select('critic_vf')(
-    #             noises, times, observations, actions=actions)
-    #
-    #         return vf
-    #
-    #     ode_term = ODETerm(vector_field)
-    #     ode_sol = diffeqsolve(
-    #         ode_term, self.ode_solver,
-    #         t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
-    #         y0=goals, args=(observations, actions),
-    #         adjoint=self.ode_adjoint,
-    #     )
-    #     noises = ode_sol.ys[-1]
-    #
-    #     return noises
-
-    # def compute_rev_flow_samples(self, goals, observations, actions=None):
-    #     noises = goals
-    #     num_flow_steps = self.config['num_flow_steps']
-    #     step_size = 1.0 / num_flow_steps
-    #
-    #     def body_fn(carry, i):
-    #         """
-    #         carry: (noises, )
-    #         i: current step index
-    #         """
-    #         (noises, ) = carry
-    #
-    #         # Time for this iteration
-    #         times = 1.0 - jnp.full(goals.shape[:-1], i * step_size)
-    #
-    #         vf = self.network.select('critic_vf')(
-    #             noises, times, observations, actions)
-    #
-    #         # Update goals and divergence integral. We need to consider Q ensemble here.
-    #         new_noises = noises - vf * step_size
-    #
-    #         # Return updated carry and scan output
-    #         return (new_noises, ), None
-    #
-    #     # Use lax.scan to iterate over num_flow_steps
-    #     (noises, ), _ = jax.lax.scan(
-    #         body_fn, (noises, ), jnp.arange(num_flow_steps))
-    #
-    #     return noises
-
-    # def compute_rev_flow_samples(self, goals, observations, actions=None):
-    #     def vector_field(time, noises, carry):
-    #         (observations, actions) = carry
-    #         times = jnp.full(noises.shape[:-1], time)
-    #
-    #         vf = self.network.select('critic_vf')(
-    #             noises, times, observations, actions=actions)
-    #
-    #         return vf
-    #
-    #     ode_term = ODETerm(vector_field)
-    #     ode_sol = diffeqsolve(
-    #         ode_term, self.ode_solver,
-    #         t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
-    #         y0=goals, args=(observations, actions),
-    #         adjoint=self.ode_adjoint,
-    #     )
-    #     noises = ode_sol.ys[-1]
-    #
-    #     return noises
-
-    # def compute_log_likelihood(self, goals, observations, rng, actions=None,
-    #                            info=False):
-    #     noisy_goals = goals
-    #     div_int = jnp.zeros(goals.shape[:-1])
-    #     num_flow_steps = self.config['num_flow_steps']
-    #     step_size = 1.0 / num_flow_steps
-    #
-    #     # Define the body function to be scanned
-    #     def body_fn(carry, i):
-    #         """
-    #         carry: (noisy_goals, div_int, rng)
-    #         i: current step index
-    #         """
-    #         noisy_goals, div_int, z = carry
-    #
-    #         # Time for this iteration
-    #         times = 1.0 - jnp.full(noisy_goals.shape[:-1], i * step_size)
-    #
-    #         if self.config['div_type'] == 'exact':
-    #             def compute_exact_div(noisy_goals, times, observations, actions):
-    #                 def vf_func(noisy_goal, time, observation, action):
-    #                     noisy_goal = jnp.expand_dims(noisy_goal, 0)
-    #                     time = jnp.expand_dims(time, 0)
-    #                     observation = jnp.expand_dims(observation, 0)
-    #                     if action is not None:
-    #                         action = jnp.expand_dims(action, 0)
-    #                     vf = self.network.select('critic_vf')(
-    #                         noisy_goal, time, observation, action).squeeze(0)
-    #
-    #                     return vf
-    #
-    #                 # def div_func(noisy_goal, time, observation, action):
-    #                 #     jac = jax.jacrev(vf_func)(noisy_goal, time, observation, action)
-    #                 #     # jac = jac.reshape([noisy_goal.shape[-1], noisy_goal.shape[-1]])
-    #                 #
-    #                 #     return jnp.trace(jac, axis1=-2, axis2=-1)
-    #
-    #                 vf = self.network.select('critic_vf')(
-    #                     noisy_goals, times, observations, actions)
-    #
-    #                 if actions is not None:
-    #                     jac = jax.vmap(
-    #                         jax.jacrev(vf_func),
-    #                         in_axes=(0, 0, 0, 0), out_axes=0
-    #                     )(noisy_goals, times, observations, actions)
-    #                 else:
-    #                     jac = jax.vmap(
-    #                         jax.jacrev(vf_func),
-    #                         in_axes=(0, 0, 0, None), out_axes=0
-    #                     )(noisy_goals, times, observations, actions)
-    #
-    #                 div = jnp.trace(jac, axis1=-2, axis2=-1)
-    #
-    #                 return vf, div
-    #
-    #             vf, div = compute_exact_div(noisy_goals, times, observations, actions)
-    #         else:
-    #             def compute_hutchinson_div(noisy_goals, times, observations, actions, z):
-    #                 # def vf_func(goals):
-    #                 #     vf = self.network.select('critic_vf')(
-    #                 #         goals,
-    #                 #         times,
-    #                 #         observations,
-    #                 #         actions=actions,
-    #                 #     )
-    #                 #
-    #                 #     return vf
-    #
-    #                 def single_jvp(z):
-    #                     vf, jac_vf_dot_z = jax.jvp(
-    #                         lambda n: self.network.select('critic_vf')(n, times, observations, actions),
-    #                         (noisy_goals,), (z,)
-    #                     )
-    #
-    #                     return vf, jac_vf_dot_z
-    #
-    #                 # Split RNG and sample noise
-    #                 # if self.config['div_type'] == 'hutchinson_normal':
-    #                 #     z = jax.random.normal(rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
-    #                 # elif self.config['div_type'] == 'hutchinson_rademacher':
-    #                 #     z = jax.random.rademacher(rng, shape=noisy_goals.shape, dtype=noisy_goals.dtype)
-    #
-    #                 # Forward (vf) and linearization (jac_vf_dot_z)
-    #                 # vf, jac_vf_dot_z = jax.jvp(vf_func, (noisy_goals,), (z, ))
-    #                 vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
-    #
-    #                 # Hutchinson's trace estimator
-    #                 div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
-    #
-    #                 vf = vf[..., 0]
-    #                 div = div.mean(axis=-1)
-    #
-    #                 return vf, div
-    #
-    #             vf, div = compute_hutchinson_div(noisy_goals, times, observations, actions, z)
-    #
-    #         # Update goals and divergence integral. We need to consider Q ensemble here.
-    #         new_noisy_goals = noisy_goals - vf * step_size
-    #         new_div_int = div_int - div * step_size
-    #
-    #         # Return updated carry and scan output
-    #         return (new_noisy_goals, new_div_int, z), None
-    #
-    #     # Use lax.scan to iterate over num_flow_steps
-    #     rng, z_rng = jax.random.split(rng)
-    #     if self.config['div_type'] == 'hutchinson_normal':
-    #         z = jax.random.normal(
-    #             z_rng, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
-    #     elif self.config['div_type'] == 'hutchinson_rademacher':
-    #         z = jax.random.rademacher(
-    #             z_rng, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
-    #     else:
-    #         z = None
-    #     (noisy_goals, div_int, _), _ = jax.lax.scan(
-    #         body_fn, (noisy_goals, div_int, z), jnp.arange(num_flow_steps))
-    #
-    #     # Finally, compute log_prob using the final noisy_goals and div_int
-    #     gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noisy_goals ** 2, axis=-1)
-    #     log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
-    #
-    #     if info:
-    #         return log_prob, noisy_goals, div_int
-    #     else:
-    #         return log_prob
 
     def compute_log_likelihood(self, goals, observations,
                                dataset_obs_mean, dataset_obs_var,
@@ -1018,8 +818,8 @@ def get_config():
             agent_name='gcfac',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
-            actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
-            value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
+            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
+            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
@@ -1033,7 +833,7 @@ def get_config():
             div_type='exact',  # Divergence estimator type ('exact', 'hutchinson_normal', 'hutchinson_rademacher').
             distill_type='none',  # Distillation type ('none', 'log_prob', 'rev_int').
             actor_distill_type='fwd_sample',  # Actor distillation type ('fwd_sample', 'fwd_int').
-            num_hutchinson_ests=8,  # Number of random vectors for hutchinson divergence estimation.
+            num_hutchinson_ests=4,  # Number of random vectors for hutchinson divergence estimation.
             alpha=0.1,  # BC coefficient in DDPG+BC.
             discrete=False,  # Whether the action space is discrete.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
