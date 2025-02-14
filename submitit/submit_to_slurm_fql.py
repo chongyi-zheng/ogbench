@@ -36,6 +36,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
+        slurm_array_parallelism=20,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, actor_layer_norm, vf_q_loss, normalize_q_loss
