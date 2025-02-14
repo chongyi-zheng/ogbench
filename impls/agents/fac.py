@@ -26,11 +26,8 @@ class FQLAgent(flax.struct.PyTreeNode):
 
         rng, next_noise_rng = jax.random.split(rng)
         next_noises = jax.random.normal(next_noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
-        if self.config['distill_type'] == 'fwd_sample':
-            next_actions = self.network.select('actor')(next_noises, batch['next_observations'])
-        elif self.config['distill_type'] == 'fwd_int':
-            next_action_vfs = self.network.select('actor')(next_noises, batch['next_observations'])
-            next_actions = next_noises + next_action_vfs
+        next_action_vfs = self.network.select('actor')(next_noises, batch['next_observations'])
+        next_actions = next_noises + next_action_vfs
         next_actions = jnp.clip(next_actions, -1, 1)
 
         if self.config['vf_q_loss']:
@@ -92,11 +89,8 @@ class FQLAgent(flax.struct.PyTreeNode):
         rng, noise_rng = jax.random.split(rng)
         noises = jax.random.normal(
             noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
-        if self.config['distill_type'] == 'fwd_sample':
-            q_actions = self.network.select('actor')(noises, batch['observations'], params=grad_params)
-        elif self.config['distill_type'] == 'fwd_int':
-            q_action_vfs = self.network.select('actor')(noises, batch['observations'], params=grad_params)
-            q_actions = noises + q_action_vfs
+        q_action_vfs = self.network.select('actor')(noises, batch['observations'], params=grad_params)
+        q_actions = noises + q_action_vfs
         # TODO (chongyiz): we need to clip q_actions here?
         q_actions = jnp.clip(q_actions, -1, 1)
 
@@ -127,11 +121,7 @@ class FQLAgent(flax.struct.PyTreeNode):
         rng, noise_rng = jax.random.split(rng)
         noises = jax.random.normal(
             noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
-        if self.config['distill_type'] == 'fwd_sample':
-            actions = self.network.select('actor')(noises, batch['observations'])
-        elif self.config['distill_type'] == 'fwd_int':
-            action_vfs = self.network.select('actor')(noises, batch['observations'])
-            actions = noises + action_vfs
+        actions = noises + self.network.select('actor')(noises, batch['observations'])
         actions = jnp.clip(actions, -1, 1)
         mse = jnp.mean((actions - batch['actions']) ** 2)
 
@@ -357,7 +347,6 @@ def get_config():
             q_agg='mean',  # Aggregation method for target Q values.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
-            distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').
             alpha=10.0,  # BC coefficient (need to be tuned for each environment).
             num_flow_steps=10,  # Number of flow steps.
             discrete=False,  # Whether the action space is discrete.
