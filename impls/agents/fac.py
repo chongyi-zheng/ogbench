@@ -93,7 +93,7 @@ class FACAgent(flax.struct.PyTreeNode):
             future_goal_rng, shape=observations.shape, dtype=observations.dtype)
         future_flow_goals = self.compute_fwd_flow_goals(
             future_goal_noises, next_observations, next_actions,
-            use_target_network=True
+            # use_target_network=True
         )
         future_flow_goals = jax.lax.stop_gradient(future_flow_goals)
 
