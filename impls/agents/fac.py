@@ -68,12 +68,12 @@ class FACAgent(flax.struct.PyTreeNode):
 
         # critic flow matching
         rng, next_time_rng, next_noise_rng = jax.random.split(rng, 3)
-        next_times = jax.random.uniform(next_time_rng, shape=(batch_size, ), dtype=next_observations.dtype)
-        next_noises = jax.random.normal(next_noise_rng, shape=next_observations.shape, dtype=next_observations.dtype)
-        next_path_sample = self.cond_prob_path(x_0=next_noises, x_1=next_observations, t=next_times)
+        times = jax.random.uniform(next_time_rng, shape=(batch_size, ), dtype=next_observations.dtype)
+        noises = jax.random.normal(next_noise_rng, shape=next_observations.shape, dtype=next_observations.dtype)
+        next_path_sample = self.cond_prob_path(x_0=noises, x_1=next_observations, t=times)
         next_vf_pred = self.network.select('critic_vf')(
             next_path_sample.x_t,
-            next_times,
+            times,
             observations, actions,
             params=grad_params,
         )
@@ -98,15 +98,15 @@ class FACAgent(flax.struct.PyTreeNode):
         future_flow_goals = jax.lax.stop_gradient(future_flow_goals)
 
         rng, future_time_rng, future_noise_rng = jax.random.split(rng, 3)
-        future_times = jax.random.uniform(
-            future_time_rng, shape=(batch_size,), dtype=future_flow_goals.dtype)
-        future_noises = jax.random.normal(
-            future_noise_rng, shape=future_flow_goals.shape, dtype=future_flow_goals.dtype)
+        # future_times = jax.random.uniform(
+        #     future_time_rng, shape=(batch_size,), dtype=future_flow_goals.dtype)
+        # future_noises = jax.random.normal(
+        #     future_noise_rng, shape=future_flow_goals.shape, dtype=future_flow_goals.dtype)
         future_path_sample = self.cond_prob_path(
-            x_0=future_noises, x_1=future_flow_goals, t=future_times)
+            x_0=noises, x_1=future_flow_goals, t=times)
         future_vf_pred = self.network.select('critic_vf')(
             future_path_sample.x_t,
-            future_times,
+            times,
             observations, actions,
             params=grad_params,
         )
