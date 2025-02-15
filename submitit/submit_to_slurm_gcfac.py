@@ -46,89 +46,87 @@ def main():
             # "pointmaze-large-navigate-v0",
             # "pointmaze-large-stitch-v0",
             "antmaze-large-navigate-v0",
-            "humanoidmaze-medium-navigate-v0",
+            # "humanoidmaze-medium-navigate-v0",
             # "antsoccer-arena-navigate-v0"
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [0.3, 0.003, 0.0003]:  # when normalize_q_loss = 1, use alpha around 0.003
+                for alpha in [3.0, 0.3, 0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for ode_solver_type in ['euler']:
                         for ode_adjoint_type in ['recursive_checkpoint']:
                             for num_flow_steps in [10]:
-                                for noise_type in ['normal']:
-                                    for div_type in ['none', 'exact', 'hutchinson_rademacher']:  # both works similar
-                                        for distill_type in ['log_prob', 'noise_div_int']:  # no distillation seems to work better
-                                            for actor_distill_type in ['fwd_sample', 'fwd_int']:
-                                                for normalize_q_loss in [True]:  # it is important to normalize Q
-                                                    for seed in [20]:
-                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfac_env_name={env_name}_obs_norm={obs_norm_type}_alpha={alpha}_solver={ode_solver_type}_adjoint={ode_adjoint_type}_num_flow_steps={num_flow_steps}_noise={noise_type}_div={div_type}_distill={distill_type}_actor_distill={actor_distill_type}_norm_q_loss={normalize_q_loss}"
-                                                        log_dir = os.path.expanduser(
-                                                            f"{log_root_dir}/exp_logs/ogbench_logs/gcfac/{exp_name}/{seed}")
+                                for div_type in ['exact', 'hutchinson_rademacher']:  # both works similar
+                                    for distill_type in ['log_prob', 'noise_div_int']:  # no distillation seems to work better
+                                        for actor_distill_type in ['fwd_sample', 'fwd_int']:
+                                            for normalize_q_loss in [True]:  # it is important to normalize Q
+                                                for seed in [20]:
+                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfac_env_name={env_name}_obs_norm={obs_norm_type}_alpha={alpha}_solver={ode_solver_type}_adjoint={ode_adjoint_type}_num_flow_steps={num_flow_steps}_div={div_type}_distill={distill_type}_actor_distill={actor_distill_type}_norm_q_loss={normalize_q_loss}"
+                                                    log_dir = os.path.expanduser(
+                                                        f"{log_root_dir}/exp_logs/ogbench_logs/gcfac/{exp_name}/{seed}")
 
-                                                        # change the log folder of slurm executor
-                                                        submitit_log_dir = os.path.join(os.path.dirname(log_dir),
-                                                                                        'submitit')
-                                                        executor._executor.folder = Path(
-                                                            submitit_log_dir).expanduser().absolute()
+                                                    # change the log folder of slurm executor
+                                                    submitit_log_dir = os.path.join(os.path.dirname(log_dir),
+                                                                                    'submitit')
+                                                    executor._executor.folder = Path(
+                                                        submitit_log_dir).expanduser().absolute()
 
-                                                        cmds = f"""
-                                                            unset PYTHONPATH;
-                                                            source $HOME/.zshrc;
-                                                            conda activate ogbench;
-                                                            which python;
-                                                            echo $CONDA_PREFIX;
+                                                    cmds = f"""
+                                                        unset PYTHONPATH;
+                                                        source $HOME/.zshrc;
+                                                        conda activate ogbench;
+                                                        which python;
+                                                        echo $CONDA_PREFIX;
 
-                                                            echo job_id: $SLURM_ARRAY_JOB_ID;
-                                                            echo task_id: $SLURM_ARRAY_TASK_ID;
-                                                            squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
-                                                            echo seed: {seed};
+                                                        echo job_id: $SLURM_ARRAY_JOB_ID;
+                                                        echo task_id: $SLURM_ARRAY_TASK_ID;
+                                                        squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
+                                                        echo seed: {seed};
 
-                                                            export PROJECT_DIR=$PWD;
-                                                            export PYTHONPATH=$HOME/research/ogbench/impls;
-                                                            export PATH="$PATH":"$CONDA_PREFIX"/bin;
-                                                            export CUDA_VISIBLE_DEVICES=0;
-                                                            export MUJOCO_GL=egl;
-                                                            export PYOPENGL_PLATFORM=egl;
-                                                            export EGL_DEVICE_ID=0;
-                                                            export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
-                                                            export EQX_ON_ERROR=nan;
+                                                        export PROJECT_DIR=$PWD;
+                                                        export PYTHONPATH=$HOME/research/ogbench/impls;
+                                                        export PATH="$PATH":"$CONDA_PREFIX"/bin;
+                                                        export CUDA_VISIBLE_DEVICES=0;
+                                                        export MUJOCO_GL=egl;
+                                                        export PYOPENGL_PLATFORM=egl;
+                                                        export EGL_DEVICE_ID=0;
+                                                        export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
+                                                        export EQX_ON_ERROR=nan;
 
-                                                            rm -rf {log_dir};
-                                                            mkdir -p {log_dir};
-                                                            python $PROJECT_DIR/impls/main.py \
-                                                                --enable_wandb=1 \
-                                                                --env_name={env_name} \
-                                                                --dataset_class=GCDataset \
-                                                                --obs_norm_type={obs_norm_type} \
-                                                                --eval_episodes=50 \
-                                                                --eval_on_cpu=0 \
-                                                                --eval_temperature=0.0 \
-                                                                --agent=impls/agents/gcfac.py \
-                                                                --agent.alpha={alpha} \
-                                                                --agent.ode_solver_type={ode_solver_type} \
-                                                                --agent.ode_adjoint_type={ode_adjoint_type} \
-                                                                --agent.noise_type={noise_type} \
-                                                                --agent.num_flow_steps={num_flow_steps} \
-                                                                --agent.div_type={div_type} \
-                                                                --agent.distill_type={distill_type} \
-                                                                --agent.actor_distill_type={actor_distill_type} \
-                                                                --agent.normalize_q_loss={normalize_q_loss} \
-                                                                --seed={seed} \
-                                                                --save_dir={log_dir} \
-                                                            2>&1 | tee {log_dir}/stream.log;
+                                                        rm -rf {log_dir};
+                                                        mkdir -p {log_dir};
+                                                        python $PROJECT_DIR/impls/main.py \
+                                                            --enable_wandb=1 \
+                                                            --env_name={env_name} \
+                                                            --dataset_class=GCDataset \
+                                                            --obs_norm_type={obs_norm_type} \
+                                                            --eval_episodes=50 \
+                                                            --eval_on_cpu=0 \
+                                                            --eval_temperature=0.0 \
+                                                            --agent=impls/agents/gcfac.py \
+                                                            --agent.alpha={alpha} \
+                                                            --agent.ode_solver_type={ode_solver_type} \
+                                                            --agent.ode_adjoint_type={ode_adjoint_type} \
+                                                            --agent.num_flow_steps={num_flow_steps} \
+                                                            --agent.div_type={div_type} \
+                                                            --agent.distill_type={distill_type} \
+                                                            --agent.actor_distill_type={actor_distill_type} \
+                                                            --agent.normalize_q_loss={normalize_q_loss} \
+                                                            --seed={seed} \
+                                                            --save_dir={log_dir} \
+                                                        2>&1 | tee {log_dir}/stream.log;
 
-                                                            export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
-                                                            echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                                            echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
-                                                            echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
-                                                            echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                                        """
+                                                        export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
+                                                        echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                                        echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
+                                                        echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
+                                                        echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                                    """
 
-                                                        cmd_func = submitit.helpers.CommandFunction([
-                                                            "/bin/zsh", "-c",
-                                                            cmds,
-                                                        ], verbose=True)
+                                                    cmd_func = submitit.helpers.CommandFunction([
+                                                        "/bin/zsh", "-c",
+                                                        cmds,
+                                                    ], verbose=True)
 
-                                                        executor.submit(cmd_func)
+                                                    executor.submit(cmd_func)
 
 
 if __name__ == "__main__":

@@ -814,10 +814,10 @@ class GCActorVectorField(nn.Module):
         layer_norm: Whether to apply layer normalization.
     """
 
-    action_dim: int
+    vector_dim: int
     hidden_dims: Sequence[int]
     network_type: str = 'mlp'
-    layer_norm: bool = False
+    layer_norm: bool = True
     num_ensembles: int = 1
     state_encoder: nn.Module = None
     goal_encoder: nn.Module = None
@@ -833,7 +833,7 @@ class GCActorVectorField(nn.Module):
 
         if self.network_type == 'mlp':
             velocity_field_net = network_module(
-                (*self.hidden_dims, self.action_dim),
+                (*self.hidden_dims, self.vector_dim),
                 activate_final=False,
                 layer_norm=self.layer_norm
             )

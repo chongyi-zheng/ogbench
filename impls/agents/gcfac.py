@@ -13,7 +13,7 @@ from diffrax import (
 
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCFMVectorField, GCFMValue, GCActorVectorField
+from utils.networks import GCFMVectorField, GCFMValue
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
@@ -36,16 +36,11 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
 
         batch_size = batch['observations'].shape[0]
         observations = batch['observations']
-        dataset_obs_mean = batch['dataset_obs_mean']
-        dataset_obs_var = batch['dataset_obs_var']
         actions = batch['actions']
         goals = batch['value_goals']
 
         times = jax.random.uniform(time_rng, shape=(batch_size, ))
-        if self.config['noise_type'] == 'normal':
-            noises = jax.random.normal(noise_rng, shape=goals.shape, dtype=goals.dtype)
-        else:
-            noises = jnp.roll(batch['value_goals'], shift=1, axis=0)
+        noises = jax.random.normal(noise_rng, shape=goals.shape, dtype=goals.dtype)
         path_sample = self.cond_prob_path(x_0=noises, x_1=goals, t=times)
         vf_pred = self.network.select('critic_vf')(
             path_sample.x_t,
@@ -56,30 +51,15 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         )
         fm_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
 
-        # if self.config['noise_type'] == 'normal':
-        #     flow_log_prob, flow_noise, flow_div_int = self.compute_log_likelihood(
-        #         goals, observations,
-        #         dataset_obs_mean, dataset_obs_var,
-        #         q_rng, actions=actions, info=True)
-        # else:
-        #     flow_log_prob, flow_noise, flow_div_int = self.compute_log_likelihood(
-        #         goals, observations,
-        #         dataset_obs_mean, dataset_obs_var,
-        #         q_rng, actions=actions, info=True)
-        #     # TODO (chongyi): flow_div_int is not exactly equivalent to flow_log_prob in this case
-        #     flow_log_prob = flow_div_int
         flow_log_prob, flow_noise, flow_div_int = self.compute_log_likelihood(
             goals, observations,
-            dataset_obs_mean, dataset_obs_var,
             q_rng, actions=actions, info=True)
 
         if self.config['distill_type'] == 'log_prob':
-            # assert self.config['noise_type'] != 'marginal'
             log_prob_pred = self.network.select('critic')(
                 goals, observations, actions=actions, params=grad_params)
             distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
         elif self.config['distill_type'] == 'noise_div_int':
-            # assert self.config['noise_type'] != 'marginal'
             shortcut_noise_pred = self.network.select('critic_noise')(
                 goals, observations, actions=actions, params=grad_params)
             noise_distill_loss = jnp.square(shortcut_noise_pred - flow_noise).mean()
@@ -113,11 +93,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         goals = batch['actor_goals']
 
         rng, noise_rng, time_rng = jax.random.split(rng, 3)
-        if self.config['noise_type'] == 'normal':
-            noises = jax.random.normal(noise_rng, shape=actions.shape, dtype=actions.dtype)
-        else:
-            noises = jnp.roll(actions, shift=1, axis=0)
-        # noises = jax.random.normal(noise_rng, shape=actions.shape, dtype=actions.dtype)
+        noises = jax.random.normal(noise_rng, shape=actions.shape, dtype=actions.dtype)
         times = jax.random.uniform(time_rng, shape=(batch_size, ))
         path_sample = self.cond_prob_path(x_0=noises, x_1=actions, t=times)
         vf_pred = self.network.select('actor_vf')(
@@ -162,47 +138,29 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             noises, batch['observations'], batch['actor_goals'])
         flow_q_actions = jnp.clip(flow_q_actions, -1, 1)
 
-        # distill_loss = self.config['alpha'] * jnp.pow(q_actions - flow_q_actions, 2).mean()
+        distill_loss = self.config['alpha'] * jnp.pow(q_actions - flow_q_actions, 2).mean()
 
         if self.config['distill_type'] == 'log_prob':
-            # assert self.config['noise_type'] != 'marginal'
             q = self.network.select('critic')(
                 batch['actor_goals'], batch['observations'], actions=q_actions)
         elif self.config['distill_type'] == 'noise_div_int':
-            # assert self.config['noise_type'] != 'marginal'
             shortcut_noise_pred = self.network.select('critic_noise')(
                 batch['actor_goals'], batch['observations'], actions=q_actions)
             shortcut_div_int_pred = self.network.select('critic_div')(
                 batch['actor_goals'], batch['observations'], actions=q_actions)
 
-            if self.config['noise_type'] == 'normal':
-                gaussian_log_prob = -0.5 * jnp.sum(
-                    jnp.log(2 * jnp.pi) + shortcut_noise_pred ** 2, axis=-1)
-            else:
-                # gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
-                gaussian_log_prob = -0.5 * jnp.sum(
-                    jnp.log(2 * jnp.pi) + jnp.log(batch['dataset_obs_var'][None])
-                    + (shortcut_noise_pred - batch['dataset_obs_mean'][None]) ** 2 / batch['dataset_obs_var'][None],
-                    axis=-1
-                )
+            gaussian_log_prob = -0.5 * jnp.sum(
+                jnp.log(2 * jnp.pi) + shortcut_noise_pred ** 2, axis=-1)
             q = gaussian_log_prob + shortcut_div_int_pred  # log p_1(g | s, a)
         elif self.config['distill_type'] == 'div_int':
             q = self.network.select('critic')(
                 batch['actor_goals'], batch['observations'], actions=q_actions)
         else:
             rng, q_rng = jax.random.split(rng)
-            if self.config['noise_type'] == 'normal':
-                q = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'],
-                    batch['dataset_obs_mean'], batch['dataset_obs_var'],
-                    q_rng, actions=q_actions,
-                )
-            else:
-                q = self.compute_log_likelihood(
-                    batch['actor_goals'], batch['observations'],
-                    batch['dataset_obs_mean'], batch['dataset_obs_var'],
-                    q_rng, actions=q_actions,
-                )
+            q = self.compute_log_likelihood(
+                batch['actor_goals'], batch['observations'],
+                q_rng, actions=q_actions,
+            )
 
             # q = self.compute_log_likelihood(
             #     batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
@@ -215,7 +173,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         # log_prob = dist.log_prob(batch['actions'])
 
         # bc_loss = -(self.config['alpha'] * log_prob).mean()
-        distill_loss = self.config['alpha'] * jnp.square(q_actions - flow_q_actions).mean()
+        # distill_loss = self.config['alpha'] * jnp.square(q_actions - flow_q_actions).mean()
         actor_loss = q_loss + distill_loss
 
         # Additional metrics for logging.
@@ -246,30 +204,54 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             'mse': mse,
         }
 
+    # def compute_fwd_flow_samples(self, noises, observations, goals):
+    #     def vector_field(time, noises, carry):
+    #         observations, goals = carry
+    #         times = jnp.full(noises.shape[:-1], time)
+    #
+    #         vf = self.network.select('actor_vf')(
+    #             noises, times, observations, goals)
+    #
+    #         return vf
+    #
+    #     ode_term = ODETerm(vector_field)
+    #     ode_sol = diffeqsolve(
+    #         ode_term, self.ode_solver,
+    #         t0=0.0, t1=1.0, dt0=1 / self.config['num_flow_steps'],
+    #         y0=noises, args=(observations, goals),
+    #         adjoint=self.ode_adjoint,
+    #         throw=False,  # (chongyi): setting throw to false is important for speed
+    #     )
+    #     noises = ode_sol.ys[-1]
+    #
+    #     return noises
+
     def compute_fwd_flow_samples(self, noises, observations, goals):
-        def vector_field(time, noises, carry):
-            observations, goals = carry
-            times = jnp.full(noises.shape[:-1], time)
+        noisy_actions = noises
+        num_flow_steps = self.config['num_flow_steps']
+        step_size = 1.0 / num_flow_steps
 
+        def body_fn(carry, i):
+            """
+            carry: (noisy_goals, )
+            i: current step index
+            """
+            (noisy_actions,) = carry
+
+            times = jnp.full(noisy_actions.shape[:-1], i * step_size)
             vf = self.network.select('actor_vf')(
-                noises, times, observations, goals)
+                noisy_actions, times, observations, goals)
+            new_noisy_actions = noisy_actions + vf * step_size
 
-            return vf
+            return (new_noisy_actions, ), None
 
-        ode_term = ODETerm(vector_field)
-        ode_sol = diffeqsolve(
-            ode_term, self.ode_solver,
-            t0=0.0, t1=1.0, dt0=1 / self.config['num_flow_steps'],
-            y0=noises, args=(observations, goals),
-            adjoint=self.ode_adjoint,
-            throw=False,  # (chongyi): setting throw to false is important for speed
-        )
-        noises = ode_sol.ys[-1]
+        # Use lax.scan to iterate over num_flow_steps
+        (noisy_actions,), _ = jax.lax.scan(
+            body_fn, (noisy_actions,), jnp.arange(num_flow_steps))
 
-        return noises
+        return noisy_actions
 
     def compute_log_likelihood(self, goals, observations,
-                               dataset_obs_mean, dataset_obs_var,
                                key, actions=None,
                                info=False):
         if self.config['div_type'] == 'exact':
@@ -370,16 +352,8 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             lambda x: x[-1], ode_sol.ys)
 
         # Finally, compute log_prob using the final noisy_goals and div_int
-        if self.config['noise_type'] == 'normal':
-            gaussian_log_prob = -0.5 * jnp.sum(
-                jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
-        else:
-            # gaussian_log_prob = -0.5 * jnp.sum(jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
-            gaussian_log_prob = -0.5 * jnp.sum(
-                jnp.log(2 * jnp.pi) + jnp.log(dataset_obs_var[None])
-                + (noises - dataset_obs_mean[None]) ** 2 / dataset_obs_var[None],
-                axis=-1
-            )
+        gaussian_log_prob = -0.5 * jnp.sum(
+            jnp.log(2 * jnp.pi) + noises ** 2, axis=-1)
         log_prob = gaussian_log_prob + div_int  # log p_1(g | s, a)
 
         if info:
@@ -574,7 +548,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             observations = jnp.expand_dims(observations, axis=0)
             if goals is not None:
                 goals = jnp.expand_dims(goals, axis=0)
-        action_dim = self.network.model_def.modules['actor'].action_dim
+        action_dim = self.network.model_def.modules['actor'].output_dim
 
         seed, noise_seed = jax.random.split(seed)
         noises = jax.random.normal(
@@ -632,6 +606,10 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             else:
                 encoders['critic_state'] = encoder_module()
                 encoders['critic_goal'] = encoder_module()
+            encoders['actor_vf_state'] = encoder_module()
+            encoders['actor_vf_goal'] = encoder_module()
+            encoders['actor_state'] = encoder_module()
+            encoders['actor_goal'] = encoder_module()
             encoders['actor'] = GCEncoder(concat_encoder=encoder_module())
 
         # Define value and actor networks.
@@ -686,20 +664,20 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             #     gc_encoder=encoders.get('actor'),
             # )
 
-            actor_vf_def = GCActorVectorField(
-                action_dim=action_dim,
+            actor_vf_def = GCFMVectorField(
+                vector_dim=action_dim,
                 hidden_dims=config['actor_hidden_dims'],
                 layer_norm=config['actor_layer_norm'],
                 state_encoder=encoders.get('actor_vf_state'),
                 goal_encoder=encoders.get('actor_vf_goal'),
             )
 
-            actor_def = GCActorVectorField(
-                action_dim=action_dim,
+            actor_def = GCFMValue(
                 hidden_dims=config['actor_hidden_dims'],
+                output_dim=action_dim,
                 layer_norm=config['actor_layer_norm'],
-                state_encoder=encoders.get('actor_vf_state'),
-                goal_encoder=encoders.get('actor_vf_goal'),
+                state_encoder=encoders.get('actor_state'),
+                goal_encoder=encoders.get('actor_goal'),
             )
 
         network_info = dict(
@@ -818,8 +796,8 @@ def get_config():
             agent_name='gcfac',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
-            actor_hidden_dims=(1024, 1024, 1024, 1024),  # Actor network hidden dimensions.
-            value_hidden_dims=(1024, 1024, 1024, 1024),  # Value network hidden dimensions.
+            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
+            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
@@ -828,7 +806,6 @@ def get_config():
             ode_adjoint_type='recursive_checkpoint',  # Type of ODE adjoint ('recursive_checkpoint', 'direct', 'back_solve').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
-            noise_type='normal',  # Noise distribution type ('normal', 'marginal')
             num_flow_steps=10,  # Number of steps for solving ODEs using the Euler method.
             div_type='exact',  # Divergence estimator type ('exact', 'hutchinson_normal', 'hutchinson_rademacher').
             distill_type='none',  # Distillation type ('none', 'log_prob', 'rev_int').
@@ -845,10 +822,10 @@ def get_config():
             value_p_randomgoal=0.0,  # Probability of using a random state as the value goal.
             value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
             num_value_goals=1,  # Number of value goals to sample
-            actor_p_curgoal=0.2,  # Probability of using the current state as the actor goal.
-            actor_p_trajgoal=0.5,  # Probability of using a future state in the same trajectory as the actor goal.
-            actor_p_randomgoal=0.3,  # Probability of using a random state as the actor goal.
-            actor_geom_sample=True,  # Whether to use geometric sampling for future actor goals.
+            actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
+            actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
+            actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
+            actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
             num_actor_goals=1,  # Number of actor goals to sample
         )
     )
