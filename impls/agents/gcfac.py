@@ -818,8 +818,8 @@ def get_config():
             agent_name='gcfac',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
-            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
-            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
+            actor_hidden_dims=(1024, 1024, 1024, 1024),  # Actor network hidden dimensions.
+            value_hidden_dims=(1024, 1024, 1024, 1024),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
@@ -845,10 +845,10 @@ def get_config():
             value_p_randomgoal=0.0,  # Probability of using a random state as the value goal.
             value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
             num_value_goals=1,  # Number of value goals to sample
-            actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
-            actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
-            actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
-            actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
+            actor_p_curgoal=0.2,  # Probability of using the current state as the actor goal.
+            actor_p_trajgoal=0.5,  # Probability of using a future state in the same trajectory as the actor goal.
+            actor_p_randomgoal=0.3,  # Probability of using a random state as the actor goal.
+            actor_geom_sample=True,  # Whether to use geometric sampling for future actor goals.
             num_actor_goals=1,  # Number of actor goals to sample
         )
     )

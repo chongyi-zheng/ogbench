@@ -88,6 +88,16 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
 
         return self.replace(agent=agent), info
 
+    def total_loss(self, batch, grad_params, rng=None):
+        batch['observations'] = self.normalize(batch['observations'])
+        batch['next_observations'] = self.normalize(batch['next_observations'])
+        if 'value_goals' in batch:
+            batch['value_goals'] = self.normalize(batch['value_goals'])
+        if 'actor_goals' in batch:
+            batch['actor_goals'] = self.normalize(batch['actor_goals'])
+
+        return self.agent.total_loss(batch, grad_params, rng)
+
     @classmethod
     def create(
         cls,

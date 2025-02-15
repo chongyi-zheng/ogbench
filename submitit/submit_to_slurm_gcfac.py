@@ -42,10 +42,11 @@ def main():
     # ddpgbc hyperparameters: normalize_observation, alpha, const_std, num_flow_steps, exact_divergence, distill_type
     with executor.batch():  # job array
         for env_name in [
-            "pointmaze-medium-navigate-v0",
+            # "pointmaze-medium-navigate-v0",
             # "pointmaze-large-navigate-v0",
-            # "antmaze-large-navigate-v0",
-            # "humanoidmaze-medium-navigate-v0",
+            # "pointmaze-large-stitch-v0",
+            "antmaze-large-navigate-v0",
+            "humanoidmaze-medium-navigate-v0",
             # "antsoccer-arena-navigate-v0"
         ]:
             for obs_norm_type in ['normal']:
@@ -54,8 +55,8 @@ def main():
                         for ode_adjoint_type in ['recursive_checkpoint']:
                             for num_flow_steps in [10]:
                                 for noise_type in ['normal']:
-                                    for div_type in ['exact', 'hutchinson_rademacher']:  # both works similar
-                                        for distill_type in ['none', 'log_prob', 'noise_div_int']:  # no distillation seems to work better
+                                    for div_type in ['none', 'exact', 'hutchinson_rademacher']:  # both works similar
+                                        for distill_type in ['log_prob', 'noise_div_int']:  # no distillation seems to work better
                                             for actor_distill_type in ['fwd_sample', 'fwd_int']:
                                                 for normalize_q_loss in [True]:  # it is important to normalize Q
                                                     for seed in [20]:
