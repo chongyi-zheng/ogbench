@@ -90,15 +90,17 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         batch_size = batch['observations'].shape[0]
         observations = batch['observations']
         actions = batch['actions']
+        goals = batch['actor_goals']
 
         rng, noise_rng, time_rng = jax.random.split(rng, 3)
         noises = jax.random.normal(noise_rng, shape=actions.shape, dtype=actions.dtype)
-        times = jax.random.uniform(time_rng, shape=(batch_size, ))
+        times = jax.random.uniform(time_rng, shape=(batch_size,))
         path_sample = self.cond_prob_path(x_0=noises, x_1=actions, t=times)
         vf_pred = self.network.select('actor_vf')(
             path_sample.x_t,
             times,
             observations,
+            goals,
             params=grad_params,
         )
         actor_flow_matching_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
@@ -133,7 +135,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         q_actions = jnp.clip(q_actions, -1, 1)
 
         flow_q_actions = self.compute_fwd_flow_samples(
-            noises, batch['observations'])
+            noises, batch['observations'], batch['actor_goals'])
         flow_q_actions = jnp.clip(flow_q_actions, -1, 1)
 
         # distill_loss = self.config['alpha'] * jnp.pow(q_actions - flow_q_actions, 2).mean()
@@ -224,7 +226,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
     #
     #     return noises
 
-    def compute_fwd_flow_samples(self, noises, observations):
+    def compute_fwd_flow_samples(self, noises, observations, goals):
         noisy_actions = noises
         num_flow_steps = self.config['num_flow_steps']
         step_size = 1.0 / num_flow_steps
@@ -237,10 +239,11 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             (noisy_actions,) = carry
 
             times = jnp.full(noisy_actions.shape[:-1], i * step_size)
-            vf = self.network.select('actor_vf')(noisy_actions, times, observations)
+            vf = self.network.select('actor_vf')(
+                noisy_actions, times, observations, goals)
             new_noisy_actions = noisy_actions + vf * step_size
 
-            return (new_noisy_actions, ), None
+            return (new_noisy_actions,), None
 
         # Use lax.scan to iterate over num_flow_steps
         (noisy_actions,), _ = jax.lax.scan(
@@ -510,7 +513,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         for k, v in actor_info.items():
             info[f'actor/{k}'] = v
 
-        loss = critic_loss + actor_loss
+        loss = critic_loss + flow_matching_loss + actor_loss
         return loss, info
 
     @jax.jit
@@ -603,7 +606,8 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             else:
                 encoders['critic_state'] = encoder_module()
                 encoders['critic_goal'] = encoder_module()
-            encoders['actor_vf'] = encoder_module()
+            encoders['actor_vf_state'] = encoder_module()
+            encoders['actor_vf_goal'] = encoder_module()
             encoders['actor_state'] = encoder_module()
             encoders['actor_goal'] = encoder_module()
             encoders['actor'] = GCEncoder(concat_encoder=encoder_module())
@@ -664,7 +668,8 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
                 vector_dim=action_dim,
                 hidden_dims=config['actor_hidden_dims'],
                 layer_norm=config['actor_layer_norm'],
-                state_encoder=encoders.get('actor_vf'),
+                state_encoder=encoders.get('actor_vf_state'),
+                goal_encoder=encoders.get('actor_vf_goal'),
             )
 
             actor_def = GCFMValue(
@@ -677,7 +682,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
 
         network_info = dict(
             critic_vf=(critic_vf_def, (ex_goals, ex_times, ex_observations, ex_actions)),
-            actor_vf=(actor_vf_def, (ex_actions, ex_times, ex_observations)),
+            actor_vf=(actor_vf_def, (ex_actions, ex_times, ex_observations, ex_goals)),
             actor=(actor_def, (ex_actions, ex_observations, ex_goals)),
         )
 
