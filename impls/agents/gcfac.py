@@ -61,18 +61,22 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
 
         observations = batch['observations']
         actions = batch['actions']
-        goals = batch['actor_goals']
+        goals = batch['value_goals']
 
         flow_log_prob, flow_noise, flow_div_int = self.compute_log_likelihood(
             goals, observations,
             q_rng, actions=actions, info=True,
             use_target_network=self.config['use_target_network']
         )
+        flow_log_prob = jnp.clip(flow_log_prob, -self.config['log_prob_clip'], self.config['log_prob_clip'])
 
         if self.config['distill_type'] == 'log_prob':
             log_prob_pred = self.network.select('critic')(
                 goals, observations, actions=actions, params=grad_params)
-            distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
+            log_prob_pred = jnp.clip(log_prob_pred, -self.config['log_prob_clip'], self.config['log_prob_clip'])
+            log_prob_distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
+
+            noise_distill_loss, div_int_distill_loss = 0.0, 0.0
         elif self.config['distill_type'] == 'noise_div_int':
             shortcut_noise_pred = self.network.select('critic_noise')(
                 goals, observations, actions=actions, params=grad_params)
@@ -80,16 +84,27 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             shortcut_div_int_pred = self.network.select('critic_div')(
                 goals, observations, actions=actions, params=grad_params)
             div_int_distill_loss = jnp.square(shortcut_div_int_pred - flow_div_int).mean()
-            distill_loss = noise_distill_loss + div_int_distill_loss
-        elif self.config['distill_type'] == 'div_int':
-            shortcut_div_int_pred = self.network.select('critic')(
-                goals, observations, actions=actions, params=grad_params)
-            distill_loss = jnp.square(shortcut_div_int_pred - flow_div_int).mean()
+
+            gaussian_log_prob = -0.5 * jnp.sum(
+                jnp.log(2 * jnp.pi) + shortcut_noise_pred ** 2, axis=-1)
+            log_prob_pred = gaussian_log_prob + shortcut_div_int_pred  # log p_1(g | s, a)
+            log_prob_pred = jnp.clip(log_prob_pred, -self.config['log_prob_clip'], self.config['log_prob_clip'])
+            log_prob_distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
+        # elif self.config['distill_type'] == 'div_int':
+        #     shortcut_div_int_pred = self.network.select('critic')(
+        #         goals, observations, actions=actions, params=grad_params)
+        #     div_int_distill_loss = jnp.square(shortcut_div_int_pred - flow_div_int).mean()
+        #
+        #     log_prob_distill_loss, noise_distill_loss = 0.0, 0.0
         else:
-            distill_loss = 0.0
+            log_prob_distill_loss, noise_distill_loss, div_int_distill_loss = 0.0, 0.0, 0.0
+        distill_loss = log_prob_distill_loss + noise_distill_loss + div_int_distill_loss
 
         return distill_loss, {
             'distill_loss': distill_loss,
+            'log_prob_distill_loss': log_prob_distill_loss,
+            'noise_distill_loss': noise_distill_loss,
+            'div_int_distill_loss': div_int_distill_loss,
             'flow_log_prob_mean': flow_log_prob.mean(),
             'flow_log_prob_max': flow_log_prob.max(),
             'flow_log_prob_min': flow_log_prob.min(),
@@ -163,9 +178,9 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             gaussian_log_prob = -0.5 * jnp.sum(
                 jnp.log(2 * jnp.pi) + shortcut_noise_pred ** 2, axis=-1)
             q = gaussian_log_prob + shortcut_div_int_pred  # log p_1(g | s, a)
-        elif self.config['distill_type'] == 'div_int':
-            q = self.network.select('critic')(
-                batch['actor_goals'], batch['observations'], actions=q_actions)
+        # elif self.config['distill_type'] == 'div_int':
+        #     q = self.network.select('critic')(
+        #         batch['actor_goals'], batch['observations'], actions=q_actions)
         else:
             rng, q_rng = jax.random.split(rng)
             q = self.compute_log_likelihood(
@@ -175,6 +190,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
 
             # q = self.compute_log_likelihood(
             #     batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
+        q = jnp.clip(q, -self.config['log_prob_clip'], self.config['log_prob_clip'])
 
         # Normalize Q values by the absolute mean to make the loss scale invariant.
         q_loss = -q.mean()
@@ -468,7 +484,6 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
 
                 vf, div = compute_hutchinson_div(noisy_goals, times, observations, actions, div_rng)
 
-            # Update goals and divergence integral. We need to consider Q ensemble here.
             new_noisy_goals = noisy_goals - vf * step_size
             new_div_int = div_int - div * step_size
 
@@ -899,10 +914,11 @@ def get_config():
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             num_flow_steps=10,  # Number of steps for solving ODEs using the Euler method.
             div_type='exact',  # Divergence estimator type ('exact', 'hutchinson_normal', 'hutchinson_rademacher').
-            distill_type='none',  # Distillation type ('none', 'log_prob', 'rev_int').
+            distill_type='none',  # Distillation type ('none', 'log_prob', 'noise_div_int').
             actor_distill_type='fwd_sample',  # Actor distillation type ('fwd_sample', 'fwd_int').
             num_hutchinson_ests=4,  # Number of random vectors for hutchinson divergence estimation.
             use_target_network=False,  # Whether to use the target critic vector field to compute the distillation loss.
+            log_prob_clip=8,
             alpha=0.1,  # BC coefficient in DDPG+BC.
             discrete=False,  # Whether the action space is discrete.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
