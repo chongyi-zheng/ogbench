@@ -74,13 +74,14 @@ class FACAgent(flax.struct.PyTreeNode):
         next_vf_pred = self.network.select('critic_vf')(
             next_path_sample.x_t,
             times,
-            observations, actions,
+            observations,
+            actions,
             params=grad_params,
         )
         next_loss = jnp.square(next_vf_pred - next_path_sample.dx_t).mean()
 
         rng, next_noise_rng = jax.random.split(rng)
-        next_noises = jax.random.normal(next_noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
+        next_noises = jax.random.normal(next_noise_rng, shape=actions.shape, dtype=actions.dtype)
         if self.config['distill_type'] == 'fwd_sample':
             next_actions = self.network.select('actor')(next_noises, next_observations)
         elif self.config['distill_type'] == 'fwd_int':
@@ -107,7 +108,8 @@ class FACAgent(flax.struct.PyTreeNode):
         future_vf_pred = self.network.select('critic_vf')(
             future_path_sample.x_t,
             times,
-            observations, actions,
+            observations,
+            actions,
             params=grad_params,
         )
         future_loss = jnp.square(future_vf_pred - future_path_sample.dx_t).mean()

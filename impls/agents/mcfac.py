@@ -68,30 +68,31 @@ class MCFACAgent(flax.struct.PyTreeNode):
         goals = batch['value_goals']
 
         # critic flow matching
-        rng, noise_rng, time_rng = jax.random.split(rng, 3)
-        critic_noises = jax.random.normal(noise_rng, shape=observations.shape, dtype=observations.dtype)
-        critic_times = jax.random.uniform(time_rng, shape=(batch_size, ))
+        rng, critic_noise_rng, critic_time_rng = jax.random.split(rng, 3)
+        critic_noises = jax.random.normal(critic_noise_rng, shape=goals.shape, dtype=goals.dtype)
+        critic_times = jax.random.uniform(critic_time_rng, shape=(batch_size, ))
         critic_path_sample = self.cond_prob_path(x_0=critic_noises, x_1=goals, t=critic_times)
         critic_vf_pred = self.network.select('critic_vf')(
             critic_path_sample.x_t,
             critic_times,
-            observations, actions,
+            observations,
+            actions,
             params=grad_params,
         )
         critic_flow_matching_loss = jnp.square(critic_vf_pred - critic_path_sample.dx_t).mean()
 
         # actor flow matching
-        rng, noise_rng, time_rng = jax.random.split(rng, 3)
-        noises = jax.random.normal(noise_rng, shape=actions.shape, dtype=actions.dtype)
-        times = jax.random.uniform(time_rng, shape=(batch_size, ))
-        path_sample = self.cond_prob_path(x_0=noises, x_1=actions, t=times)
-        vf_pred = self.network.select('actor_vf')(
-            path_sample.x_t,
-            times,
+        rng, actor_noise_rng, actor_time_rng = jax.random.split(rng, 3)
+        actor_noises = jax.random.normal(actor_noise_rng, shape=actions.shape, dtype=actions.dtype)
+        actor_times = jax.random.uniform(actor_time_rng, shape=(batch_size, ))
+        actor_path_sample = self.cond_prob_path(x_0=actor_noises, x_1=actions, t=actor_times)
+        actor_vf_pred = self.network.select('actor_vf')(
+            actor_path_sample.x_t,
+            actor_times,
             observations,
             params=grad_params,
         )
-        actor_flow_matching_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
+        actor_flow_matching_loss = jnp.square(actor_vf_pred - actor_path_sample.dx_t).mean()
 
         flow_matching_loss = critic_flow_matching_loss + actor_flow_matching_loss
 
@@ -131,7 +132,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
             q_loss = lam * q_loss
 
         # distill loss
-        distill_loss = self.config['alpha'] * jnp.pow(q_actions - flow_actions, 2).mean()
+        distill_loss = self.config['alpha'] * jnp.square(q_actions - flow_actions).mean()
 
         # Total loss
         actor_loss = q_loss + distill_loss
