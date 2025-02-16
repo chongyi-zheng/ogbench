@@ -72,17 +72,18 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
 
         if self.config['distill_type'] == 'log_prob':
             log_prob_pred = self.network.select('critic')(
-                goals, observations, actions=actions, params=grad_params)
+                goals, observations, actions, params=grad_params)
             log_prob_pred = jnp.clip(log_prob_pred, -self.config['log_prob_clip'], self.config['log_prob_clip'])
-            log_prob_distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
+            # log_prob_distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
+            log_prob_distill_loss = optax.log_cosh(log_prob_pred, flow_log_prob).mean()
 
             noise_distill_loss, div_int_distill_loss = 0.0, 0.0
         elif self.config['distill_type'] == 'noise_div_int':
             shortcut_noise_pred = self.network.select('critic_noise')(
-                goals, observations, actions=actions, params=grad_params)
+                goals, observations, actions, params=grad_params)
             noise_distill_loss = jnp.square(shortcut_noise_pred - flow_noise).mean()
             shortcut_div_int_pred = self.network.select('critic_div')(
-                goals, observations, actions=actions, params=grad_params)
+                goals, observations, actions, params=grad_params)
             div_int_distill_loss = jnp.square(shortcut_div_int_pred - flow_div_int).mean()
 
             gaussian_log_prob = -0.5 * jnp.sum(
@@ -849,13 +850,12 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             target_critic_vf=(copy.deepcopy(critic_vf_def), (ex_goals, ex_times, ex_observations, ex_actions)),
             actor_vf=(actor_vf_def, (ex_actions, ex_times, ex_observations, ex_goals)),
             actor=(actor_def, (ex_actions, ex_observations, ex_goals)),
+            critic=(critic_def, (ex_goals, ex_observations, ex_actions)),
         )
 
         if config['distill_type'] == 'noise_div_int':
             network_info['critic_noise'] = (critic_noise_def, (ex_goals, ex_observations, ex_actions))
             network_info['critic_div'] = (critic_div_def, (ex_goals, ex_observations, ex_actions))
-        else:
-            network_info['critic'] = (critic_def, (ex_goals, ex_observations, ex_actions))
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
 
