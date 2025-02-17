@@ -1069,8 +1069,8 @@ def get_config():
             agent_name='gcfac',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
-            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
-            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
+            actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
+            value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
@@ -1086,7 +1086,7 @@ def get_config():
             actor_distill_type='fwd_sample',  # Actor distillation type ('fwd_sample', 'fwd_int').
             num_hutchinson_ests=4,  # Number of random vectors for hutchinson divergence estimation.
             use_target_network=False,  # Whether to use the target critic vector field to compute the distillation loss.
-            log_prob_clip=8,
+            log_prob_clip=jnp.inf,
             alpha=0.1,  # BC coefficient in DDPG+BC.
             discrete=False,  # Whether the action space is discrete.
             normalize_q_loss=False,  # Whether to normalize the Q loss.

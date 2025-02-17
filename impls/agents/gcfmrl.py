@@ -739,10 +739,9 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             action_dim = ex_actions.max() + 1
         else:
             action_dim = ex_actions.shape[-1]
-        
-        rng, time_rng, z_rng = jax.random.split(rng, 3)
-        ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0], ))
-        ex_zs = jax.random.normal(z_rng, shape=ex_observations.shape, dtype=ex_observations.dtype)
+
+        rng, time_rng = jax.random.split(rng)
+        ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],))
 
         # Define encoders.
         encoders = dict()
@@ -900,8 +899,8 @@ def get_config():
             agent_name='gcfmrl',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
-            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
-            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
+            actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
+            value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
