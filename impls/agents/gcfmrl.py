@@ -83,6 +83,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             else:
                 log_prob_pred = self.network.select('critic')(
                     goals, observations, actions, params=grad_params)
+            log_prob_distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
 
             noise_distill_loss, div_int_distill_loss = 0.0, 0.0
         elif self.config['distill_type'] == 'noise_div_int':

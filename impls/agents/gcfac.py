@@ -83,10 +83,14 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         #     zs = zs.reshape([goals.shape[0], -1])
 
         if self.config['distill_type'] == 'log_prob':
-            log_prob_pred = jax.vmap(lambda z: self.network.select('critic')(
-                goals, observations, actions, z, params=grad_params), in_axes=-1, out_axes=-1)(zs)
-            log_prob_pred = jnp.clip(log_prob_pred, -self.config['log_prob_clip'], self.config['log_prob_clip'])
-            log_prob_pred = log_prob_pred.mean(axis=-1)
+            if zs is not None:
+                log_prob_pred = jax.vmap(lambda z: self.network.select('critic')(
+                    goals, observations, actions, z, params=grad_params), in_axes=-1, out_axes=-1)(zs)
+                log_prob_pred = jnp.clip(log_prob_pred, -self.config['log_prob_clip'], self.config['log_prob_clip'])
+                log_prob_pred = log_prob_pred.mean(axis=-1)
+            else:
+                log_prob_pred = self.network.select('critic')(
+                    goals, observations, actions, params=grad_params)
             log_prob_distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
 
             noise_distill_loss, div_int_distill_loss = 0.0, 0.0
