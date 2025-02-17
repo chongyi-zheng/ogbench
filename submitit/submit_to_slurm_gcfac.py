@@ -50,7 +50,7 @@ def main():
             # "antsoccer-arena-navigate-v0"
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [30.0, 3.0, 0.3, 0.03]:  # when normalize_q_loss = 1, use alpha around 0.003
+                for alpha in [300.0, 30.0, 3.0, 0.3]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for ode_solver_type in ['euler']:
                         for ode_adjoint_type in ['recursive_checkpoint']:
                             for num_flow_steps in [10]:
