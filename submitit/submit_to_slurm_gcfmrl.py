@@ -36,6 +36,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
+        slurm_array_parallelism=24,
     )
 
     # ddpgbc hyperparameters: normalize_observation, alpha, const_std, num_flow_steps, exact_divergence, distill_type
@@ -48,10 +49,10 @@ def main():
             # "antsoccer-arena-navigate-v0"
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
+                for alpha in [0.3, 0.03, 0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for const_std in [False]:
                         for ode_solver_type in ['euler', 'dopri5', 'tsit5']:
-                            for ode_adjoint_type in ['recursive_checkpoint', 'direct', 'back_solve']:
+                            for ode_adjoint_type in ['recursive_checkpoint']:
                                 for num_flow_steps in [10]:
                                     for noise_type in ['normal', 'marginal']:
                                         for div_type in ['exact', 'hutchinson_normal']:  # both works similar

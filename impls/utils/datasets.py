@@ -326,28 +326,28 @@ class GCDataset:
         random_goal_idxs = self.dataset.get_random_idxs(size)
 
         # Goals from the same trajectory (excluding the current state, unless it is the final state).
-        # initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
+        initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
         final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, idxs)]
         if geom_sample:
             # Geometric sampling.
 
             # truncated geometric sampling.
-            offsets = np.random.geometric(p=1 - self.config['discount'], size=size)  # in [1, inf)
-            if num_goals > 1:
-                middle_goal_idxs = np.minimum(idxs[:, None] + offsets, final_state_idxs[:, None])
-            else:
-                middle_goal_idxs = np.minimum(idxs + offsets, final_state_idxs)
+            # offsets = np.random.geometric(p=1 - self.config['discount'], size=size)  # in [1, inf)
+            # if num_goals > 1:
+            #     middle_goal_idxs = np.minimum(idxs[:, None] + offsets, final_state_idxs[:, None])
+            # else:
+            #     middle_goal_idxs = np.minimum(idxs + offsets, final_state_idxs)
 
             # renormalized geometric sampling.
-            # current_timesteps = idxs - initial_state_idxs
-            #
-            # probs = self.geometric_probs[current_timesteps]
-            # c = probs.cumsum(axis=1)
-            # u = np.random.rand(len(c), 1)
-            # future_timesteps = (u < c).argmax(axis=1)
-            # offsets = future_timesteps - current_timesteps
-            #
-            # middle_goal_idxs = idxs + offsets
+            current_timesteps = idxs - initial_state_idxs
+
+            probs = self.geometric_probs[current_timesteps]
+            c = probs.cumsum(axis=1)
+            u = np.random.rand(len(c), 1)
+            future_timesteps = (u < c).argmax(axis=1)
+            offsets = future_timesteps - current_timesteps
+
+            middle_goal_idxs = idxs + offsets
         else:
             # Uniform sampling.
             distances = np.random.rand(*size)  # in [0, 1)
