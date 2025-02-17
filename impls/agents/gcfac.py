@@ -204,8 +204,13 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         #     zs = zs.reshape([batch['actor_goals'].shape[0], -1])
 
         if self.config['distill_type'] == 'log_prob':
-            q = jax.vmap(lambda z: self.network.select('critic')(
-                batch['actor_goals'], batch['observations'], q_actions, z), in_axes=-1, out_axes=-1)(zs)
+            if zs is not None:
+                q = jax.vmap(lambda z: self.network.select('critic')(
+                    batch['actor_goals'], batch['observations'], q_actions, z), in_axes=-1, out_axes=-1)(zs)
+                q = q.mean(axis=-1)
+            else:
+                q = self.network.select('critic')(
+                    batch['actor_goals'], batch['observations'], q_actions)
         elif self.config['distill_type'] == 'noise_div_int':
             shortcut_noise_pred = self.network.select('critic_noise')(
                 batch['actor_goals'], batch['observations'], q_actions)
