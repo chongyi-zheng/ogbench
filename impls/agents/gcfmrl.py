@@ -30,7 +30,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
 
     def critic_loss(self, batch, grad_params, rng):
         """Compute the contrastive value loss for the Q or V function."""
-        rng, time_rng, noise_rng, z_rng = jax.random.split(rng, 4)
+        rng, time_rng, noise_rng, q_rng = jax.random.split(rng, 4)
 
         batch_size = batch['observations'].shape[0]
         observations = batch['observations']
@@ -54,35 +54,37 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
         )
         fm_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
 
-        if self.config['div_type'] == 'hutchinson_normal':
-            zs = jax.random.normal(
-                z_rng, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
-        elif self.config['div_type'] == 'hutchinson_rademacher':
-            zs = jax.random.rademacher(
-                z_rng, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
-        else:
-            zs = None
+        # if self.config['div_type'] == 'hutchinson_normal':
+        #     zs = jax.random.normal(
+        #         z_rng, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
+        # elif self.config['div_type'] == 'hutchinson_rademacher':
+        #     zs = jax.random.rademacher(
+        #         z_rng, shape=(*goals.shape, self.config['num_hutchinson_ests']), dtype=goals.dtype)
+        # else:
+        #     zs = None
 
         if self.config['noise_type'] == 'normal':
             flow_log_prob, flow_noise, flow_div_int = self.compute_log_likelihood(
                 goals, observations,
                 dataset_obs_mean, dataset_obs_var,
-                zs, actions=actions, info=True)
+                q_rng, actions=actions, info=True)
         else:
             flow_log_prob, flow_noise, flow_div_int = self.compute_log_likelihood(
                 goals, observations,
                 dataset_obs_mean, dataset_obs_var,
-                zs, actions=actions, info=True)
+                q_rng, actions=actions, info=True)
 
         if self.config['distill_type'] == 'log_prob':
             # assert self.config['noise_type'] != 'marginal'
-            if zs is not None:
-                log_prob_pred = jax.vmap(lambda z: self.network.select('critic')(
-                    goals, observations, actions, z, params=grad_params), in_axes=-1, out_axes=-1)(zs)
-                log_prob_pred = log_prob_pred.mean(axis=-1)
-            else:
-                log_prob_pred = self.network.select('critic')(
-                    goals, observations, actions, params=grad_params)
+            # if zs is not None:
+            #     log_prob_pred = jax.vmap(lambda z: self.network.select('critic')(
+            #         goals, observations, actions, z, params=grad_params), in_axes=-1, out_axes=-1)(zs)
+            #     log_prob_pred = log_prob_pred.mean(axis=-1)
+            # else:
+            #     log_prob_pred = self.network.select('critic')(
+            #         goals, observations, actions, params=grad_params)
+            log_prob_pred = self.network.select('critic')(
+                goals, observations, actions, params=grad_params)
             log_prob_distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
 
             noise_distill_loss, div_int_distill_loss = 0.0, 0.0
@@ -91,13 +93,15 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             shortcut_noise_pred = self.network.select('critic_noise')(
                 goals, observations, actions, params=grad_params)
             noise_distill_loss = jnp.square(shortcut_noise_pred - flow_noise).mean()
-            if zs is not None:
-                shortcut_div_int_pred = jax.vmap(lambda z: self.network.select('critic_div')(
-                    goals, observations, actions, z, params=grad_params), in_axes=-1, out_axes=-1)(zs)
-                shortcut_div_int_pred = shortcut_div_int_pred.mean(axis=-1)
-            else:
-                shortcut_div_int_pred = self.network.select('critic_div')(
-                    goals, observations, actions, params=grad_params)
+            # if zs is not None:
+            #     shortcut_div_int_pred = jax.vmap(lambda z: self.network.select('critic_div')(
+            #         goals, observations, actions, z, params=grad_params), in_axes=-1, out_axes=-1)(zs)
+            #     shortcut_div_int_pred = shortcut_div_int_pred.mean(axis=-1)
+            # else:
+            #     shortcut_div_int_pred = self.network.select('critic_div')(
+            #         goals, observations, actions, params=grad_params)
+            shortcut_div_int_pred = self.network.select('critic_div')(
+                goals, observations, actions, params=grad_params)
             div_int_distill_loss = jnp.square(shortcut_div_int_pred - flow_div_int).mean()
 
             gaussian_log_prob = -0.5 * jnp.sum(
@@ -139,42 +143,46 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             rng, q_action_rng = jax.random.split(rng)
             q_actions = jnp.clip(dist.sample(seed=q_action_rng), -1, 1)
 
-        rng, z_rng = jax.random.split(rng)
-        if self.config['div_type'] == 'hutchinson_normal':
-            zs = jax.random.normal(
-                z_rng,
-                shape=(*batch['actor_goals'].shape, self.config['num_hutchinson_ests']),
-                dtype=batch['actor_goals'].dtype
-            )
-        elif self.config['div_type'] == 'hutchinson_rademacher':
-            zs = jax.random.rademacher(
-                z_rng,
-                shape=(*batch['actor_goals'].shape, self.config['num_hutchinson_ests']),
-                dtype=batch['actor_goals'].dtype
-            )
-        else:
-            zs = None
+        # rng, z_rng = jax.random.split(rng)
+        # if self.config['div_type'] == 'hutchinson_normal':
+        #     zs = jax.random.normal(
+        #         z_rng,
+        #         shape=(*batch['actor_goals'].shape, self.config['num_hutchinson_ests']),
+        #         dtype=batch['actor_goals'].dtype
+        #     )
+        # elif self.config['div_type'] == 'hutchinson_rademacher':
+        #     zs = jax.random.rademacher(
+        #         z_rng,
+        #         shape=(*batch['actor_goals'].shape, self.config['num_hutchinson_ests']),
+        #         dtype=batch['actor_goals'].dtype
+        #     )
+        # else:
+        #     zs = None
 
         if self.config['distill_type'] == 'log_prob':
             # assert self.config['noise_type'] != 'marginal'
-            if zs is not None:
-                q = jax.vmap(lambda z: self.network.select('critic')(
-                    batch['actor_goals'], batch['observations'], q_actions, z), in_axes=-1, out_axes=-1)(zs)
-                q = q.mean(axis=-1)
-            else:
-                q = self.network.select('critic')(
-                    batch['actor_goals'], batch['observations'], q_actions)
+            # if zs is not None:
+            #     q = jax.vmap(lambda z: self.network.select('critic')(
+            #         batch['actor_goals'], batch['observations'], q_actions, z), in_axes=-1, out_axes=-1)(zs)
+            #     q = q.mean(axis=-1)
+            # else:
+            #     q = self.network.select('critic')(
+            #         batch['actor_goals'], batch['observations'], q_actions)
+            q = self.network.select('critic')(
+                batch['actor_goals'], batch['observations'], q_actions)
         elif self.config['distill_type'] == 'noise_div_int':
             # assert self.config['noise_type'] != 'marginal'
             shortcut_noise_pred = self.network.select('critic_noise')(
                 batch['actor_goals'], batch['observations'], q_actions)
-            if zs is not None:
-                shortcut_div_int_pred = jax.vmap(lambda z: self.network.select('critic_div')(
-                    batch['actor_goals'], batch['observations'], q_actions, z), in_axes=-1, out_axes=-1)(zs)
-                shortcut_div_int_pred = shortcut_div_int_pred.mean(axis=-1)
-            else:
-                shortcut_div_int_pred = self.network.select('critic_div')(
-                    batch['actor_goals'], batch['observations'], q_actions)
+            # if zs is not None:
+            #     shortcut_div_int_pred = jax.vmap(lambda z: self.network.select('critic_div')(
+            #         batch['actor_goals'], batch['observations'], q_actions, z), in_axes=-1, out_axes=-1)(zs)
+            #     shortcut_div_int_pred = shortcut_div_int_pred.mean(axis=-1)
+            # else:
+            #     shortcut_div_int_pred = self.network.select('critic_div')(
+            #         batch['actor_goals'], batch['observations'], q_actions)
+            shortcut_div_int_pred = self.network.select('critic_div')(
+                batch['actor_goals'], batch['observations'], q_actions)
 
             if self.config['noise_type'] == 'normal':
                 gaussian_log_prob = -0.5 * jnp.sum(
@@ -191,10 +199,11 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
         #     q = self.network.select('critic')(
         #         batch['actor_goals'], batch['observations'], actions=q_actions)
         else:
+            rng, q_rng = jax.random.split(rng)
             q = self.compute_log_likelihood(
                 batch['actor_goals'], batch['observations'],
                 batch['dataset_obs_mean'], batch['dataset_obs_var'],
-                zs, actions=q_actions,
+                q_rng, actions=q_actions,
             )
 
             # q = self.compute_log_likelihood(
@@ -400,7 +409,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
 
     def compute_log_likelihood(self, goals, observations,
                                dataset_obs_mean, dataset_obs_var,
-                               zs, actions=None,
+                               rng, actions=None,
                                info=False):
         if self.config['div_type'] == 'exact':
             def vector_field(time, noise_div_int, carry):
@@ -444,15 +453,20 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
         else:
 
             def vector_field(time, noise_div_int, carry):
-                noises, _ = noise_div_int
-                observations, actions, zs = carry
 
-                # Split RNG and sample noise
-                # key, z_key = jax.random.split(key)
-                # if self.config['div_type'] == 'hutchinson_normal':
-                #     z = jax.random.normal(z_key, shape=goals.shape, dtype=goals.dtype)
-                # elif self.config['div_type'] == 'hutchinson_rademacher':
-                #     z = jax.random.rademacher(z_key, shape=goals.shape, dtype=goals.dtype)
+                # rng, z_rng = jax.random.split(rng)
+
+                noises, _ = noise_div_int
+                observations, actions, rng = carry
+
+                # https://github.com/patrick-kidger/diffrax/issues/105#issuecomment-1125984657
+                rng = jax.random.fold_in(rng, time.astype(jnp.int32))
+                rng, z_rng = jax.random.split(rng)
+
+                if self.config['div_type'] == 'hutchinson_normal':
+                    zs = jax.random.normal(z_rng, shape=goals.shape, dtype=goals.dtype)
+                elif self.config['div_type'] == 'hutchinson_rademacher':
+                    zs = jax.random.rademacher(z_rng, shape=goals.shape, dtype=goals.dtype)
 
                 # Forward (vf) and linearization (jac_vf_dot_z)
                 times = jnp.full(noises.shape[:-1], time)
@@ -461,19 +475,24 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
                 #     (noises,), (z,)
                 # )
 
-                def single_jvp(z):
-                    vf, jac_vf_dot_z = jax.jvp(
-                        lambda n: self.network.select('critic_vf')(n, times, observations, actions),
-                        (noises,), (z,)
-                    )
-
-                    return vf, jac_vf_dot_z
-
-                vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(zs)
-                div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, zs)
-
-                vf = vf.mean(axis=-1)  # vf are the same along the final dimension
-                div = div.mean(axis=-1)
+                # def single_jvp(z):
+                #     vf, jac_vf_dot_z = jax.jvp(
+                #         lambda n: self.network.select('critic_vf')(n, times, observations, actions),
+                #         (noises,), (z,)
+                #     )
+                #
+                #     return vf, jac_vf_dot_z
+                #
+                # vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(zs)
+                # div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, zs)
+                #
+                # vf = vf.mean(axis=-1)  # vf are the same along the final dimension
+                # div = div.mean(axis=-1)
+                vf, jac_vf_dot_z = jax.jvp(
+                    lambda n: self.network.select('critic_vf')(n, times, observations, actions),
+                    (noises, ), (zs, )
+                )
+                div = jnp.einsum("ij,ij->i", jac_vf_dot_z, zs)
 
                 return vf, div
 
@@ -492,7 +511,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             ode_term, self.ode_solver,
             t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
             y0=(goals, jnp.zeros(goals.shape[:-1])),
-            args=(observations, actions, zs),
+            args=(observations, actions, rng),
             adjoint=self.ode_adjoint,
             throw=False,  # (chongyi): setting throw to false is important for speed
         )
@@ -816,23 +835,29 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             network_info.update(
                 critic_noise=(critic_noise_def, (ex_goals, ex_observations, ex_actions)),
             )
-            if config['div_type'] == 'exact':
-                network_info.update(
-                    critic_div=(critic_div_def, (ex_goals, ex_observations, ex_actions)),
-                )
-            else:
-                network_info.update(
-                    critic_div=(critic_div_def, (ex_goals, ex_observations, ex_actions, ex_zs)),
-                )
+            # if config['div_type'] == 'exact':
+            #     network_info.update(
+            #         critic_div=(critic_div_def, (ex_goals, ex_observations, ex_actions)),
+            #     )
+            # else:
+            #     network_info.update(
+            #         critic_div=(critic_div_def, (ex_goals, ex_observations, ex_actions, ex_zs)),
+            #     )
+            network_info.update(
+                critic_div=(critic_div_def, (ex_goals, ex_observations, ex_actions)),
+            )
         else:
-            if config['div_type'] == 'exact':
-                network_info.update(
-                    critic=(critic_def, (ex_goals, ex_observations, ex_actions)),
-                )
-            else:
-                network_info.update(
-                    critic=(critic_def, (ex_goals, ex_observations, ex_actions, ex_zs)),
-                )
+            # if config['div_type'] == 'exact':
+            #     network_info.update(
+            #         critic=(critic_def, (ex_goals, ex_observations, ex_actions)),
+            #     )
+            # else:
+            #     network_info.update(
+            #         critic=(critic_def, (ex_goals, ex_observations, ex_actions, ex_zs)),
+            #     )
+            network_info.update(
+                critic=(critic_def, (ex_goals, ex_observations, ex_actions)),
+            )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
 
