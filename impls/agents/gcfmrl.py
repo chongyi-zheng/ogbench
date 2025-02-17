@@ -460,7 +460,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
                 observations, actions, rng = carry
 
                 # https://github.com/patrick-kidger/diffrax/issues/105#issuecomment-1125984657
-                rng = jax.random.fold_in(rng, time.astype(jnp.int32))
+                rng = jax.random.fold_in(rng, jnp.asarray(time, jnp.int32))
                 rng, z_rng = jax.random.split(rng)
 
                 if self.config['div_type'] == 'hutchinson_normal':
