@@ -79,13 +79,14 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         )
         flow_log_prob = jnp.clip(flow_log_prob, -self.config['log_prob_clip'], self.config['log_prob_clip'])
 
-        if zs is not None:
-            zs = zs.reshape([goals.shape[0], -1])
+        # if zs is not None:
+        #     zs = zs.reshape([goals.shape[0], -1])
 
         if self.config['distill_type'] == 'log_prob':
-            log_prob_pred = self.network.select('critic')(
-                goals, observations, actions, params=grad_params)
+            log_prob_pred = jax.vmap(lambda z: self.network.select('critic')(
+                goals, observations, actions, z, params=grad_params), in_axes=-1, out_axes=-1)(zs)
             log_prob_pred = jnp.clip(log_prob_pred, -self.config['log_prob_clip'], self.config['log_prob_clip'])
+            log_prob_pred = log_prob_pred.mean(axis=-1)
             log_prob_distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
 
             noise_distill_loss, div_int_distill_loss = 0.0, 0.0
@@ -94,8 +95,9 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
                 goals, observations, actions, params=grad_params)
             noise_distill_loss = jnp.square(shortcut_noise_pred - flow_noise).mean()
             if zs is not None:
-                shortcut_div_int_pred = self.network.select('critic_div')(
-                    goals, observations, actions, zs, params=grad_params)
+                shortcut_div_int_pred = jax.vmap(lambda z: self.network.select('critic_div')(
+                    goals, observations, actions, z, params=grad_params), in_axes=-1, out_axes=-1)(zs)
+                shortcut_div_int_pred = shortcut_div_int_pred.mean(axis=-1)
             else:
                 shortcut_div_int_pred = self.network.select('critic_div')(
                     goals, observations, actions, params=grad_params)
@@ -198,18 +200,19 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
         else:
             zs = None
 
-        if zs is not None:
-            zs = zs.reshape([batch['actor_goals'].shape[0], -1])
+        # if zs is not None:
+        #     zs = zs.reshape([batch['actor_goals'].shape[0], -1])
 
         if self.config['distill_type'] == 'log_prob':
-            q = self.network.select('critic')(
-                batch['actor_goals'], batch['observations'], q_actions)
+            q = jax.vmap(lambda z: self.network.select('critic')(
+                batch['actor_goals'], batch['observations'], q_actions, z), in_axes=-1, out_axes=-1)(zs)
         elif self.config['distill_type'] == 'noise_div_int':
             shortcut_noise_pred = self.network.select('critic_noise')(
                 batch['actor_goals'], batch['observations'], q_actions)
             if zs is not None:
-                shortcut_div_int_pred = self.network.select('critic_div')(
-                    batch['actor_goals'], batch['observations'], q_actions, zs)
+                shortcut_div_int_pred = jax.vmap(lambda z: self.network.select('critic_div')(
+                    batch['actor_goals'], batch['observations'], q_actions, z), in_axes=-1, out_axes=-1)(zs)
+                shortcut_div_int_pred = shortcut_div_int_pred.mean(axis=-1)
             else:
                 shortcut_div_int_pred = self.network.select('critic_div')(
                     batch['actor_goals'], batch['observations'], q_actions)
@@ -792,9 +795,8 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             action_dim = ex_actions.shape[-1]
         
         rng, time_rng, z_rng = jax.random.split(rng, 3)
-        ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0], ))
-        ex_zs = jax.random.normal(z_rng, shape=(*ex_observations.shape, config['num_hutchinson_ests']))
-        ex_zs = ex_zs.reshape([ex_observations.shape[0], -1])
+        ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0], ), dtype=ex_observations.dtype)
+        ex_zs = jax.random.normal(z_rng, shape=ex_observations.shape, dtype=ex_observations.dtype)
 
         # Define encoders.
         encoders = dict()
@@ -904,9 +906,14 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
                     critic_div=(critic_div_def, (ex_goals, ex_observations, ex_actions, ex_zs)),
                 )
         else:
-            network_info.update(
-                critic=(critic_def, (ex_goals, ex_observations, ex_actions)),
-            )
+            if config['div_type'] == 'exact':
+                network_info.update(
+                    critic=(critic_def, (ex_goals, ex_observations, ex_actions)),
+                )
+            else:
+                network_info.update(
+                    critic=(critic_def, (ex_goals, ex_observations, ex_actions, ex_zs)),
+                )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
 
