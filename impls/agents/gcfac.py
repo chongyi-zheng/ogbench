@@ -1086,7 +1086,7 @@ def get_config():
             actor_distill_type='fwd_sample',  # Actor distillation type ('fwd_sample', 'fwd_int').
             num_hutchinson_ests=4,  # Number of random vectors for hutchinson divergence estimation.
             use_target_network=False,  # Whether to use the target critic vector field to compute the distillation loss.
-            log_prob_clip=jnp.inf,
+            log_prob_clip=8,
             alpha=0.1,  # BC coefficient in DDPG+BC.
             discrete=False,  # Whether the action space is discrete.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
