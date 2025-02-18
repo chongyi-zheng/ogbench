@@ -27,36 +27,38 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="fac",
-        slurm_time=int(6 * 60),  # minute
+        slurm_time=int(4 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="16G",
+        slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=24,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, actor_layer_norm, vf_q_loss, normalize_q_loss
     with executor.batch():  # job array
         for env_name in [
-            "antmaze-large-navigate-singletask-v0",
+            # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
+            "pen-human-v1",
+            "door-human-v1",
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [100, 10, 1, 0.1]:
+                    for alpha in [30000, 3000, 300]:
                         for num_flow_steps in [10]:
                             for distill_type in ['fwd_sample', 'fwd_int']:
-                                for q_agg in ["mean"]:
-                                    for actor_layer_norm in [False]:
-                                        for vf_q_loss in [False]:
-                                            for normalize_q_loss in [False]:
-                                                for seed in [10, 20]:
-                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_fac_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_actor_layer_norm={actor_layer_norm}_vf_q_loss={vf_q_loss}_normalize_q_loss={normalize_q_loss}"
+                                for critic_loss_type in ['expectile']:
+                                    for expectile in [0.9, 0.95, 0.99]:
+                                        for q_agg in ['mean']:
+                                            for normalize_q_loss in [True, False]:
+                                                for seed in [10]:
+                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_critic_loss_type={critic_loss_type}_expectile={expectile}_q_agg={q_agg}_normalize_q_loss={normalize_q_loss}"
                                                     log_dir = os.path.expanduser(
                                                         f"{log_root_dir}/exp_logs/ogbench_logs/fac/{exp_name}/{seed}")
 
@@ -101,9 +103,11 @@ def main():
                                                             --agent.alpha={alpha} \
                                                             --agent.num_flow_steps={num_flow_steps} \
                                                             --agent.distill_type={distill_type} \
+                                                            --agent.critic_loss_type={critic_loss_type} \
+                                                            --agent.expectile={expectile} \
                                                             --agent.q_agg={q_agg} \
-                                                            --agent.actor_layer_norm={actor_layer_norm} \
-                                                            --agent.vf_q_loss={vf_q_loss} \
+                                                            --agent.actor_layer_norm=False \
+                                                            --agent.vf_q_loss=False \
                                                             --agent.normalize_q_loss={normalize_q_loss} \
                                                             --seed={seed} \
                                                             --save_dir={log_dir} \
