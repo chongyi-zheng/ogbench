@@ -75,7 +75,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             q_rng, actions=actions, info=True,
             use_target_network=self.config['use_target_network']
         )
-        flow_log_prob = jnp.clip(flow_log_prob, -self.config['log_prob_clip'], self.config['log_prob_clip'])
+        # flow_log_prob = jnp.clip(flow_log_prob, -self.config['log_prob_clip'], self.config['log_prob_clip'])
 
         # if zs is not None:
         #     zs = zs.reshape([goals.shape[0], -1])
@@ -255,7 +255,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
 
             # q = self.compute_log_likelihood(
             #     batch['actor_goals'], batch['observations'], q_rng, actions=q_actions)
-        q = jnp.clip(q, -self.config['log_prob_clip'], self.config['log_prob_clip'])
+        # q = jnp.clip(q, -self.config['log_prob_clip'], self.config['log_prob_clip'])
 
         # Normalize Q values by the absolute mean to make the loss scale invariant.
         q_loss = -q.mean()
@@ -685,6 +685,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             module_name = 'critic_vf'
 
         if self.config['div_type'] == 'exact':
+            @jax.jit
             def vector_field(time, noise_div_int, carry):
                 noises, _ = noise_div_int
                 observations, actions, _ = carry
@@ -724,7 +725,7 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
 
                 return vf, div
         else:
-
+            @jax.jit
             def vector_field(time, noise_div_int, carry):
                 noises, _ = noise_div_int
                 observations, actions, zs = carry
