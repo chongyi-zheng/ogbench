@@ -21,6 +21,12 @@ class MCFACAgent(flax.struct.PyTreeNode):
     cond_prob_path: Any
     config: Any = nonpytree_field()
 
+    @staticmethod
+    def expectile_loss(adv, diff, expectile):
+        """Compute the expectile loss."""
+        weight = jnp.where(adv >= 0, expectile, (1 - expectile))
+        return weight * (diff ** 2)
+
     def reward_loss(self, batch, grad_params):
         observations = batch['observations']
         rewards = batch['rewards']
@@ -42,14 +48,24 @@ class MCFACAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
         actions = batch['actions']
 
-        q = self.network.select('critic')(observations, actions, params=grad_params)
+        qs = self.network.select('critic')(observations, actions, params=grad_params)
 
         rng, noise_rng = jax.random.split(rng)
         noises = jax.random.normal(noise_rng, shape=observations.shape, dtype=observations.dtype)
         flow_goals = self.compute_fwd_flow_goals(noises, observations, actions)
         target_q = self.network.select('reward')(flow_goals)
 
-        critic_loss = jnp.square(q - target_q).mean()
+        if self.config['critic_loss_type'] == 'mse':
+            critic_loss = jnp.square(target_q - qs).mean()
+        elif self.config['critic_loss_type'] == 'expectile':
+            critic_loss = self.expectile_loss(
+                target_q - qs, target_q - qs, self.config['expectile']).mean()
+
+        # For logging
+        if self.config['q_agg'] == 'mean':
+            q = jnp.mean(qs, axis=0)
+        else:
+            q = jnp.min(qs, axis=0)
 
         return critic_loss, {
             'critic_loss': critic_loss,
@@ -119,13 +135,13 @@ class MCFACAgent(flax.struct.PyTreeNode):
 
         # Q loss
         if self.config['vf_q_loss']:
-            q = self.network.select('critic')(batch['observations'], actions=q_action_vfs)
+            qs = self.network.select('critic')(batch['observations'], actions=q_action_vfs)
         else:
-            q = self.network.select('critic')(batch['observations'], actions=q_actions)
-        # if self.config['q_agg'] == 'mean':
-        #     q = jnp.mean(qs, axis=0)
-        # else:
-        #     q = jnp.min(qs, axis=0)
+            qs = self.network.select('critic')(batch['observations'], actions=q_actions)
+        if self.config['q_agg'] == 'mean':
+            q = jnp.mean(qs, axis=0)
+        else:
+            q = jnp.min(qs, axis=0)
         q_loss = -q.mean()
         if self.config['normalize_q_loss']:
             lam = jax.lax.stop_gradient(1 / jnp.abs(q).mean())
@@ -354,6 +370,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
             critic_def = GCValue(
                 hidden_dims=config['value_hidden_dims'],
                 layer_norm=config['layer_norm'],
+                num_ensembles=2,
                 gc_encoder=encoders.get('critic'),
             )
 
@@ -430,7 +447,9 @@ def get_config():
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
+            expectile=0.9,  # IQL style expectile.
             q_agg='mean',  # Aggregation method for target Q values.
+            critic_loss_type='mse',  # Critic loss type. ('mse', 'expectile').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').

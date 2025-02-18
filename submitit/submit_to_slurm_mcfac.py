@@ -46,18 +46,19 @@ def main():
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
             "pen-human-v1",
+            "door-human-v1",
         ]:
-            for obs_norm_type in ['normal', 'none']:
+            for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [30, 3, 0.3, 0.003]:
+                    for alpha in [300, 30, 3]:
                         for num_flow_steps in [10]:
                             for distill_type in ['fwd_sample', 'fwd_int']:
-                                for q_agg in ["mean"]:
-                                    for actor_layer_norm in [False]:
-                                        for vf_q_loss in [False]:
+                                for critic_loss_type in ['expectile']:
+                                    for expectile in [0.9, 0.95, 0.99]:
+                                        for q_agg in ['min']:
                                             for normalize_q_loss in [True, False]:
-                                                for seed in [10, 20]:
-                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_actor_layer_norm={actor_layer_norm}_vf_q_loss={vf_q_loss}_normalize_q_loss={normalize_q_loss}"
+                                                for seed in [10]:
+                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_critic_loss_type={critic_loss_type}_expectile={expectile}_q_agg={q_agg}_normalize_q_loss={normalize_q_loss}"
                                                     log_dir = os.path.expanduser(
                                                         f"{log_root_dir}/exp_logs/ogbench_logs/mcfac/{exp_name}/{seed}")
 
@@ -73,12 +74,12 @@ def main():
                                                         conda activate ogbench;
                                                         which python;
                                                         echo $CONDA_PREFIX;
-
+    
                                                         echo job_id: $SLURM_ARRAY_JOB_ID;
                                                         echo task_id: $SLURM_ARRAY_TASK_ID;
                                                         squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
                                                         echo seed: {seed};
-
+    
                                                         export PROJECT_DIR=$PWD;
                                                         export PYTHONPATH=$HOME/research/ogbench/impls;
                                                         export PATH="$PATH":"$CONDA_PREFIX"/bin;
@@ -89,7 +90,7 @@ def main():
                                                         export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
                                                         export D4RL_SUPPRESS_IMPORT_ERROR=1;
                                                         export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
-
+    
                                                         rm -rf {log_dir};
                                                         mkdir -p {log_dir};
                                                         python $PROJECT_DIR/impls/main_rl.py \
@@ -103,14 +104,16 @@ def main():
                                                             --agent.alpha={alpha} \
                                                             --agent.num_flow_steps={num_flow_steps} \
                                                             --agent.distill_type={distill_type} \
+                                                            --agent.critic_loss_type={critic_loss_type} \
+                                                            --agent.expectile={expectile} \
                                                             --agent.q_agg={q_agg} \
-                                                            --agent.actor_layer_norm={actor_layer_norm} \
-                                                            --agent.vf_q_loss={vf_q_loss} \
+                                                            --agent.actor_layer_norm=False \
+                                                            --agent.vf_q_loss=False \
                                                             --agent.normalize_q_loss={normalize_q_loss} \
                                                             --seed={seed} \
                                                             --save_dir={log_dir} \
                                                         2>&1 | tee {log_dir}/stream.log;
-
+    
                                                         export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
                                                         echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
                                                         echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";

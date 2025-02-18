@@ -170,7 +170,7 @@ class FACAgent(flax.struct.PyTreeNode):
             q_loss = lam * q_loss
 
         # distill loss
-        distill_loss = self.config['alpha'] * jnp.pow(q_actions - flow_actions, 2).mean()
+        distill_loss = self.config['alpha'] * jnp.square(q_actions - flow_actions).mean()
 
         # Total loss
         actor_loss = q_loss + distill_loss
