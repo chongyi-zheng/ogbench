@@ -27,7 +27,7 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="mcfac",
-        slurm_time=int(6 * 60),  # minute
+        slurm_time=int(4 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
@@ -42,9 +42,10 @@ def main():
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, actor_layer_norm, vf_q_loss, normalize_q_loss
     with executor.batch():  # job array
         for env_name in [
-            "antmaze-large-navigate-singletask-v0",
+            # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
+            "pen-human-v1",
         ]:
             for obs_norm_type in ['normal', 'none']:
                 for discount in [0.99]:
