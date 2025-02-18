@@ -50,15 +50,15 @@ def main():
             # "antsoccer-arena-navigate-v0"
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [300.0, 30.0, 3.0, 0.3]:  # when normalize_q_loss = 1, use alpha around 0.003
-                    for ode_solver_type in ['euler']:
-                        for ode_adjoint_type in ['recursive_checkpoint']:
+                for alpha in [0.003, 0.03, 0.3, 3.0]:  # when normalize_q_loss = 1, use alpha around 0.003
+                    for ode_solver_type in ['euler', 'dopri5']:
+                        for ode_adjoint_type in ['recursive_checkpoint', 'direct']:
                             for num_flow_steps in [10]:
-                                for div_type in ['exact', 'hutchinson_normal']:  # both works similar
+                                for div_type in ['hutchinson_rademacher', 'exact']:  # both works similar
                                     for distill_type in ['log_prob', 'noise_div_int']:  # no distillation seems to work better
                                         for actor_distill_type in ['fwd_sample']:
                                             for use_target_network in [False]:
-                                                for normalize_q_loss in [True, False]:  # it is important to normalize Q
+                                                for normalize_q_loss in [True]:  # it is important to normalize Q
                                                     for seed in [20]:
                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfac_env_name={env_name}_obs_norm={obs_norm_type}_alpha={alpha}_solver={ode_solver_type}_adjoint={ode_adjoint_type}_num_flow_steps={num_flow_steps}_div={div_type}_distill={distill_type}_actor_distill={actor_distill_type}_use_target={use_target_network}_norm_q={normalize_q_loss}"
                                                         log_dir = os.path.expanduser(
