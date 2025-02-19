@@ -112,7 +112,6 @@ def main():
                                                                         --agent.use_target_critic_vf={use_target_critic_vf} \
                                                                         --agent.expectile={expectile} \
                                                                         --agent.q_agg={q_agg} \
-                                                                        --agent.actor_layer_norm=False \
                                                                         --agent.vf_q_loss=False \
                                                                         --agent.normalize_q_loss={normalize_q_loss} \
                                                                         --agent.reward_type={reward_type} \

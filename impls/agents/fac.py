@@ -68,9 +68,9 @@ class FACAgent(flax.struct.PyTreeNode):
             a_noises = jax.random.normal(
                 a_noise_rng, shape=actions.shape, dtype=actions.dtype)
             if self.config['distill_type'] == 'fwd_sample':
-                goal_actions = self.network.select('actor')(a_noises, batch['observations'], params=grad_params)
+                goal_actions = self.network.select('actor')(a_noises, flow_goals)
             elif self.config['distill_type'] == 'fwd_int':
-                goal_action_vfs = self.network.select('actor')(a_noises, batch['observations'], params=grad_params)
+                goal_action_vfs = self.network.select('actor')(a_noises, flow_goals)
                 goal_actions = a_noises + goal_action_vfs
             goal_actions = jnp.clip(goal_actions, -1, 1)
         else:
