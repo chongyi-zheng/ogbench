@@ -151,24 +151,28 @@ class MCFACAgent(flax.struct.PyTreeNode):
 
     def actor_loss(self, batch, grad_params, rng):
         """Compute the FQL actor loss."""
+
+        observations = batch['observations']
+        actions = batch['actions']
+
         rng, noise_rng = jax.random.split(rng)
         noises = jax.random.normal(
-            noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
+            noise_rng, shape=actions.shape, dtype=actions.dtype)
         if self.config['distill_type'] == 'fwd_sample':
-            q_actions = self.network.select('actor')(noises, batch['observations'], params=grad_params)
+            q_actions = self.network.select('actor')(noises, observations, params=grad_params)
         elif self.config['distill_type'] == 'fwd_int':
-            q_action_vfs = self.network.select('actor')(noises, batch['observations'], params=grad_params)
+            q_action_vfs = self.network.select('actor')(noises, observations, params=grad_params)
             q_actions = noises + q_action_vfs
         q_actions = jnp.clip(q_actions, -1, 1)
 
-        flow_actions = self.compute_fwd_flow_actions(noises, batch['observations'])
+        flow_actions = self.compute_fwd_flow_actions(noises, observations)
         flow_actions = jnp.clip(flow_actions, -1, 1)
 
         # Q loss
         if self.config['vf_q_loss']:
-            qs = self.network.select('critic')(batch['observations'], actions=q_action_vfs)
+            qs = self.network.select('critic')(observations, actions=q_action_vfs)
         else:
-            qs = self.network.select('critic')(batch['observations'], actions=q_actions)
+            qs = self.network.select('critic')(observations, actions=q_actions)
         if self.config['q_agg'] == 'mean':
             q = jnp.mean(qs, axis=0)
         else:
@@ -177,9 +181,45 @@ class MCFACAgent(flax.struct.PyTreeNode):
         if self.config['normalize_q_loss']:
             lam = jax.lax.stop_gradient(1 / jnp.abs(q).mean())
             q_loss = lam * q_loss
+            q_loss = lam * q_loss
 
         # distill loss
-        distill_loss = self.config['alpha'] * jnp.square(q_actions - flow_actions).mean()
+        train_mask = jnp.float32((flow_actions * 1e8 % 10)[:, 0] != 4)
+        val_mask = 1.0 - train_mask
+
+        if self.config['distill_mixup']:
+            rng, beta_rng, perm_rng, noise_rng = jax.random.split(rng, 4)
+            lam = jax.random.beta(beta_rng, self.config['distill_mixup_alpha'], self.config['distill_mixup_alpha'],
+                                  shape=(flow_actions.shape[0], 1))
+
+            # c-mixup: https://arxiv.org/abs/2210.05775
+            pdist = jnp.sum((observations[:, None] - observations[None]) ** 2, axis=-1)
+            mixup_probs = jnp.exp(-pdist / (2 * self.config['distill_mixup_bandwidth'] ** 2))
+            mixup_probs /= jnp.sum(mixup_probs, axis=-1)
+
+            c = jnp.cumsum(mixup_probs, axis=-1)
+            u = jax.random.uniform(perm_rng, shape=(actions.shape[0], 1))
+            mixup_perms = (u < c).argmax(axis=-1)
+
+            mixup_observations = observations * lam + observations[mixup_perms] * (1.0 - lam)
+            mixup_flow_actions = flow_actions * lam + flow_actions[mixup_perms] * (1.0 - lam)
+            # mixup_dist_params = networks.policy_network.apply(
+            #     policy_params, mixup_obs_and_goal)
+            # mixup_action = networks.sample(mixup_dist_params, key_mixup_action)
+
+            noises = jax.random.normal(
+                noise_rng, shape=actions.shape, dtype=actions.dtype)
+            if self.config['distill_type'] == 'fwd_sample':
+                q_actions = self.network.select('actor')(noises, mixup_observations, params=grad_params)
+            elif self.config['distill_type'] == 'fwd_int':
+                q_action_vfs = self.network.select('actor')(noises, mixup_observations, params=grad_params)
+                q_actions = noises + q_action_vfs
+            q_actions = jnp.clip(q_actions, -1, 1)
+            flow_actions = mixup_flow_actions
+
+        distill_mse = (train_mask * jnp.square(q_actions - flow_actions).mean(axis=-1)).mean()
+        distill_val_mse = (val_mask * jnp.square(q_actions - flow_actions).mean(axis=-1)).mean()
+        distill_loss = self.config['alpha'] * distill_mse
 
         # Total loss
         actor_loss = q_loss + distill_loss
@@ -187,11 +227,11 @@ class MCFACAgent(flax.struct.PyTreeNode):
         # Additional metrics for logging.
         rng, noise_rng = jax.random.split(rng)
         noises = jax.random.normal(
-            noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
+            noise_rng, shape=actions.shape, dtype=actions.dtype)
         if self.config['distill_type'] == 'fwd_sample':
-            actions = self.network.select('actor')(noises, batch['observations'])
+            actions = self.network.select('actor')(noises, observations)
         elif self.config['distill_type'] == 'fwd_int':
-            action_vfs = self.network.select('actor')(noises, batch['observations'])
+            action_vfs = self.network.select('actor')(noises, observations)
             actions = noises + action_vfs
         actions = jnp.clip(actions, -1, 1)
         mse = jnp.mean((actions - batch['actions']) ** 2)
@@ -202,6 +242,8 @@ class MCFACAgent(flax.struct.PyTreeNode):
             'distill_loss': distill_loss,
             'q_mean': q.mean(),
             'q_abs_mean': jnp.abs(q).mean(),
+            'distill_mse': distill_mse,
+            'distill_val_mse': distill_val_mse,
             'mse': mse,
         }
 
@@ -492,6 +534,9 @@ def get_config():
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').
+            distill_mixup=False,  # Whether to use mixup to prevent overfitting during actor distillation.
+            distill_mixup_alpha=2.0,  # Parameter for the beta distribution used to sample mixup coefficient.
+            distill_mixup_bandwidth=2.75,  # Bandwidth for the mixup distance.
             alpha=10.0,  # BC coefficient (need to be tuned for each environment).
             num_flow_steps=10,  # Number of flow steps.
             discrete=False,  # Whether the action space is discrete.
