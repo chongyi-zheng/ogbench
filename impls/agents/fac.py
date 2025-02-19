@@ -29,10 +29,14 @@ class FACAgent(flax.struct.PyTreeNode):
 
     def reward_loss(self, batch, grad_params):
         observations = batch['observations']
+        if self.config['reward_type'] == 'state_action':
+            actions = batch['actions']
+        else:
+            actions = None
         rewards = batch['rewards']
 
         reward_preds = self.network.select('reward')(
-            observations,
+            observations, actions=actions,
             params=grad_params,
         )
 
@@ -47,13 +51,32 @@ class FACAgent(flax.struct.PyTreeNode):
 
         observations = batch['observations']
         actions = batch['actions']
+        rewards = batch['rewards']
 
         qs = self.network.select('critic')(observations, actions, params=grad_params)
 
-        rng, noise_rng = jax.random.split(rng)
-        noises = jax.random.normal(noise_rng, shape=observations.shape, dtype=observations.dtype)
-        flow_goals = self.compute_fwd_flow_goals(noises, observations, actions)
-        target_q = self.network.select('reward')(flow_goals)
+        rng, g_noise_rng, a_noise_rng = jax.random.split(rng, 3)
+        if self.config['critic_noise_type'] == 'normal':
+            g_noises = jax.random.normal(g_noise_rng, shape=observations.shape, dtype=observations.dtype)
+        elif self.config['critic_noise_type'] == 'marginal_state':
+            g_noises = jax.random.permutation(g_noise_rng, observations, axis=0)
+        flow_goals = self.compute_fwd_flow_goals(g_noises, observations, actions)
+
+        if self.config['reward_type'] == 'state_action':
+            a_noises = jax.random.normal(
+                a_noise_rng, shape=actions.shape, dtype=actions.dtype)
+            if self.config['distill_type'] == 'fwd_sample':
+                goal_actions = self.network.select('actor')(a_noises, batch['observations'], params=grad_params)
+            elif self.config['distill_type'] == 'fwd_int':
+                goal_action_vfs = self.network.select('actor')(a_noises, batch['observations'], params=grad_params)
+                goal_actions = a_noises + goal_action_vfs
+            goal_actions = jnp.clip(goal_actions, -1, 1)
+        else:
+            assert self.config['reward_type'] == 'state'
+            goal_actions = None
+
+        target_q = ((1 - self.config['discount']) * rewards
+                    + self.config['discount'] * self.network.select('reward')(flow_goals, actions=goal_actions))
 
         if self.config['critic_loss_type'] == 'mse':
             critic_loss = jnp.square(target_q - qs).mean()
@@ -84,12 +107,15 @@ class FACAgent(flax.struct.PyTreeNode):
 
         # critic flow matching
         rng, next_time_rng, next_noise_rng = jax.random.split(rng, 3)
-        times = jax.random.uniform(next_time_rng, shape=(batch_size, ), dtype=next_observations.dtype)
-        noises = jax.random.normal(next_noise_rng, shape=next_observations.shape, dtype=next_observations.dtype)
-        next_path_sample = self.cond_prob_path(x_0=noises, x_1=next_observations, t=times)
+        next_times = jax.random.uniform(next_time_rng, shape=(batch_size, ), dtype=next_observations.dtype)
+        if self.config['critic_noise_type'] == 'normal':
+            next_noises = jax.random.normal(next_noise_rng, shape=next_observations.shape, dtype=next_observations.dtype)
+        elif self.config['critic_noise_type'] == 'marginal_state':
+            next_noises = jax.random.permutation(next_noise_rng, observations, axis=0)
+        next_path_sample = self.cond_prob_path(x_0=next_noises, x_1=next_observations, t=next_times)
         next_vf_pred = self.network.select('critic_vf')(
             next_path_sample.x_t,
-            times,
+            next_times,
             observations,
             actions,
             params=grad_params,
@@ -115,15 +141,18 @@ class FACAgent(flax.struct.PyTreeNode):
         future_flow_goals = jax.lax.stop_gradient(future_flow_goals)
 
         rng, future_time_rng, future_noise_rng = jax.random.split(rng, 3)
-        # future_times = jax.random.uniform(
-        #     future_time_rng, shape=(batch_size,), dtype=future_flow_goals.dtype)
-        # future_noises = jax.random.normal(
-        #     future_noise_rng, shape=future_flow_goals.shape, dtype=future_flow_goals.dtype)
+        future_times = jax.random.uniform(
+            future_time_rng, shape=(batch_size,), dtype=future_flow_goals.dtype)
+        if self.config['critic_noise_type'] == 'normal':
+            future_noises = jax.random.normal(
+                future_noise_rng, shape=future_flow_goals.shape, dtype=future_flow_goals.dtype)
+        elif self.config['critic_noise_type'] == 'marginal_state':
+            future_noises = jax.random.permutation(future_noise_rng, observations, axis=0)
         future_path_sample = self.cond_prob_path(
-            x_0=noises, x_1=future_flow_goals, t=times)
+            x_0=future_noises, x_1=future_flow_goals, t=future_times)
         future_vf_pred = self.network.select('critic_vf')(
             future_path_sample.x_t,
-            times,
+            future_times,
             observations,
             actions,
             params=grad_params,
@@ -446,8 +475,15 @@ class FACAgent(flax.struct.PyTreeNode):
                 ex_observations, ex_times, ex_observations, ex_actions)),
             actor_vf=(actor_vf_def, (ex_actions, ex_times, ex_observations)),
             actor=(actor_def, (ex_actions, ex_observations)),
-            reward=(reward_def, (ex_observations, )),
         )
+        if config['reward_type'] == 'state':
+            network_info.update(
+                reward=(reward_def, (ex_observations, )),
+            )
+        else:
+            network_info.update(
+                reward=(reward_def, (ex_observations, None, ex_actions)),
+            )
         # if encoders.get('actor_bc_flow') is not None:
         #     # Add actor_bc_flow_encoder to ModuleDict to make it separately callable.
         #     network_info['actor_bc_flow_encoder'] = (encoders.get('actor_bc_flow'), (ex_observations,))
@@ -488,6 +524,7 @@ def get_config():
             expectile=0.9,  # IQL style expectile.
             q_agg='mean',  # Aggregation method for target Q values.
             critic_loss_type='mse',  # Critic loss type. ('mse', 'expectile').
+            critic_noise_type='normal',  # Critic noise type. ('marginal_state', 'marginal_goal', 'normal').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').
@@ -496,6 +533,7 @@ def get_config():
             discrete=False,  # Whether the action space is discrete.
             vf_q_loss=False,  # Whether to use vector fields to compute Q in the Q loss.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
+            reward_type='state',  # Reward type. ('state', 'state_action')
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
         )
     )
