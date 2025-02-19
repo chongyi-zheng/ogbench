@@ -60,6 +60,8 @@ class FACAgent(flax.struct.PyTreeNode):
             g_noises = jax.random.normal(g_noise_rng, shape=observations.shape, dtype=observations.dtype)
         elif self.config['critic_noise_type'] == 'marginal_state':
             g_noises = jax.random.permutation(g_noise_rng, observations, axis=0)
+        else:
+            raise NotImplementedError
         flow_goals = self.compute_fwd_flow_goals(g_noises, observations, actions)
 
         if self.config['reward_type'] == 'state_action':
@@ -132,11 +134,14 @@ class FACAgent(flax.struct.PyTreeNode):
         next_actions = jnp.clip(next_actions, -1, 1)
 
         rng, future_goal_rng = jax.random.split(rng)
-        future_goal_noises = jax.random.normal(
-            future_goal_rng, shape=observations.shape, dtype=observations.dtype)
+        if self.config['critic_noise_type'] == 'normal':
+            future_goal_noises = jax.random.normal(
+                future_goal_rng, shape=observations.shape, dtype=observations.dtype)
+        elif self.config['critic_noise_type'] == 'marginal_state':
+            future_goal_noises = jax.random.permutation(future_goal_rng, observations, axis=0)
         future_flow_goals = self.compute_fwd_flow_goals(
             future_goal_noises, next_observations, next_actions,
-            use_target_network=True
+            use_target_network=self.config['use_target_critic_vf']
         )
         future_flow_goals = jax.lax.stop_gradient(future_flow_goals)
 
@@ -524,7 +529,8 @@ def get_config():
             expectile=0.9,  # IQL style expectile.
             q_agg='mean',  # Aggregation method for target Q values.
             critic_loss_type='mse',  # Critic loss type. ('mse', 'expectile').
-            critic_noise_type='normal',  # Critic noise type. ('marginal_state', 'marginal_goal', 'normal').
+            critic_noise_type='normal',  # Critic noise type. ('marginal_state', 'normal').
+            use_target_critic_vf=True,  # Whether to use the target critic velocity field to do bootstrap
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').

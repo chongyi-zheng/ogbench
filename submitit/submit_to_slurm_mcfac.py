@@ -57,8 +57,8 @@ def main():
                                     for critic_noise_type in ['normal', 'marginal_state', 'marginal_goal']:
                                         for expectile in [0.9, 0.95, 0.99]:
                                             for q_agg in ['mean']:
-                                                for normalize_q_loss in [True, False]:
-                                                    for reward_type in ['state', 'action']:
+                                                for normalize_q_loss in [True]:
+                                                    for reward_type in ['state', 'state_action']:
                                                         for seed in [10]:
                                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill={distill_type}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward={reward_type}"
                                                             log_dir = os.path.expanduser(
