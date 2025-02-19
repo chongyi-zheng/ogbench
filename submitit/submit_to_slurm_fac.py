@@ -58,7 +58,7 @@ def main():
                                         for q_agg in ['mean']:
                                             for normalize_q_loss in [True, False]:
                                                 for seed in [10]:
-                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_critic_loss_type={critic_loss_type}_expectile={expectile}_q_agg={q_agg}_normalize_q_loss={normalize_q_loss}"
+                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_fac_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_critic_loss_type={critic_loss_type}_expectile={expectile}_q_agg={q_agg}_normalize_q_loss={normalize_q_loss}"
                                                     log_dir = os.path.expanduser(
                                                         f"{log_root_dir}/exp_logs/ogbench_logs/fac/{exp_name}/{seed}")
 
