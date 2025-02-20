@@ -65,7 +65,7 @@ def main():
                                                     for expectile in [0.9, 0.95]:
                                                         for normalize_q_loss in [True]:  # it is important to normalize Q
                                                             for seed in [10]:
-                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfmrl_env_name={env_name}_obs_norm={obs_norm_type}_alpha={alpha}_const_std={const_std}_solver={ode_solver_type}_adjoint={ode_adjoint_type}_num_flow_steps={num_flow_steps}_noise={noise_type}_div={div_type}_distill={distill_type}_distill_loss={distill_loss_type}_norm_q={normalize_q_loss}"
+                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_gcfmrl_env_name={env_name}_obs_norm={obs_norm_type}_alpha={alpha}_const_std={const_std}_solver={ode_solver_type}_adjoint={ode_adjoint_type}_num_flow_steps={num_flow_steps}_noise={noise_type}_div={div_type}_distill={distill_type}_distill_loss={distill_loss_type}_expectile={expectile}_norm_q={normalize_q_loss}"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/gcfmrl/{exp_name}/{seed}")
 
