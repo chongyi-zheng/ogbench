@@ -109,8 +109,10 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
         # critic flow matching
         rng, next_time_rng, next_noise_rng = jax.random.split(rng, 3)
         next_times = jax.random.uniform(next_time_rng, shape=(batch_size, ), dtype=next_observations.dtype)
-        next_noises = jax.random.normal(
-            next_noise_rng, shape=next_observations.shape, dtype=next_observations.dtype)
+        if self.config['critic_noise_type'] == 'normal':
+            next_noises = jax.random.normal(next_noise_rng, shape=next_observations.shape, dtype=next_observations.dtype)
+        elif self.config['critic_noise_type'] == 'marginal_state':
+            next_noises = jax.random.permutation(next_noise_rng, observations, axis=0)
         next_path_sample = self.cond_prob_path(x_0=next_noises, x_1=next_observations, t=next_times)
         next_vf_pred = self.network.select('critic_vf')(
             next_path_sample.x_t,
@@ -130,8 +132,11 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
             next_actions = jnp.clip(dist.sample(seed=next_action_rng), -1, 1)
 
         rng, future_goal_rng = jax.random.split(rng)
-        future_goal_noises = jax.random.normal(
-            future_goal_rng, shape=observations.shape, dtype=observations.dtype)
+        if self.config['critic_noise_type'] == 'normal':
+            future_goal_noises = jax.random.normal(
+                future_goal_rng, shape=observations.shape, dtype=observations.dtype)
+        elif self.config['critic_noise_type'] == 'marginal_state':
+            future_goal_noises = jax.random.permutation(future_goal_rng, observations, axis=0)
         # if self.config['distill_type'] == 'fwd_int':
         #     future_goals = future_goal_noises[None, None, :] + self.network.select('target_critic')(
         #         future_goal_noises, next_observations, actions=next_actions)
@@ -426,6 +431,8 @@ class TDFMRLAgent(flax.struct.PyTreeNode):
 
         network_info = dict(
             critic_vf=(critic_vf_def, (
+                ex_observations, ex_times, ex_observations, ex_actions)),
+            target_critic_vf=(copy.deepcopy(critic_vf_def), (
                 ex_observations, ex_times, ex_observations, ex_actions)),
             critic=(critic_def, (ex_observations, ex_actions)),
             actor=(actor_def, (ex_observations, )),
