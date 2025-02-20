@@ -62,7 +62,7 @@ def main():
                                                     for normalize_q_loss in [True]:
                                                         for reward_type in ['state', 'state_action']:
                                                             for seed in [10]:
-                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_td_fmrl_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_use_target_critic_vf={use_target_critic_vf}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward={reward_type}"
+                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_td_fmrl_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_const_std={const_std}_num_flow_steps={num_flow_steps}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_use_target_critic_vf={use_target_critic_vf}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward={reward_type}"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/td_fmrl/{exp_name}/{seed}")
 
