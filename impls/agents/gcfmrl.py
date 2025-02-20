@@ -28,6 +28,12 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
     ode_adjoint: Any
     config: Any = nonpytree_field()
 
+    @staticmethod
+    def expectile_loss(adv, diff, expectile):
+        """Compute the expectile loss."""
+        weight = jnp.where(adv >= 0, expectile, (1 - expectile))
+        return weight * (diff ** 2)
+
     def critic_loss(self, batch, grad_params, rng):
         """Compute the contrastive value loss for the Q or V function."""
         rng, time_rng, noise_rng, q_rng = jax.random.split(rng, 4)
@@ -89,7 +95,15 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             #         goals, observations, actions, params=grad_params)
             log_prob_pred = self.network.select('critic')(
                 goals, observations, actions, params=grad_params)
-            log_prob_distill_loss = jnp.square(log_prob_pred - flow_log_prob).mean()
+
+            if self.config['distill_loss_type'] == 'mse':
+                log_prob_distill_loss = jnp.square(flow_log_prob - log_prob_pred).mean()
+            elif self.config['distill_loss_type'] == 'expectile':
+                log_prob_distill_loss = self.expectile_loss(
+                    flow_log_prob - log_prob_pred,
+                    flow_log_prob - log_prob_pred,
+                    self.config['expectile']
+                ).mean()
 
             noise_distill_loss, div_int_distill_loss = 0.0, 0.0
         elif self.config['distill_type'] == 'noise_div_int':
@@ -106,7 +120,15 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             #         goals, observations, actions, params=grad_params)
             shortcut_div_int_pred = self.network.select('critic_div')(
                 goals, observations, actions, params=grad_params)
-            div_int_distill_loss = jnp.square(shortcut_div_int_pred - flow_div_int).mean()
+
+            if self.config['distill_loss_type'] == 'mse':
+                div_int_distill_loss = jnp.square(flow_div_int - shortcut_div_int_pred).mean()
+            elif self.config['distill_loss_type'] == 'expectile':
+                div_int_distill_loss = self.expectile_loss(
+                    flow_div_int - shortcut_div_int_pred,
+                    flow_div_int - shortcut_div_int_pred,
+                    self.config['expectile']
+                ).mean()
 
             # gaussian_log_prob = -0.5 * jnp.sum(
             #     jnp.log(2 * jnp.pi) + shortcut_noise_pred ** 2, axis=-1)
@@ -138,10 +160,13 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
     def actor_loss(self, batch, grad_params, rng):
         """Compute the actor loss."""
 
+        observations = batch['observations']
+        goals = batch['actor_goals']
+
         # DDPG+BC loss.
         assert not self.config['discrete']
 
-        dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
+        dist = self.network.select('actor')(observations, goals, params=grad_params)
         if self.config['const_std']:
             q_actions = jnp.clip(dist.mode(), -1, 1)
         else:
@@ -174,11 +199,11 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             #     q = self.network.select('critic')(
             #         batch['actor_goals'], batch['observations'], q_actions)
             q = self.network.select('critic')(
-                batch['actor_goals'], batch['observations'], q_actions)
+                goals, observations, q_actions)
         elif self.config['distill_type'] == 'noise_div_int':
             # assert self.config['noise_type'] != 'marginal'
             shortcut_noise_pred = self.network.select('critic_noise')(
-                batch['actor_goals'], batch['observations'], q_actions)
+                goals, observations, q_actions)
             # if zs is not None:
             #     shortcut_div_int_pred = jax.vmap(lambda z: self.network.select('critic_div')(
             #         batch['actor_goals'], batch['observations'], q_actions, z), in_axes=-1, out_axes=-1)(zs)
@@ -187,7 +212,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             #     shortcut_div_int_pred = self.network.select('critic_div')(
             #         batch['actor_goals'], batch['observations'], q_actions)
             shortcut_div_int_pred = self.network.select('critic_div')(
-                batch['actor_goals'], batch['observations'], q_actions)
+                goals, observations, q_actions)
 
             if self.config['noise_type'] == 'normal':
                 gaussian_log_prob = -0.5 * jnp.sum(
@@ -909,7 +934,9 @@ def get_config():
             num_flow_steps=10,  # Number of steps for solving ODEs using the Euler method.
             div_type='exact',  # Divergence estimator type ('exact', 'hutchinson_normal', 'hutchinson_rademacher').
             distill_type='none',  # Distillation type ('none', 'log_prob', 'rev_int').
-            num_hutchinson_ests=4,  # Number of random vectors for hutchinson divergence estimation.
+            distill_loss_type='mse',  # Distillation loss type. ('mse', 'expectile').
+            expectile=0.9,  # IQL style expectile.
+            num_hutchinson_ests=1,  # Number of random vectors for hutchinson divergence estimation.
             alpha=0.1,  # BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.
