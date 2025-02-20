@@ -62,7 +62,10 @@ class FACAgent(flax.struct.PyTreeNode):
             g_noises = jax.random.permutation(g_noise_rng, observations, axis=0)
         else:
             raise NotImplementedError
-        flow_goals = self.compute_fwd_flow_goals(g_noises, observations, actions)
+        flow_goals = self.compute_fwd_flow_goals(
+            g_noises, observations, actions,
+            use_target_network=self.config['critic_q_target_vf']
+        )
 
         if self.config['reward_type'] == 'state_action':
             a_noises = jax.random.normal(
@@ -141,7 +144,7 @@ class FACAgent(flax.struct.PyTreeNode):
             future_goal_noises = jax.random.permutation(future_goal_rng, observations, axis=0)
         future_flow_goals = self.compute_fwd_flow_goals(
             future_goal_noises, next_observations, next_actions,
-            use_target_network=self.config['use_target_critic_vf']
+            use_target_network=self.config['critic_flow_matching_target_vf']
         )
         future_flow_goals = jax.lax.stop_gradient(future_flow_goals)
 
@@ -530,7 +533,8 @@ def get_config():
             q_agg='mean',  # Aggregation method for target Q values.
             critic_loss_type='mse',  # Critic loss type. ('mse', 'expectile').
             critic_noise_type='normal',  # Critic noise type. ('marginal_state', 'normal').
-            use_target_critic_vf=True,  # Whether to use the target critic velocity field to do bootstrap
+            critic_q_target_vf=False,  # Whether to use the target critic velocity field to distill Q.
+            critic_flow_matching_target_vf=True,  # Whether to use the target critic velocity field to do bootstrap.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').

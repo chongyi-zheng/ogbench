@@ -45,14 +45,16 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            "pen-human-v1",
+            # "pen-human-v1",
             # "door-human-v1",
+            # "cube-single-play-singletask-task2-v0",
+            "cube-double-play-singletask-task2-v0",
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [30000, 3000]:
+                    for alpha in [3, 1]:
                         for num_flow_steps in [10]:
-                            for distill_type in ['fwd_int']:
+                            for distill_type in ['fwd_sample', 'fwd_int']:
                                 for distill_mixup in [True]:
                                     for critic_loss_type in ['expectile']:
                                         for critic_noise_type in ['normal', 'marginal_state', 'marginal_goal']:
