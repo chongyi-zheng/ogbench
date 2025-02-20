@@ -503,19 +503,52 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
                 #     (noises,), (z,)
                 # )
 
-                def single_jvp(z):
-                    vf, jac_vf_dot_z = jax.jvp(
-                        lambda n: self.network.select('critic_vf')(n, times, observations, actions),
-                        (noises,), (z,)
-                    )
+                if self.config['hutchinson_prod_type'] == 'jvp':
+                    def single_jvp(z):
+                        vf, jac_vf_z_prod = jax.jvp(
+                            lambda n: self.network.select('critic_vf')(n, times, observations, actions),
+                            (noises,), (z,)
+                        )
 
-                    return vf, jac_vf_dot_z
+                        return vf, jac_vf_z_prod
 
-                vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(zs)
-                div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, zs)
+                    vf, jac_vf_z_prod = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(zs)
+                    div = jnp.einsum("ijl,ijl->il", zs, jac_vf_z_prod).mean(axis=-1)
+                    vf = vf[..., 0]
+                elif self.config['hutchinson_prod_type'] == 'vjp':
+                    def single_vjp(z):
+                        vf, vjp_func = jax.vjp(
+                            lambda n: self.network.select('critic_vf')(n, times, observations, actions),
+                            noises
+                        )
 
-                vf = vf[..., 0]  # vf are the same along the final dimension
-                div = div.mean(axis=-1)
+                        z_trans_jac_vf_prod = vjp_func(z)[0]
+
+                        return vf, z_trans_jac_vf_prod
+
+                    vf, z_trans_jac_vf_prod = jax.vmap(single_vjp, in_axes=-1, out_axes=-1)(zs)
+                    div = jnp.einsum("ijl,ijl->il", z_trans_jac_vf_prod, zs).mean(axis=-1)
+                    vf = vf[..., 0]
+                elif self.config['hutchinson_prod_type'] == 'grad':
+                    def single_grad(z):
+                        _, vjp_func = jax.vjp(
+                            lambda n: jnp.einsum(
+                                "ij,ij->i",
+                                self.network.select('critic_vf')(n, times, observations, actions),
+                                z
+                            ),
+                            noises
+                        )
+
+                        grad = vjp_func(jnp.ones((z.shape[0], ), dtype=z.dtype))[0]
+                        return grad
+
+                    vf = self.network.select('critic_vf')(noises, times, observations, actions)
+                    grad_vf_dot_z = jax.vmap(single_grad, in_axes=-1, out_axes=-1)(zs)
+                    div = jnp.einsum("ijl,ijl->il", grad_vf_dot_z, zs).mean(axis=-1)
+
+                # vf = vf[..., 0]  # vf are the same along the final dimension
+                # div = div.mean(axis=-1)
 
                 return vf, div
 
@@ -933,6 +966,7 @@ def get_config():
             noise_type='normal',  # Noise distribution type ('normal', 'marginal')
             num_flow_steps=10,  # Number of steps for solving ODEs using the Euler method.
             div_type='exact',  # Divergence estimator type ('exact', 'hutchinson_normal', 'hutchinson_rademacher').
+            hutchinson_prod_type='vjp',  # Hutchinson estimator product type. ('vjp', 'jvp', 'grad')
             distill_type='none',  # Distillation type ('none', 'log_prob', 'rev_int').
             distill_loss_type='mse',  # Distillation loss type. ('mse', 'expectile').
             expectile=0.9,  # IQL style expectile.
