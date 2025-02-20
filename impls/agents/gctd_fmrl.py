@@ -28,6 +28,12 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
     ode_adjoint: Any
     config: Any = nonpytree_field()
 
+    @staticmethod
+    def expectile_loss(adv, diff, expectile):
+        """Compute the expectile loss."""
+        weight = jnp.where(adv >= 0, expectile, (1 - expectile))
+        return weight * (diff ** 2)
+
     def critic_loss(self, batch, grad_params, rng):
         """Compute the contrastive value loss for the Q or V function."""
         batch_size = batch['observations'].shape[0]
@@ -83,7 +89,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
             future_goals = self.compute_fwd_flow_samples(
                 future_goal_noises, next_observations,
                 actions=next_actions, commanded_goals=goals,
-                use_target_network=True
+                use_target_network=True,
             )
         future_goals = jax.lax.stop_gradient(future_goals)
 
@@ -157,10 +163,17 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                 goals, observations, actions=actions,
                 params=grad_params
             )
-            log_prob_distill_loss = jnp.square(flow_log_prob - log_prob_pred).mean()
+            if self.config['log_prob_distill_loss_type'] == 'mse':
+                log_prob_distill_loss = jnp.square(flow_log_prob - log_prob_pred).mean()
+            elif self.config['log_prob_distill_loss_type'] == 'expectile':
+                log_prob_distill_loss = self.expectile_loss(
+                    flow_log_prob - log_prob_pred,
+                    flow_log_prob - log_prob_pred,
+                    self.config['expectile']
+                ).mean()
         elif self.config['log_prob_distill_type'] == 'noise_div_int':
             shortcut_noise_pred = self.network.select('rev_critic_noise')(
-                goals, observations, 
+                goals, observations,
                 actions=actions,
                 params=grad_params
             )
@@ -170,7 +183,17 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                 actions=actions,
                 params=grad_params
             )
-            div_int_distill_loss = jnp.square(shortcut_div_int_pred - flow_div_int).mean()
+
+            # div_int_distill_loss = jnp.square(shortcut_div_int_pred - flow_div_int).mean()
+            if self.config['log_prob_distill_loss_type'] == 'mse':
+                div_int_distill_loss = jnp.square(flow_div_int - shortcut_div_int_pred).mean()
+            elif self.config['log_prob_distill_loss_type'] == 'expectile':
+                div_int_distill_loss = self.expectile_loss(
+                    flow_div_int - shortcut_div_int_pred,
+                    flow_div_int - shortcut_div_int_pred,
+                    self.config['expectile']
+                ).mean()
+
             log_prob_distill_loss = noise_distill_loss + div_int_distill_loss
         elif self.config['log_prob_distill_type'] == 'div_int':
             raise NotImplementedError
@@ -403,27 +426,27 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
     #
     #     return noises
 
-    def compute_rev_flow_samples(self, goals, observations, actions=None, commanded_goals=None):
-        def vector_field(time, noises, carry):
-            (observations, actions) = carry
-            times = jnp.full(noises.shape[:-1], time)
-
-            vf = self.network.select('critic_vf')(
-                noises, times, observations, actions=actions, commanded_goals=commanded_goals)
-
-            return vf
-
-        ode_term = ODETerm(vector_field)
-        ode_sol = diffeqsolve(
-            ode_term, self.ode_solver,
-            t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
-            y0=goals, args=(observations, actions),
-            adjoint=self.ode_adjoint,
-            throw=False,
-        )
-        noises = ode_sol.ys[-1]
-
-        return noises
+    # def compute_rev_flow_samples(self, goals, observations, actions=None, commanded_goals=None):
+    #     def vector_field(time, noises, carry):
+    #         (observations, actions) = carry
+    #         times = jnp.full(noises.shape[:-1], time)
+    #
+    #         vf = self.network.select('critic_vf')(
+    #             noises, times, observations, actions=actions, commanded_goals=commanded_goals)
+    #
+    #         return vf
+    #
+    #     ode_term = ODETerm(vector_field)
+    #     ode_sol = diffeqsolve(
+    #         ode_term, self.ode_solver,
+    #         t0=1.0, t1=0.0, dt0=-1 / self.config['num_flow_steps'],
+    #         y0=goals, args=(observations, actions),
+    #         adjoint=self.ode_adjoint,
+    #         throw=False,
+    #     )
+    #     noises = ode_sol.ys[-1]
+    #
+    #     return noises
 
     def compute_log_likelihood(self, goals, observations,
                                dataset_obs_mean, dataset_obs_var,
@@ -537,6 +560,7 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
         #
         # return log_prob
         if self.config['div_type'] == 'exact':
+            @jax.jit
             def vector_field(time, noise_div_int, carry):
                 noises, _ = noise_div_int
                 observations, actions, commanded_goals, _ = carry
@@ -580,10 +604,10 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
 
                 return vf, div
         else:
-
+            @jax.jit
             def vector_field(time, noise_div_int, carry):
                 noises, _ = noise_div_int
-                observations, actions, commanded_goals, z = carry
+                observations, actions, commanded_goals, zs = carry
 
                 # Split RNG and sample noise
                 # key, z_key = jax.random.split(key)
@@ -599,20 +623,68 @@ class GCTDFMRLAgent(flax.struct.PyTreeNode):
                 #     (noises,), (z,)
                 # )
 
-                def single_jvp(z):
-                    vf, jac_vf_dot_z = jax.jvp(
-                        lambda n: self.network.select('critic_vf')(
-                            n, times, observations, actions, commanded_goals),
-                        (noises,), (z,)
-                    )
+                # def single_jvp(z):
+                #     vf, jac_vf_dot_z = jax.jvp(
+                #         lambda n: self.network.select('critic_vf')(
+                #             n, times, observations, actions, commanded_goals),
+                #         (noises,), (z,)
+                #     )
+                #
+                #     return vf, jac_vf_dot_z
+                #
+                # vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(zs)
+                # div = jnp.einsum("ijl,ijl->il", zs, jac_vf_dot_z)
+                #
+                # vf = vf[..., 0]  # vf are the same along the final dimension
+                # div = div.mean(axis=-1)
 
-                    return vf, jac_vf_dot_z
+                if self.config['hutchinson_prod_type'] == 'jvp':
+                    def single_jvp(z):
+                        vf, jac_vf_z_prod = jax.jvp(
+                            lambda n: self.network.select('critic_vf')(
+                                n, times, observations, actions, commanded_goals),
+                            (noises,), (z,)
+                        )
 
-                vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
-                div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
+                        return vf, jac_vf_z_prod
 
-                vf = vf[..., 0]  # vf are the same along the final dimension
-                div = div.mean(axis=-1)
+                    vf, jac_vf_z_prod = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(zs)
+                    div = jnp.einsum("ijl,ijl->il", zs, jac_vf_z_prod).mean(axis=-1)
+                    vf = vf[..., 0]
+                elif self.config['hutchinson_prod_type'] == 'vjp':
+                    def single_vjp(z):
+                        vf, vjp_func = jax.vjp(
+                            lambda n: self.network.select('critic_vf')(
+                                n, times, observations, actions, commanded_goals),
+                            noises
+                        )
+
+                        z_trans_jac_vf_prod = vjp_func(z)[0]
+
+                        return vf, z_trans_jac_vf_prod
+
+                    vf, z_trans_jac_vf_prod = jax.vmap(single_vjp, in_axes=-1, out_axes=-1)(zs)
+                    div = jnp.einsum("ijl,ijl->il", z_trans_jac_vf_prod, zs).mean(axis=-1)
+                    vf = vf[..., 0]
+                elif self.config['hutchinson_prod_type'] == 'grad':
+                    def single_grad(z):
+                        _, vjp_func = jax.vjp(
+                            lambda n: jnp.einsum(
+                                "ij,ij->i",
+                                self.network.select('critic_vf')(
+                                    n, times, observations, actions, commanded_goals),
+                                z
+                            ),
+                            noises
+                        )
+
+                        grad = vjp_func(jnp.ones((z.shape[0], ), dtype=z.dtype))[0]
+                        return grad
+
+                    vf = self.network.select('critic_vf')(
+                        noises, times, observations, actions, commanded_goals)
+                    grad_vf_dot_z = jax.vmap(single_grad, in_axes=-1, out_axes=-1)(zs)
+                    div = jnp.einsum("ijl,ijl->il", grad_vf_dot_z, zs).mean(axis=-1)
 
                 return vf, div
 
@@ -991,9 +1063,12 @@ def get_config():
             noise_type='normal',  # Noise distribution type ('normal', 'marginal')
             num_flow_steps=10,  # Number of steps for solving ODEs using the Euler method.
             div_type='exact',  # Divergence estimator type ('exact', 'hutchinson_normal', 'hutchinson_rademacher').
+            hutchinson_prod_type='vjp',  # Hutchinson estimator product type. ('vjp', 'jvp', 'grad')
             sample_distill_type='none',  # Distillation type for samples ('none', 'fwd_sample', 'fwd_int')
             log_prob_distill_type='none',  # Distillation type for log probabilities ('none', 'rev_log_prob', 'rev_int').
-            num_hutchinson_ests=16,  # Number of random vectors for hutchinson divergence estimation.
+            log_prob_distill_loss_type='mse',  # Distillation loss type for log probabilities. ('mse', 'expectile')
+            expectile=0.9,  # IQL style expectile.
+            num_hutchinson_ests=4,  # Number of random vectors for hutchinson divergence estimation.
             # use_cycle_consistency_loss=False,  # Whether to use the cycle consistency loss.
             alpha=0.1,  # BC coefficient.
             const_std=True,  # Whether to use constant standard deviation for the actor.
