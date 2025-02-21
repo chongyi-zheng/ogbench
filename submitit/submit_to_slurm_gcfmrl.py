@@ -52,7 +52,7 @@ def main():
             # "humanoidmaze-medium-stitch-v0",
             "cube-single-play-v0"
         ]:
-            for obs_norm_type in ['none']:
+            for obs_norm_type in ['normal']:
                 for alpha in [0.03, 0.003]:  # when normalize_q_loss = 1, use alpha around 0.003
                     for const_std in [False]:
                         for ode_solver_type in ['euler', 'dopri5']:
