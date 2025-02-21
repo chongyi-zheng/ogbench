@@ -29,6 +29,12 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
     ode_adjoint: Any
     config: Any = nonpytree_field()
 
+    @staticmethod
+    def expectile_loss(adv, diff, expectile):
+        """Compute the expectile loss."""
+        weight = jnp.where(adv >= 0, expectile, (1 - expectile))
+        return weight * (diff ** 2)
+
     def critic_loss(self, batch, grad_params, rng):
         """Compute the contrastive value loss for the Q or V function."""
         rng, time_rng, noise_rng = jax.random.split(rng, 3)
@@ -48,12 +54,12 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
             actions=actions,
             params=grad_params,
         )
-        fm_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
-        critic_loss = fm_loss
+        flow_matching_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
+        critic_loss = flow_matching_loss
 
         return critic_loss, {
             'critic_loss': critic_loss,
-            'flow_matching_loss': fm_loss,
+            'flow_matching_loss': flow_matching_loss,
         }
 
     def distillation_loss(self, batch, grad_params, rng):
@@ -733,19 +739,62 @@ class GCFlowActorCriticAgent(flax.struct.PyTreeNode):
                 # Forward (vf) and linearization (jac_vf_dot_z)
                 times = jnp.full(noises.shape[:-1], time)
 
-                def single_jvp(z):
-                    vf, jac_vf_dot_z = jax.jvp(
-                        lambda n: self.network.select(module_name)(n, times, observations, actions),
-                        (noises,), (z,)
-                    )
+                # def single_jvp(z):
+                #     vf, jac_vf_dot_z = jax.jvp(
+                #         lambda n: self.network.select(module_name)(n, times, observations, actions),
+                #         (noises,), (z,)
+                #     )
+                #
+                #     return vf, jac_vf_dot_z
+                #
+                # vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
+                # div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
+                #
+                # vf = vf[..., 0]  # vf are the same along the final dimension
+                # div = div.mean(axis=-1)
+                if self.config['hutchinson_prod_type'] == 'jvp':
+                    def single_jvp(z):
+                        vf, jac_vf_z_prod = jax.jvp(
+                            lambda n: self.network.select('critic_vf')(n, times, observations, actions),
+                            (noises,), (z,)
+                        )
 
-                    return vf, jac_vf_dot_z
+                        return vf, jac_vf_z_prod
 
-                vf, jac_vf_dot_z = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(z)
-                div = jnp.einsum("ijl,ijl->il", jac_vf_dot_z, z)
+                    vf, jac_vf_z_prod = jax.vmap(single_jvp, in_axes=-1, out_axes=-1)(zs)
+                    div = jnp.einsum("ijl,ijl->il", zs, jac_vf_z_prod).mean(axis=-1)
+                    vf = vf[..., 0]
+                elif self.config['hutchinson_prod_type'] == 'vjp':
+                    def single_vjp(z):
+                        vf, vjp_func = jax.vjp(
+                            lambda n: self.network.select('critic_vf')(n, times, observations, actions),
+                            noises
+                        )
 
-                vf = vf[..., 0]  # vf are the same along the final dimension
-                div = div.mean(axis=-1)
+                        z_trans_jac_vf_prod = vjp_func(z)[0]
+
+                        return vf, z_trans_jac_vf_prod
+
+                    vf, z_trans_jac_vf_prod = jax.vmap(single_vjp, in_axes=-1, out_axes=-1)(zs)
+                    div = jnp.einsum("ijl,ijl->il", z_trans_jac_vf_prod, zs).mean(axis=-1)
+                    vf = vf[..., 0]
+                elif self.config['hutchinson_prod_type'] == 'grad':
+                    def single_grad(z):
+                        _, vjp_func = jax.vjp(
+                            lambda n: jnp.einsum(
+                                "ij,ij->i",
+                                self.network.select('critic_vf')(n, times, observations, actions),
+                                z
+                            ),
+                            noises
+                        )
+
+                        grad = vjp_func(jnp.ones((z.shape[0], ), dtype=z.dtype))[0]
+                        return grad
+
+                    vf = self.network.select('critic_vf')(noises, times, observations, actions)
+                    grad_vf_dot_z = jax.vmap(single_grad, in_axes=-1, out_axes=-1)(zs)
+                    div = jnp.einsum("ijl,ijl->il", grad_vf_dot_z, zs).mean(axis=-1)
 
                 return vf, div
 
@@ -1106,8 +1155,11 @@ def get_config():
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             num_flow_steps=10,  # Number of steps for solving ODEs using the Euler method.
             div_type='exact',  # Divergence estimator type ('exact', 'hutchinson_normal', 'hutchinson_rademacher').
+            hutchinson_prod_type='vjp',  # Hutchinson estimator product type. ('vjp', 'jvp', 'grad')
             distill_type='none',  # Distillation type ('none', 'log_prob', 'noise_div_int').
+            distill_loss_type='mse',  # Distillation loss type. ('mse', 'expectile').
             actor_distill_type='fwd_sample',  # Actor distillation type ('fwd_sample', 'fwd_int').
+            expectile=0.9,  # IQL style expectile.
             num_hutchinson_ests=4,  # Number of random vectors for hutchinson divergence estimation.
             use_target_network=False,  # Whether to use the target critic vector field to compute the distillation loss.
             log_prob_clip=jnp.inf,

@@ -110,7 +110,7 @@ class GCFMRLAgent(flax.struct.PyTreeNode):
             # assert self.config['noise_type'] != 'marginal'
             shortcut_noise_pred = self.network.select('critic_noise')(
                 goals, observations, actions, params=grad_params)
-            noise_distill_loss = jnp.square(shortcut_noise_pred - flow_noise).mean()
+            noise_distill_loss = jnp.square(flow_noise - shortcut_noise_pred).mean()
             # if zs is not None:
             #     shortcut_div_int_pred = jax.vmap(lambda z: self.network.select('critic_div')(
             #         goals, observations, actions, z, params=grad_params), in_axes=-1, out_axes=-1)(zs)
@@ -970,7 +970,7 @@ def get_config():
             distill_type='none',  # Distillation type ('none', 'log_prob', 'rev_int').
             distill_loss_type='mse',  # Distillation loss type. ('mse', 'expectile').
             expectile=0.9,  # IQL style expectile.
-            num_hutchinson_ests=1,  # Number of random vectors for hutchinson divergence estimation.
+            num_hutchinson_ests=4,  # Number of random vectors for hutchinson divergence estimation.
             alpha=0.1,  # BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.
             discrete=False,  # Whether the action space is discrete.

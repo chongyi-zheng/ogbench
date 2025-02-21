@@ -688,7 +688,7 @@ class GCFMVectorField(nn.Module):
         else:
             raise NotImplementedError
 
-        # self.time_embedding = SinusoidalPosEmb(emb_dim=2 * self.vector_dim)
+        self.time_embedding = SinusoidalPosEmb(emb_dim=2 * self.vector_dim)
         # self.time_net = time_net
         # self.cond_net = cond_net
         # self.proj_net = proj_net
@@ -717,9 +717,9 @@ class GCFMVectorField(nn.Module):
             # This will be all nans if both observations and actions are all nan
             conds = jnp.concatenate([conds, actions], axis=-1)
 
-        if len(times.shape) == 1:
-            times = jnp.expand_dims(times, axis=-1)
-        # times = self.time_embedding(times)
+        # if len(times.shape) == 1:
+        #     times = jnp.expand_dims(times, axis=-1)
+        times = self.time_embedding(times)
         # h = self.proj_net(noisy_goals) + self.time_net(times)
         # h = jax.lax.select(
         #     jnp.logical_not(jnp.all(jnp.isnan(conds))),
