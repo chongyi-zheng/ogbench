@@ -38,7 +38,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
         if self.config['encoder'] is not None:
             observations = self.network.select('actor_critic_encoder')(observations)
         reward_preds = self.network.select('reward')(
-            observations, actions=actions, is_encoded=True,
+            observations, actions=actions,
             params=grad_params,
         )
 
@@ -51,15 +51,17 @@ class MCFACAgent(flax.struct.PyTreeNode):
     def critic_loss(self, batch, grad_params, rng):
         """Compute the critic loss."""
 
+        observations = batch['observations']
         actions = batch['actions']
         rewards = batch['rewards']
+        goals = batch['value_goals']
 
         if self.config['encoder'] is not None:
             observations = self.network.select('actor_critic_encoder')(
                 batch['observations'], params=grad_params)
 
         qs = self.network.select('critic')(
-            observations, actions, is_encoded=True, 
+            observations, actions,
             params=grad_params,
         )
 
@@ -74,15 +76,15 @@ class MCFACAgent(flax.struct.PyTreeNode):
             g_noises = jax.random.permutation(g_noise_rng, observations, axis=0)
         elif self.config['critic_noise_type'] == 'marginal_goal':
             g_noises = jax.random.permutation(g_noise_rng, goals, axis=0)
-        flow_goals = self.compute_fwd_flow_goals(g_noises, observations, actions, is_encoded=True)
+        flow_goals = self.compute_fwd_flow_goals(g_noises, observations, actions)
         
         if self.config['reward_type'] == 'state_action':
             a_noises = jax.random.normal(
                 a_noise_rng, shape=actions.shape, dtype=actions.dtype)
             if self.config['distill_type'] == 'fwd_sample':
-                goal_actions = self.network.select('actor')(a_noises, flow_goals, is_encoded=True)
+                goal_actions = self.network.select('actor')(a_noises, flow_goals)
             elif self.config['distill_type'] == 'fwd_int':
-                goal_action_vfs = self.network.select('actor')(a_noises, flow_goals, is_encoded=True)
+                goal_action_vfs = self.network.select('actor')(a_noises, flow_goals)
                 goal_actions = a_noises + goal_action_vfs
             goal_actions = jnp.clip(goal_actions, -1, 1)
         else:
@@ -91,7 +93,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
 
         target_q = (
             (1 - self.config['discount']) * rewards
-            + self.config['discount'] * self.network.select('reward')(flow_goals, actions=goal_actions, is_encoded=True)
+            + self.config['discount'] * self.network.select('reward')(flow_goals, actions=goal_actions)
         )
 
         if self.config['critic_loss_type'] == 'mse':
@@ -117,9 +119,9 @@ class MCFACAgent(flax.struct.PyTreeNode):
         """Compute the flow matching loss."""
 
         batch_size = batch['observations'].shape[0]
-        # observations = batch['observations']
+        observations = batch['observations']
         actions = batch['actions']
-        # goals = batch['value_goals']
+        goals = batch['value_goals']
         
         if self.config['encoder'] is not None:
             observations = self.network.select('critic_vf_encoder')(
@@ -142,7 +144,6 @@ class MCFACAgent(flax.struct.PyTreeNode):
             critic_times,
             observations,
             actions,
-            is_encoded=True,
             params=grad_params,
         )
         critic_flow_matching_loss = jnp.square(critic_vf_pred - critic_path_sample.dx_t).mean()
@@ -194,12 +195,12 @@ class MCFACAgent(flax.struct.PyTreeNode):
             q_actions = noises + q_action_vfs
         q_actions = jnp.clip(q_actions, -1, 1)
 
-        flow_actions = self.compute_fwd_flow_actions(noises, observations, is_encoded=True)
+        flow_actions = self.compute_fwd_flow_actions(noises, observations)
         flow_actions = jnp.clip(flow_actions, -1, 1)
         flow_actions = jax.lax.stop_gradient(flow_actions)  # stop gradients for the encoder
 
         # Q loss
-        qs = self.network.select('critic')(observations, actions=q_actions, is_encoded=True)
+        qs = self.network.select('critic')(observations, actions=q_actions)
         if self.config['q_agg'] == 'mean':
             q = jnp.mean(qs, axis=0)
         else:
@@ -256,9 +257,9 @@ class MCFACAgent(flax.struct.PyTreeNode):
         noises = jax.random.normal(
             noise_rng, shape=actions.shape, dtype=actions.dtype)
         if self.config['distill_type'] == 'fwd_sample':
-            actions = self.network.select('actor')(noises, batch['observations'])
+            actions = self.network.select('actor')(noises, observations)
         elif self.config['distill_type'] == 'fwd_int':
-            action_vfs = self.network.select('actor')(noises, batch['observations'])
+            action_vfs = self.network.select('actor')(noises, observations)
             actions = noises + action_vfs
         actions = jnp.clip(actions, -1, 1)
         mse = jnp.mean((actions - batch['actions']) ** 2)
@@ -274,7 +275,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
             'mse': mse,
         }
 
-    def compute_fwd_flow_actions(self, noises, observations, is_encoded=False):
+    def compute_fwd_flow_actions(self, noises, observations):
         noisy_actions = noises
         num_flow_steps = self.config['num_flow_steps']
         step_size = 1.0 / num_flow_steps
@@ -289,7 +290,6 @@ class MCFACAgent(flax.struct.PyTreeNode):
             times = jnp.full(noisy_actions.shape[:-1], i * step_size)
             vf = self.network.select('actor_vf')(
                 noisy_actions, times, observations, 
-                is_encoded=is_encoded
             )
             new_noisy_actions = noisy_actions + vf * step_size
 
@@ -302,7 +302,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
         return noisy_actions
 
     def compute_fwd_flow_goals(self, noises, observations, actions,
-                               use_target_network=False, is_encoded=False):
+                               use_target_network=False):
         if use_target_network:
             module_name = 'target_critic_vf'
         else:
@@ -321,7 +321,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
 
             times = jnp.full(noisy_goals.shape[:-1], i * step_size)
             vf = self.network.select(module_name)(
-                noisy_goals, times, observations, actions, is_encoded=is_encoded)
+                noisy_goals, times, observations, actions)
             new_noisy_goals = noisy_goals + vf * step_size
 
             return (new_noisy_goals, ), None
@@ -390,19 +390,22 @@ class MCFACAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the actor."""
-        if len(observations.shape) == 1:
-            observations = jnp.expand_dims(observations, axis=0)
+        if len(observations.shape) == 1 or len(observations.shape) == 3:
+            batch_size = 1
+        else:
+            batch_size = observations.shape[0]
+        if self.config['encoder'] is not None:
+            observations = self.network.select('actor_critic_encoder')(observations)
         action_dim = self.network.model_def.modules['actor'].output_dim
 
         seed, noise_seed = jax.random.split(seed)
-        noises = jax.random.normal(
-            noise_seed, shape=(observations.shape[0], action_dim))
+        noises = jax.random.normal(noise_seed, shape=(batch_size, action_dim)).squeeze()
         if self.config['distill_type'] == 'fwd_sample':
             actions = self.network.select('actor')(noises, observations)
         elif self.config['distill_type'] == 'fwd_int':
             actions = noises + self.network.select('actor')(noises, observations)
         actions = jnp.clip(actions, -1, 1)
-        actions = actions.squeeze()
+        # actions = actions.squeeze()
 
         return actions
 
@@ -425,8 +428,10 @@ class MCFACAgent(flax.struct.PyTreeNode):
         """
         rng = jax.random.PRNGKey(seed)
         rng, init_rng, time_rng = jax.random.split(rng, 3)
+
         observation_dim = ex_observations.shape[-1]
         action_dim = ex_actions.shape[-1]
+        ex_orig_observations = ex_observations
         ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],), dtype=ex_actions.dtype)
         # ex_noises = jax.random.normal(noise_rng, shape=ex_actions.shape, dtype=ex_actions.dtype)
 
@@ -439,7 +444,8 @@ class MCFACAgent(flax.struct.PyTreeNode):
             else:
                 observation_dim = encoder_modules['impala'].mlp_hidden_dims[-1]
             rng, obs_rng = jax.random.split(rng, 2)
-            ex_observations = jax.random.normal(obs_rng, shape=(ex_observations.shape[0], observation_dim), dtype=ex_actions.dtype)
+            ex_observations = jax.random.normal(
+                obs_rng, shape=(ex_observations.shape[0], observation_dim), dtype=ex_actions.dtype)
             
             encoders['critic_vf'] = encoder_module()
             # encoders['critic'] = encoder_module()
@@ -504,9 +510,9 @@ class MCFACAgent(flax.struct.PyTreeNode):
         #     network_info['actor_bc_flow_encoder'] = (encoders.get('actor_bc_flow'), (ex_observations,))
             # Add actor_bc_flow_encoder to ModuleDict to make it separately callable.
         if encoders.get('critic_vf') is not None:
-            network_info['critic_vf_encoder'] = (encoders.get('critic_vf'), (ex_observations,))
+            network_info['critic_vf_encoder'] = (encoders.get('critic_vf'), (ex_orig_observations,))
         if encoders.get('actor_critic') is not None:
-            network_info['actor_critic_encoder'] = (encoders.get('actor_critic'), (ex_observations,))
+            network_info['actor_critic_encoder'] = (encoders.get('actor_critic'), (ex_orig_observations,))
 
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}

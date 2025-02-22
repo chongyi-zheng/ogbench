@@ -201,15 +201,14 @@ class Value(nn.Module):
 
         self.value_net = value_net
 
-    def __call__(self, observations, actions=None, is_encoded=False):
+    def __call__(self, observations, actions=None):
         """Return values or critic values.
 
         Args:
             observations: Observations.
             actions: Actions (optional).
-            is_encoded: Whether the observations are already encoded (optional).
         """
-        if not is_encoded and self.encoder is not None:
+        if self.encoder is not None:
             inputs = [self.encoder(observations)]
         else:
             inputs = [observations]
@@ -695,6 +694,7 @@ class GCFMVectorField(nn.Module):
 
     vector_dim: int
     hidden_dims: Sequence[int]
+    time_dim: int = 64
     network_type: str = 'mlp'
     layer_norm: bool = True
     num_ensembles: int = 1
@@ -734,13 +734,13 @@ class GCFMVectorField(nn.Module):
         else:
             raise NotImplementedError
 
-        self.time_embedding = SinusoidalPosEmb(emb_dim=2 * self.vector_dim)
+        self.time_embedding = SinusoidalPosEmb(emb_dim=self.time_dim)
         # self.time_net = time_net
         # self.cond_net = cond_net
         # self.proj_net = proj_net
         self.velocity_field_net = velocity_field_net
 
-    def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None, is_encoded=False):
+    def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None):
         """Return the value/critic velocity field.
 
         Args:
@@ -748,12 +748,11 @@ class GCFMVectorField(nn.Module):
             times: Times.
             observations: Observations.
             actions: Actions (Optional).
-            is_encoded: Whether the observations are already encoded (Optional).
         """
-        if not is_encoded and self.goal_encoder is not None:
+        if self.goal_encoder is not None:
             noisy_goals = self.goal_encoder(noisy_goals)
         
-        if not is_encoded and self.state_encoder is not None:
+        if self.state_encoder is not None:
             # This will be all nans if observations are all nan
             observations = self.state_encoder(observations)
 
@@ -890,7 +889,7 @@ class GCActorVectorField(nn.Module):
         self.velocity_field_net = velocity_field_net
 
     @nn.compact
-    def __call__(self, noisy_actions, times, observations, goals=None, is_encoded=False):
+    def __call__(self, noisy_actions, times, observations, goals=None):
         """Return the vectors at the given states, actions, and times.
 
         Args:
@@ -898,12 +897,11 @@ class GCActorVectorField(nn.Module):
             observations: Observations.
             times: Times (optional).
             goals: Goals (optional).
-            is_encoded: Whether the observations are already encoded (optional).
         """
-        if not is_encoded and self.goal_encoder is not None and goals is not None:
+        if self.goal_encoder is not None and goals is not None:
             goals = self.goal_encoder(goals)
 
-        if not is_encoded and self.state_encoder is not None:
+        if self.state_encoder is not None:
             observations = self.state_encoder(observations)
 
         conds = observations
@@ -964,19 +962,18 @@ class GCFMValue(nn.Module):
 
         self.value_net = value_net
 
-    def __call__(self, goals, observations, actions=None, commanded_goals=None, is_encoded=False):
+    def __call__(self, goals, observations, actions=None, commanded_goals=None):
         """Return the value/critic function.
 
         Args:
             observations: Observations.
             goals: Goals (optional).
             actions: Actions (optional).
-            is_encoded: Whether the observations are already encoded (optional).
         """
-        if not is_encoded and self.goal_encoder is not None:
+        if self.goal_encoder is not None:
             goals = self.goal_encoder(goals)
 
-        if not is_encoded and self.state_encoder is not None:
+        if self.state_encoder is not None:
             observations = self.state_encoder(observations)
 
         conds = observations

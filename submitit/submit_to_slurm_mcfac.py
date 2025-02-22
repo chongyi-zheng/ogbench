@@ -48,23 +48,24 @@ def main():
             # "pen-human-v1",
             # "door-human-v1",
             # "cube-single-play-singletask-task2-v0",
-            "cube-double-play-singletask-task2-v0",
-            "scene-play-singletask-task2-v0",
+            # "cube-double-play-singletask-task2-v0",
+            # "scene-play-singletask-task2-v0",
+            "visual-cube-single-play-singletask-task1-v0",
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [3, 1]:
-                        for num_flow_steps in [10]:
-                            for distill_type in ['fwd_sample', 'fwd_int']:
-                                for distill_mixup in [False]:
-                                    for critic_loss_type in ['mse', 'expectile']:
-                                        for critic_noise_type in ['normal']:
-                                            for expectile in [0.9, 0.95, 0.99]:
-                                                for q_agg in ['mean', 'min']:
-                                                    for normalize_q_loss in [True]:
-                                                        for reward_type in ['state', 'state_action']:
+                    for alpha in [30, 3]:
+                        for distill_type in ['fwd_int']:
+                            for critic_loss_type in ['expectile']:
+                                for critic_noise_type in ['normal']:
+                                    for expectile in [0.9, 0.95, 0.99]:
+                                        for q_agg in ['mean', 'min']:
+                                            for normalize_q_loss in [True]:
+                                                for reward_type in ['state']:
+                                                    for encoder in ['impala_small']:
+                                                        for encoder_actor_loss_grad in [True, False]:
                                                             for seed in [10]:
-                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill={distill_type}_mixup={distill_mixup}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward={reward_type}"
+                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_distill={distill_type}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward={reward_type}_encoder={encoder}_encoder_actor_loss_grad={encoder_actor_loss_grad}"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/mcfac/{exp_name}/{seed}")
 
@@ -106,20 +107,22 @@ def main():
                                                                         --obs_norm_type={obs_norm_type} \
                                                                         --eval_episodes=50 \
                                                                         --dataset_class=GCDataset \
+                                                                        --p_aug=0.5 \
+                                                                        --frame_stack=3 \
                                                                         --agent=impls/agents/mcfac.py \
                                                                         --agent.discount={discount} \
                                                                         --agent.alpha={alpha} \
-                                                                        --agent.num_flow_steps={num_flow_steps} \
+                                                                        --agent.num_flow_steps=10 \
                                                                         --agent.distill_type={distill_type} \
-                                                                        --agent.distill_mixup={distill_mixup} \
                                                                         --agent.critic_loss_type={critic_loss_type} \
                                                                         --agent.critic_noise_type={critic_noise_type} \
                                                                         --agent.expectile={expectile} \
                                                                         --agent.q_agg={q_agg} \
                                                                         --agent.actor_layer_norm=False \
-                                                                        --agent.vf_q_loss=False \
                                                                         --agent.normalize_q_loss={normalize_q_loss} \
                                                                         --agent.reward_type={reward_type} \
+                                                                        --agent.encoder={encoder} \
+                                                                        --agent.encoder_actor_loss_grad={encoder_actor_loss_grad} \
                                                                         --seed={seed} \
                                                                         --save_dir={log_dir} \
                                                                     2>&1 | tee {log_dir}/stream.log;
