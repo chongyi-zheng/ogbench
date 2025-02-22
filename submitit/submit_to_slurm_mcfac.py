@@ -49,17 +49,18 @@ def main():
             # "door-human-v1",
             # "cube-single-play-singletask-task2-v0",
             "cube-double-play-singletask-task2-v0",
+            "scene-play-singletask-task2-v0",
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
                     for alpha in [3, 1]:
                         for num_flow_steps in [10]:
                             for distill_type in ['fwd_sample', 'fwd_int']:
-                                for distill_mixup in [True]:
-                                    for critic_loss_type in ['expectile']:
-                                        for critic_noise_type in ['normal', 'marginal_state', 'marginal_goal']:
+                                for distill_mixup in [False]:
+                                    for critic_loss_type in ['mse', 'expectile']:
+                                        for critic_noise_type in ['normal']:
                                             for expectile in [0.9, 0.95, 0.99]:
-                                                for q_agg in ['mean']:
+                                                for q_agg in ['mean', 'min']:
                                                     for normalize_q_loss in [True]:
                                                         for reward_type in ['state', 'state_action']:
                                                             for seed in [10]:
