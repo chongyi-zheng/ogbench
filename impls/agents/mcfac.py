@@ -425,15 +425,22 @@ class MCFACAgent(flax.struct.PyTreeNode):
         """
         rng = jax.random.PRNGKey(seed)
         rng, init_rng, time_rng = jax.random.split(rng, 3)
-
+        observation_dim = ex_observations.shape[-1]
         action_dim = ex_actions.shape[-1]
-        ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],))
+        ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],), dtype=ex_actions.dtype)
         # ex_noises = jax.random.normal(noise_rng, shape=ex_actions.shape, dtype=ex_actions.dtype)
 
         # Define encoders.
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
+            if 'mlp_hidden_dims' in encoder_module.keywords:
+                observation_dim = encoder_module.keywords['mlp_hidden_dims'][-1]
+            else:
+                observation_dim = encoder_modules['impala'].mlp_hidden_dims[-1]
+            rng, obs_rng = jax.random.split(rng, 2)
+            ex_observations = jax.random.normal(obs_rng, shape=(ex_observations.shape[0], observation_dim), dtype=ex_actions.dtype)
+            
             encoders['critic_vf'] = encoder_module()
             # encoders['critic'] = encoder_module()
             # encoders['actor_vf'] = encoder_module()
@@ -443,36 +450,36 @@ class MCFACAgent(flax.struct.PyTreeNode):
 
         # Define value and actor networks.
         critic_vf_def = GCFMVectorField(
-            vector_dim=ex_observations.shape[-1],
+            vector_dim=observation_dim,
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
-            state_encoder=encoders.get('critic_vf'),
-            goal_encoder=encoders.get('critic_vf'),
+            # state_encoder=encoders.get('critic_vf'),
+            # goal_encoder=encoders.get('critic_vf'),
         )
         critic_def = Value(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['layer_norm'],
             num_ensembles=2,
-            encoder=encoders.get('actor_critic'),
+            # encoder=encoders.get('actor_critic'),
         )
 
         actor_vf_def = GCFMVectorField(
             vector_dim=action_dim,
             hidden_dims=config['actor_hidden_dims'],
             layer_norm=config['actor_layer_norm'],
-            state_encoder=encoders.get('actor_critic'),
+            # state_encoder=encoders.get('actor_critic'),
         )
         actor_def = GCFMValue(
             hidden_dims=config['actor_hidden_dims'],
             output_dim=action_dim,
             layer_norm=config['actor_layer_norm'],
-            state_encoder=encoders.get('actor_critic'),
+            # state_encoder=encoders.get('actor_critic'),
         )
 
         reward_def = Value(
             hidden_dims=config['reward_hidden_dims'],
             layer_norm=config['layer_norm'],
-            encoder=encoders.get('actor_critic'),
+            # encoder=encoders.get('actor_critic'),
         )
 
         network_info = dict(
