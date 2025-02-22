@@ -176,6 +176,52 @@ class RunningMeanStd(flax.struct.PyTreeNode):
         return self.replace(mean=new_mean, var=new_var, count=total_count)
 
 
+class Value(nn.Module):
+    """Value/critic network.
+
+    This module can be used for both value V(s, g) and critic Q(s, a, g) functions.
+
+    Attributes:
+        hidden_dims: Hidden layer dimensions.
+        layer_norm: Whether to apply layer normalization.
+        num_ensembles: Number of ensemble components.
+        encoder: Optional encoder module to encode the inputs.
+    """
+
+    hidden_dims: Sequence[int]
+    layer_norm: bool = True
+    num_ensembles: int = 1
+    encoder: nn.Module = None
+
+    def setup(self):
+        mlp_class = MLP
+        if self.num_ensembles > 1:
+            mlp_class = ensemblize(mlp_class, self.num_ensembles)
+        value_net = mlp_class((*self.hidden_dims, 1), activate_final=False, layer_norm=self.layer_norm)
+
+        self.value_net = value_net
+
+    def __call__(self, observations, actions=None, is_encoded=False):
+        """Return values or critic values.
+
+        Args:
+            observations: Observations.
+            actions: Actions (optional).
+            is_encoded: Whether the observations are already encoded (optional).
+        """
+        if not is_encoded and self.encoder is not None:
+            inputs = [self.encoder(observations)]
+        else:
+            inputs = [observations]
+        if actions is not None:
+            inputs.append(actions)
+        inputs = jnp.concatenate(inputs, axis=-1)
+
+        v = self.value_net(inputs).squeeze(-1)
+
+        return v
+
+
 class GCActor(nn.Module):
     """Goal-conditioned actor.
 
@@ -694,7 +740,7 @@ class GCFMVectorField(nn.Module):
         # self.proj_net = proj_net
         self.velocity_field_net = velocity_field_net
 
-    def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None):
+    def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None, is_encoded=False):
         """Return the value/critic velocity field.
 
         Args:
@@ -702,11 +748,12 @@ class GCFMVectorField(nn.Module):
             times: Times.
             observations: Observations.
             actions: Actions (Optional).
+            is_encoded: Whether the observations are already encoded (Optional).
         """
-        if self.goal_encoder is not None:
+        if not is_encoded and self.goal_encoder is not None:
             noisy_goals = self.goal_encoder(noisy_goals)
         
-        if self.state_encoder is not None:
+        if not is_encoded and self.state_encoder is not None:
             # This will be all nans if observations are all nan
             observations = self.state_encoder(observations)
 
@@ -843,7 +890,7 @@ class GCActorVectorField(nn.Module):
         self.velocity_field_net = velocity_field_net
 
     @nn.compact
-    def __call__(self, noisy_actions, times, observations, goals=None):
+    def __call__(self, noisy_actions, times, observations, goals=None, is_encoded=False):
         """Return the vectors at the given states, actions, and times.
 
         Args:
@@ -851,11 +898,12 @@ class GCActorVectorField(nn.Module):
             observations: Observations.
             times: Times (optional).
             goals: Goals (optional).
+            is_encoded: Whether the observations are already encoded (optional).
         """
-        if self.goal_encoder is not None and goals is not None:
+        if not is_encoded and self.goal_encoder is not None and goals is not None:
             goals = self.goal_encoder(goals)
 
-        if self.state_encoder is not None:
+        if not is_encoded and self.state_encoder is not None:
             observations = self.state_encoder(observations)
 
         conds = observations
@@ -916,18 +964,19 @@ class GCFMValue(nn.Module):
 
         self.value_net = value_net
 
-    def __call__(self, goals, observations, actions=None, commanded_goals=None):
+    def __call__(self, goals, observations, actions=None, commanded_goals=None, is_encoded=False):
         """Return the value/critic function.
 
         Args:
             observations: Observations.
             goals: Goals (optional).
             actions: Actions (optional).
+            is_encoded: Whether the observations are already encoded (optional).
         """
-        if self.goal_encoder is not None:
+        if not is_encoded and self.goal_encoder is not None:
             goals = self.goal_encoder(goals)
 
-        if self.state_encoder is not None:
+        if not is_encoded and self.state_encoder is not None:
             observations = self.state_encoder(observations)
 
         conds = observations

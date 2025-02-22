@@ -206,7 +206,6 @@ class GCDataset:
 
     dataset: Dataset
     config: Any
-    preprocess_frame_stack: bool = True
 
     def __post_init__(self):
         self.size = self.dataset.size
@@ -237,14 +236,7 @@ class GCDataset:
             self.config['actor_p_curgoal'] + self.config['actor_p_trajgoal'] + self.config['actor_p_randomgoal'], 1.0
         )
 
-        if self.config['frame_stack'] is not None:
-            # Only support compact (observation-only) datasets.
-            assert 'next_observations' not in self.dataset
-            if self.preprocess_frame_stack:
-                stacked_observations = self.get_stacked_observations(np.arange(self.size))
-                self.dataset = Dataset(self.dataset.copy(dict(observations=stacked_observations)))
-
-    def sample(self, batch_size: int, idxs=None, evaluation=False):
+    def sample(self, batch_size: int, idxs=None):
         """Sample a batch of transitions with goals.
 
         This method samples a batch of transitions with goals (value_goals and actor_goals) from the dataset. They are
@@ -254,15 +246,14 @@ class GCDataset:
         Args:
             batch_size: Batch size.
             idxs: Indices of the transitions to sample. If None, random indices are sampled.
-            evaluation: Whether to sample for evaluation. If True, image augmentation is not applied.
         """
         if idxs is None:
             idxs = self.dataset.get_random_idxs(batch_size)
 
         batch = self.dataset.sample(batch_size, idxs)
-        if self.config['frame_stack'] is not None:
-            batch['observations'] = self.get_observations(idxs)
-            batch['next_observations'] = self.get_observations(idxs + 1)
+        # if self.config['frame_stack'] is not None:
+        #     batch['observations'] = self.get_observations(idxs)
+        #     batch['next_observations'] = self.get_observations(idxs + 1)
 
         value_goal_idxs = self.sample_goals(
             idxs,
@@ -308,9 +299,10 @@ class GCDataset:
         # batch['actor_goal_discounted_returns'] = -(
         #     1 - self.config['discount'] ** actor_temporal_dists) / (1 - self.config['discount'])
 
-        if self.config['p_aug'] is not None and not evaluation:
+        if self.config['p_aug'] is not None:
+            # Apply random-crop image augmentation.
             if np.random.rand() < self.config['p_aug']:
-                self.augment(batch, ['observations', 'next_observations', 'value_goals', 'actor_goals'])
+                self.augment(batch, ['value_goals', 'actor_goals'])
 
         return batch
 
@@ -385,7 +377,7 @@ class GCDataset:
 
     def get_observations(self, idxs):
         """Return the observations for the given indices."""
-        if self.config['frame_stack'] is None or self.preprocess_frame_stack:
+        if self.config['frame_stack'] is None:
             return jax.tree_util.tree_map(lambda arr: arr[idxs], self.dataset['observations'])
         else:
             return self.get_stacked_observations(idxs)

@@ -109,9 +109,9 @@ def main(_):
 
     # Create agent.
     example_batch = train_dataset.sample(1)
-    if config['discrete']:
-        # Fill with the maximum action to let the agent know the action space size.
-        example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)
+    # if config['discrete']:
+    #     # Fill with the maximum action to let the agent know the action space size.
+    #     example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)
 
     agent_class = agents[config['agent_name']]
     agent = agent_class.create(
