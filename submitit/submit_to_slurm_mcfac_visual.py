@@ -32,8 +32,8 @@ def main():
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
-        slurm_cpus_per_task=8,
-        slurm_mem="8G",
+        slurm_cpus_per_task=16,
+        slurm_mem="64G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=24,
@@ -50,29 +50,28 @@ def main():
             # "cube-single-play-singletask-task2-v0",
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
-            "puzzle-3x3-play-singletask-task4-v0"
+            "visual-cube-single-play-singletask-task1-v0",
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [3000, 3000, 30, 3]:
-                        for num_flow_steps in [10]:
-                            for distill_type in ['fwd_sample', 'fwd_int']:
-                                for distill_mixup in [False]:
-                                    for critic_loss_type in ['expectile']:
-                                        for critic_noise_type in ['normal']:
-                                            for expectile in [0.9, 0.95, 0.99]:
-                                                for q_agg in ['mean', 'min']:
-                                                    for normalize_q_loss in [True]:
-                                                        for reward_type in ['state', 'state_action']:
+                    for alpha in [30, 3]:
+                        for distill_type in ['fwd_int']:
+                            for critic_loss_type in ['expectile']:
+                                for critic_noise_type in ['normal']:
+                                    for expectile in [0.9, 0.95, 0.99]:
+                                        for q_agg in ['mean', 'min']:
+                                            for normalize_q_loss in [True]:
+                                                for reward_type in ['state']:
+                                                    for encoder in ['impala_small']:
+                                                        for encoder_actor_loss_grad in [True, False]:
                                                             for seed in [10]:
-                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill={distill_type}_mixup={distill_mixup}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward={reward_type}"
+                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_distill={distill_type}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward={reward_type}_encoder={encoder}_encoder_actor_loss_grad={encoder_actor_loss_grad}"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/mcfac/{exp_name}/{seed}")
 
                                                                 # change the log folder of slurm executor
-                                                                submitit_log_dir = os.path.join(
-                                                                    os.path.dirname(log_dir),
-                                                                    'submitit')
+                                                                submitit_log_dir = os.path.join(os.path.dirname(log_dir),
+                                                                                                'submitit')
                                                                 executor._executor.folder = Path(
                                                                     submitit_log_dir).expanduser().absolute()
 
@@ -82,12 +81,12 @@ def main():
                                                                     conda activate ogbench;
                                                                     which python;
                                                                     echo $CONDA_PREFIX;
-
+                
                                                                     echo job_id: $SLURM_ARRAY_JOB_ID;
                                                                     echo task_id: $SLURM_ARRAY_TASK_ID;
                                                                     squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
                                                                     echo seed: {seed};
-
+                
                                                                     export PROJECT_DIR=$PWD;
                                                                     export PYTHONPATH=$HOME/research/ogbench/impls;
                                                                     export PATH="$PATH":"$CONDA_PREFIX"/bin;
@@ -99,7 +98,7 @@ def main():
                                                                     export D4RL_SUPPRESS_IMPORT_ERROR=1;
                                                                     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
                                                                     export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-
+                
                                                                     rm -rf {log_dir};
                                                                     mkdir -p {log_dir};
                                                                     python $PROJECT_DIR/impls/main_rl.py \
@@ -108,24 +107,26 @@ def main():
                                                                         --obs_norm_type={obs_norm_type} \
                                                                         --eval_episodes=50 \
                                                                         --dataset_class=GCDataset \
+                                                                        --p_aug=0.5 \
+                                                                        --frame_stack=3 \
                                                                         --agent=impls/agents/mcfac.py \
                                                                         --agent.discount={discount} \
                                                                         --agent.alpha={alpha} \
-                                                                        --agent.num_flow_steps={num_flow_steps} \
+                                                                        --agent.num_flow_steps=10 \
                                                                         --agent.distill_type={distill_type} \
-                                                                        --agent.distill_mixup={distill_mixup} \
                                                                         --agent.critic_loss_type={critic_loss_type} \
                                                                         --agent.critic_noise_type={critic_noise_type} \
                                                                         --agent.expectile={expectile} \
                                                                         --agent.q_agg={q_agg} \
                                                                         --agent.actor_layer_norm=False \
-                                                                        --agent.vf_q_loss=False \
                                                                         --agent.normalize_q_loss={normalize_q_loss} \
                                                                         --agent.reward_type={reward_type} \
+                                                                        --agent.encoder={encoder} \
+                                                                        --agent.encoder_actor_loss_grad={encoder_actor_loss_grad} \
                                                                         --seed={seed} \
                                                                         --save_dir={log_dir} \
                                                                     2>&1 | tee {log_dir}/stream.log;
-
+                
                                                                     export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
                                                                     echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
                                                                     echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
