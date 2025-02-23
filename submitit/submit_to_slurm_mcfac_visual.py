@@ -39,7 +39,6 @@ def main():
         slurm_array_parallelism=24,
     )
 
-    # ddpgbc hyperparameters: discount, alpha, num_flow_steps, actor_layer_norm, vf_q_loss, normalize_q_loss
     with executor.batch():  # job array
         for env_name in [
             # "antmaze-large-navigate-singletask-v0",
@@ -109,6 +108,7 @@ def main():
                                                                         --dataset_class=GCDataset \
                                                                         --p_aug=0.5 \
                                                                         --frame_stack=3 \
+                                                                        --offline_steps=500_000 \
                                                                         --agent=impls/agents/mcfac.py \
                                                                         --agent.discount={discount} \
                                                                         --agent.alpha={alpha} \

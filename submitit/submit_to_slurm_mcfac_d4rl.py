@@ -44,17 +44,17 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            # "antmaze-medium-play-v2",
+            "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
             # "cube-single-play-singletask-task2-v0",
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
-            "puzzle-3x3-play-singletask-task4-v0"
+            # "puzzle-3x3-play-singletask-task4-v0"
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [3000, 3000, 30, 3]:
+                    for alpha in [10, 1, 0.1]:
                         for distill_type in ['fwd_sample', 'fwd_int']:
                             for distill_mixup in [False]:
                                 for critic_loss_type in ['expectile']:
@@ -107,6 +107,7 @@ def main():
                                                                     --obs_norm_type={obs_norm_type} \
                                                                     --eval_episodes=50 \
                                                                     --dataset_class=GCDataset \
+                                                                    --offline_steps=500_000 \
                                                                     --agent=impls/agents/mcfac.py \
                                                                     --agent.discount={discount} \
                                                                     --agent.alpha={alpha} \

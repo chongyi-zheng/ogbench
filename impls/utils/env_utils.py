@@ -123,7 +123,7 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5):
         val_dataset = Dataset.create(**val_dataset)
     elif 'antmaze' in env_name and ('diverse' in env_name or 'play' in env_name or 'umaze' in env_name):
         # D4RL AntMaze.
-        from envs import d4rl_utils
+        from utils import d4rl_utils
 
         env = d4rl_utils.make_env(env_name)
         eval_env = d4rl_utils.make_env(env_name)
