@@ -21,6 +21,10 @@ def main():
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'pnlp'
+    elif cluster_name == 'neuronic.cs.princeton.edu':
+        log_root_dir = '/n/fs/prl-chongyiz'
+        partition = 'all'
+        account = None
     else:
         raise NotImplementedError
 
@@ -47,8 +51,8 @@ def main():
             # "antsoccer-arena-navigate-singletask-v0"
             # "pen-human-v1",
             # "door-human-v1",
-            "cube-single-play-singletask-task2-v0",
-            # "cube-double-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task2-v0",
+            "cube-double-play-singletask-task2-v0",
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
