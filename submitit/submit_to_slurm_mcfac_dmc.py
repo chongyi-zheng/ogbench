@@ -52,19 +52,19 @@ def main():
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             "cheetah_run",
-            "walker_walk",
+            # "walker_walk",
         ]:
             for obs_norm_type in ['none']:
-                for discount in [0.99]:
-                    for alpha in [10, 1, 0.1]:
+                for discount in [0.995, 0.99, 0.95]:
+                    for alpha in [100, 50, 30]:
                         for distill_type in ['fwd_sample', 'fwd_int']:
                             for distill_mixup in [False]:
                                 for critic_loss_type in ['expectile']:
                                     for critic_noise_type in ['normal']:
-                                        for expectile in [0.9, 0.95, 0.99]:
+                                        for expectile in [0.8, 0.85, 0.875, 0.9]:
                                             for q_agg in ['mean', 'min']:
                                                 for normalize_q_loss in [True]:
-                                                    for reward_type in ['state', 'state_action']:
+                                                    for reward_type in ['state_action']:
                                                         for seed in [10]:
                                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_distill={distill_type}_mixup={distill_mixup}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward={reward_type}"
                                                             log_dir = os.path.expanduser(

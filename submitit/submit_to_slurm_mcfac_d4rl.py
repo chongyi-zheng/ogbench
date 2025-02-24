@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     else:
         raise NotImplementedError
 
@@ -36,7 +36,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=24,
+        # slurm_array_parallelism=24,
     )
 
     with executor.batch():  # job array
@@ -54,12 +54,12 @@ def main():
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [10, 1, 0.1]:
+                    for alpha in [1, 0.1, 0.01]:
                         for distill_type in ['fwd_sample', 'fwd_int']:
                             for distill_mixup in [False]:
                                 for critic_loss_type in ['expectile']:
                                     for critic_noise_type in ['normal']:
-                                        for expectile in [0.9, 0.95, 0.99]:
+                                        for expectile in [0.7, 0.8, 0.85]:
                                             for q_agg in ['mean', 'min']:
                                                 for normalize_q_loss in [True]:
                                                     for reward_type in ['state', 'state_action']:
@@ -107,7 +107,7 @@ def main():
                                                                     --obs_norm_type={obs_norm_type} \
                                                                     --eval_episodes=50 \
                                                                     --dataset_class=GCDataset \
-                                                                    --offline_steps=500_000 \
+                                                                    --offline_steps=1000_000 \
                                                                     --agent=impls/agents/mcfac.py \
                                                                     --agent.discount={discount} \
                                                                     --agent.alpha={alpha} \
