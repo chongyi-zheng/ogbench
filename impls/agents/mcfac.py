@@ -212,7 +212,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
             q_loss = lam * q_loss
 
         # distill loss
-        train_mask = jnp.float32((flow_actions * 1e8 % 10)[:, 0] != 4)
+        train_mask = jnp.float32((actions * 1e8 % 10)[:, 0] != 4)
         val_mask = 1.0 - train_mask
 
         if self.config['distill_mixup']:

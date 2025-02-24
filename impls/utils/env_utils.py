@@ -59,6 +59,56 @@ class EpisodeMonitor(gymnasium.Wrapper):
         return self.env.reset(*args, **kwargs)
 
 
+class DMCEpisodeMonitor(EpisodeMonitor):
+    # @staticmethod
+    # def _flatten_obs(obs):
+    #     obs_pieces = []
+    #     for v in obs.values():
+    #         flat = np.array([v]) if np.isscalar(v) else v.ravel()
+    #         obs_pieces.append(flat)
+    #     return np.concatenate(obs_pieces, axis=0)
+
+    def _get_obs(self, time_step):
+        obs = self._flatten_obs(time_step.observation)
+        return obs
+
+    def step(self, action):
+        time_step = self.env.step(action)
+
+        observation, reward = time_step.observation, time_step.reward
+        terminated, truncated = time_step.last(), False
+        info = dict(internal_state=time_step.physics)
+
+        # Remove keys that are not needed for logging.
+        for filter_regex in self.filter_regexes:
+            for key in list(info.keys()):
+                if re.match(filter_regex, key) is not None:
+                    del info[key]
+
+        self.reward_sum += reward
+        self.episode_length += 1
+        self.total_timesteps += 1
+        info['total'] = {'timesteps': self.total_timesteps}
+
+        if terminated or truncated:
+            info['episode'] = {}
+            info['episode']['final_reward'] = reward
+            info['episode']['return'] = self.reward_sum
+            info['episode']['length'] = self.episode_length
+            info['episode']['duration'] = time.time() - self.start_time
+
+        return observation, reward, terminated, truncated, info
+
+    def reset(self, *args, **kwargs):
+        self._reset_stats()
+
+        time_step = self.env.reset(*args, **kwargs)
+        observation = time_step.observation
+        info = dict(internal_state=time_step.physics)
+
+        return observation, info
+
+
 class FrameStackWrapper(gymnasium.Wrapper):
     """Environment wrapper to stack observations."""
 
@@ -137,6 +187,14 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5):
         env = d4rl_utils.make_env(env_name)
         eval_env = d4rl_utils.make_env(env_name)
         dataset = d4rl_utils.get_dataset(env, env_name)
+        train_dataset, val_dataset = dataset, None
+    elif 'walker' in env_name or 'cheetah' in env_name:
+        # DMC
+        from utils import dmc_utils
+        
+        env = dmc_utils.make_env(env_name)
+        eval_env = dmc_utils.make_env(env_name)
+        dataset = dmc_utils.get_dataset(env_name)
         train_dataset, val_dataset = dataset, None
     else:
         env, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)
