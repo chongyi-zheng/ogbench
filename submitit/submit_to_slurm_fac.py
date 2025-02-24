@@ -57,18 +57,18 @@ def main():
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
                     for alpha in [3]:
-                        for lr in [1e-3, 5e-5, 3e-5]:
+                        for layer_norm in [False]:
                             for distill_type in ['fwd_sample']:
                                 for critic_loss_type in ['expectile']:
                                     for critic_noise_type in ['normal']:
                                         for critic_q_target_vf in [False]:
                                             for critic_flow_matching_target_vf in [True]:
-                                                for expectile in [0.7, 0.8, 0.85, 0.9]:
+                                                for expectile in [0.8, 0.85, 0.875, 0.9]:
                                                     for q_agg in ['mean', 'min']:
                                                         for normalize_q_loss in [True]:
                                                             for reward_type in ['state']:
                                                                 for seed in [10]:
-                                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_fac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_lr={lr}_distill={distill_type}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_critic_q_target={critic_q_target_vf}_critic_fm_target={critic_flow_matching_target_vf}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward={reward_type}"
+                                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_fac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_layer_norm={layer_norm}_distill={distill_type}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_critic_q_target={critic_q_target_vf}_critic_fm_target={critic_flow_matching_target_vf}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward={reward_type}"
                                                                     log_dir = os.path.expanduser(
                                                                         f"{log_root_dir}/exp_logs/ogbench_logs/fac/{exp_name}/{seed}")
 
@@ -112,7 +112,7 @@ def main():
                                                                             --agent=impls/agents/fac.py \
                                                                             --agent.discount={discount} \
                                                                             --agent.alpha={alpha} \
-                                                                            --agent.lr={lr} \
+                                                                            --agent.layer_norm={layer_norm} \
                                                                             --agent.num_flow_steps=10 \
                                                                             --agent.distill_type={distill_type} \
                                                                             --agent.critic_loss_type={critic_loss_type} \
