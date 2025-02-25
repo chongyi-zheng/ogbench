@@ -2,6 +2,7 @@ __pycache__/
 dist/
 *.py[cod]
 *$py.class
+*.hdf5
 *.egg-info/
 .DS_Store
 .idea/
