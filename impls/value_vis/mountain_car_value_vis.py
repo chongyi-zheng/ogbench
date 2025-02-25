@@ -1,4 +1,5 @@
 from typing import Any
+import copy
 import os.path as osp
 import functools
 from collections import defaultdict
@@ -30,7 +31,8 @@ def default_init(scale=1.0):
     return nn.initializers.variance_scaling(scale, 'fan_avg', 'uniform')
 
 
-def collect_dataset(env, dataset_size=200_000, seed=None):
+def collect_dataset(env_name, dataset_size=200_000, seed=None):
+    env = gym.make(env_name)
     dataset = dict()
     size = 0
     while size < dataset_size:
@@ -143,6 +145,8 @@ def evaluate(actor_fn, env, params, num_eval_episodes=20, desc='evaluation'):
             reward_sum += reward
             episode_length += 1
 
+            observation = next_observation
+
         stats['episode_length'].append(episode_length)
         stats['episode_return'].append(reward_sum)
 
@@ -152,8 +156,10 @@ def evaluate(actor_fn, env, params, num_eval_episodes=20, desc='evaluation'):
     return stats
 
 
-def train_and_eval_q_learning(env, get_batch_fn, key, discount=0.99,
-                              batch_size=256, num_training_steps=50_000, eval_interval=5_000):
+def train_and_eval_q_learning(env, get_batch_fn, key,
+                              discount=0.99, tau=0.005,
+                              batch_size=256, learning_rate=3e-4,
+                              num_training_steps=100_000, eval_interval=10_000):
     class QValue(nn.Module):
         num_actions: int
         kernel_init: Any = default_init()
@@ -165,27 +171,19 @@ def train_and_eval_q_learning(env, get_batch_fn, key, discount=0.99,
                 nn.relu,
                 nn.Dense(512, kernel_init=self.kernel_init),
                 nn.relu,
-                nn.Dense(self.num_actions)
+                nn.Dense(512, kernel_init=self.kernel_init),
+                nn.relu,
+                nn.Dense(512, kernel_init=self.kernel_init),
+                nn.relu,
+                nn.Dense(self.num_actions, kernel_init=self.kernel_init),
             ])(observations)
 
             return q
 
-    def critic_loss_fn(params, q_value_fn, batch):
+    def critic_loss_fn(params, target_params, q_value_fn, batch):
         """Compute the Q-learning loss."""
-        # rng, sample_rng = jax.random.split(rng)
-        # next_actions = self.sample_actions(batch['next_observations'], seed=sample_rng)
-        # next_actions = jnp.clip(next_actions, -1, 1)
-
-        next_qs = q_value_fn.apply(params, batch['next_observations'])
-
-        # q_value_fn.apply(params, noisy_goals, times, observations, actions)
-
-        # if self.config['q_agg'] == 'min':
-        #     next_q = next_qs.min(axis=0)
-        # else:
-        #     next_q = next_qs.mean(axis=0)
+        next_qs = q_value_fn.apply(target_params, batch['next_observations'])
         target_q = batch['rewards'] + discount * (1.0 - batch['terminals']) * jnp.max(next_qs, axis=-1)
-        target_q = jax.lax.stop_gradient(target_q)
 
         qs = q_value_fn.apply(params, batch['observations'])
         onehot_actions = jax.nn.one_hot(batch['actions'], q_value_fn.num_actions)
@@ -204,19 +202,24 @@ def train_and_eval_q_learning(env, get_batch_fn, key, discount=0.99,
     q_value_fn = QValue(env.action_space.n)
     q_params = q_value_fn.init(
         q_value_key, example_batch['observations'])
+    target_q_params = copy.deepcopy(q_params)
 
-    optimizer = optax.adam(learning_rate=3e-4)
+    optimizer = optax.adam(learning_rate=learning_rate)
     opt_state = optimizer.init(q_params)
     critic_grad_fn = jax.value_and_grad(critic_loss_fn, has_aux=True)
 
     @jax.jit
-    def update_fn(params, opt_state, batch):
-        (_, info), grads = critic_grad_fn(params, q_value_fn, batch)
+    def update_fn(params, target_params, opt_state, batch):
+        (_, info), grads = critic_grad_fn(params, target_params, q_value_fn, batch)
 
         updates, opt_state = optimizer.update(grads, opt_state)
         params = optax.apply_updates(params, updates)
 
-        return params, opt_state, info
+        target_params = jax.tree_util.tree_map(
+            lambda x, y: x * (1 - tau) + y * tau,
+            target_params, params)
+
+        return params, target_params, opt_state, info
 
     @jax.jit
     def sample_actions(params, observations, seed=None):
@@ -231,7 +234,8 @@ def train_and_eval_q_learning(env, get_batch_fn, key, discount=0.99,
     metrics = dict()
     for step in tqdm(range(num_training_steps + 1), desc="q_learning training"):
         batch = get_batch_fn(batch_size)
-        q_params, opt_state, info = update_fn(q_params, opt_state, batch)
+        q_params, target_q_params, opt_state, info = update_fn(
+            q_params, target_q_params, opt_state, batch)
 
         for k, v in info.items():
             critic_k = 'train/critic' + k
@@ -263,15 +267,15 @@ def main():
     dataset_path = osp.expanduser(dataset_path)
     key = jax.random.PRNGKey(np.random.randint(0, 2 ** 32))
 
-    env = gym.make(env_name)
     if osp.exists(dataset_path):
         dataset = load_dataset_from_h5(dataset_path)
         print("Load {} dataset from: {}".format(env_name, dataset_path))
     else:
-        dataset = collect_dataset(env)
+        dataset = collect_dataset(env_name)
         save_dataset_to_h5(dataset, dataset_path)
         print("Save {} dataset to: {}".format(env_name, dataset_path))
 
+    env = gym.make(env_name)
     dataset = preprocess_dataset(dataset)
     get_batch_fn = functools.partial(get_batch, dataset, discount=discount)
 
