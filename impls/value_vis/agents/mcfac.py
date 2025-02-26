@@ -28,7 +28,9 @@ class QValue(nn.Module):
 
         return q
 
+
 class Reward(nn.Module):
+    num_actions: int
     kernel_init: Any = default_init()
 
     @nn.compact
@@ -38,12 +40,11 @@ class Reward(nn.Module):
             nn.relu,
             nn.Dense(512, kernel_init=self.kernel_init),
             nn.relu,
-            nn.Dense(1, kernel_init=self.kernel_init),
+            nn.Dense(self.num_actions, kernel_init=self.kernel_init),
         ])(observations)
 
-        rewards = rewards.squeeze(-1)
-
         return rewards
+
 
 class VectorField(nn.Module):
     vector_dim: int
@@ -62,8 +63,10 @@ class VectorField(nn.Module):
         return emb
 
     @nn.compact
-    def __call__(self, noisy_goals, times, observations):
-        time_embs = self.sinusoidal_pos_embedding(times)
+    def __call__(self, noisy_goals, times, observations, actions):
+        onehot_actions = jax.nn.one_hot(actions, self.num_actions)
+        # time_embs = self.sinusoidal_pos_embedding(times)
+        time_embs = times
 
         vector_field = nn.Sequential([
             nn.Dense(512, kernel_init=self.kernel_init),
@@ -72,19 +75,27 @@ class VectorField(nn.Module):
             nn.relu,
             nn.Dense(self.vector_dim * self.num_actions, kernel_init=self.kernel_init),
         ])(jnp.concatenate([noisy_goals, time_embs, observations], axis=-1))
-
         vector_field = jnp.reshape(vector_field, [-1, self.vector_dim, self.num_actions])
+        vector_field = jnp.einsum('ijk,ik->ij', vector_field, onehot_actions)
 
         return vector_field
 
 
 def train_and_eval_mcfac(env, get_batch_fn, key,
-                         num_flow_steps=10, discount=0.99,
-                         batch_size=256, learning_rate=3e-4,
+                         num_flow_steps=10, expectile=0.95,
+                         discount=0.99, batch_size=256, learning_rate=3e-4,
                          num_training_steps=100_000, eval_interval=10_000):
 
+    def expectile_loss(adv, diff, expectile):
+        """Compute the expectile loss."""
+        weight = jnp.where(adv >= 0, expectile, (1 - expectile))
+        return weight * (diff ** 2)
+
     def reward_loss_fn(params, reward_fn, batch):
+        """Compute the reward loss."""
         reward_preds = reward_fn.apply(params, batch['observations'])
+        onehot_actions = jax.nn.one_hot(batch['actions'], reward_fn.num_actions)
+        reward_preds = jnp.sum(reward_preds * onehot_actions, axis=-1)
 
         reward_loss = jnp.square(batch['rewards'] - reward_preds).mean()
 
@@ -95,18 +106,19 @@ def train_and_eval_mcfac(env, get_batch_fn, key,
     def flow_matching_loss_fn(params, vector_field_fn, batch, key):
         """Compute the flow matching loss."""
 
-        # batch_size = batch['observations'].shape[0]
         observations = batch['observations']
+        actions = batch['actions']
         goals = batch['future_observations']
-        onehot_actions = jax.nn.one_hot(batch['actions'], vector_field_fn.num_actions)
+        # onehot_actions = jax.nn.one_hot(batch['actions'], vector_field_fn.num_actions)
 
         key, noise_key, time_key = jax.random.split(key, 3)
         noises = jax.random.normal(noise_key, shape=goals.shape, dtype=goals.dtype)
         times = jax.random.uniform(time_key, shape=(batch_size, 1))
         noisy_goals = times * goals + (1 - times) * noises
         vector_field_targets = goals - noises
-        vector_field_preds = vector_field_fn.apply(params, noisy_goals, times, observations)
-        vector_field_preds = jnp.einsum('ijk,ik->ij', vector_field_preds, onehot_actions)
+        vector_field_preds = vector_field_fn.apply(
+            params, noisy_goals, times, observations, actions)
+        # vector_field_preds = jnp.einsum('ijk,ik->ij', vector_field_preds, onehot_actions)
         flow_matching_loss = jnp.square(vector_field_targets - vector_field_preds).mean()
 
         return flow_matching_loss, {
@@ -114,6 +126,7 @@ def train_and_eval_mcfac(env, get_batch_fn, key,
         }
 
     def compute_fwd_flow_goals(params, vector_field_fn, noises, observations, actions):
+        """Compute the forward flow goals using Euler method."""
         step_size = 1.0 / num_flow_steps
 
         def body_fn(carry, step):
@@ -124,7 +137,9 @@ def train_and_eval_mcfac(env, get_batch_fn, key,
             (noisy_goals, ) = carry
 
             times = jnp.full((*noisy_goals.shape[:-1], 1), step * step_size)
-            vector_field = vector_field_fn.apply(params, noisy_goals, times, observations)
+            vector_field = vector_field_fn.apply(
+                params, noisy_goals, times, observations, actions)
+            # vector_field = jnp.einsum('ijk,ik->ij', vector_field, onehot_actions)
             new_noisy_goals = noisy_goals + vector_field * step_size
 
             return (new_noisy_goals, ), None
@@ -150,13 +165,18 @@ def train_and_eval_mcfac(env, get_batch_fn, key,
         key, noise_key = jax.random.split(key)
         noises = jax.random.normal(noise_key, shape=observations.shape, dtype=observations.dtype)
         flow_goals = compute_fwd_flow_goals(vf_params, vector_field_fn, noises, observations, actions)
-        flow_goals = jnp.einsum('ijk,ik->ij', flow_goals, onehot_actions)
+
+        future_actions = q_value_fn.apply(q_params, flow_goals).argmax(axis=-1)
+        future_rewards = reward_fn.apply(reward_params, flow_goals)
+        onehot_future_actions = jax.nn.one_hot(future_actions, reward_fn.num_actions)
+        future_rewards = jnp.sum(onehot_future_actions * future_rewards, axis=-1)
 
         target_q = (
             (1 - discount) * rewards
-            + discount * reward_fn.apply(reward_params, flow_goals)
+            + discount * future_rewards
         )
-        critic_loss = jnp.square(target_q - q).mean()
+        critic_loss = expectile_loss(
+            target_q - q, target_q - q, expectile).mean()
 
         return critic_loss, {
             'critic_loss': critic_loss,
@@ -170,7 +190,7 @@ def train_and_eval_mcfac(env, get_batch_fn, key,
     ex_times = jax.random.uniform(time_key, shape=(2, 1))
 
     q_value_fn = QValue(env.action_space.n)
-    reward_fn = Reward()
+    reward_fn = Reward(env.action_space.n)
     vector_field_fn = VectorField(env.observation_space.shape[0],
                                   env.action_space.n)
 
@@ -182,7 +202,8 @@ def train_and_eval_mcfac(env, get_batch_fn, key,
     )
     vf_params = vector_field_fn.init(
         vector_field_key,
-        example_batch['future_observations'], ex_times, example_batch['observations']
+        example_batch['future_observations'], ex_times,
+        example_batch['observations'], example_batch['actions']
     )
 
     q_optimizer = optax.adam(learning_rate=learning_rate)
@@ -199,10 +220,8 @@ def train_and_eval_mcfac(env, get_batch_fn, key,
     def update_fn(q_params, reward_params, vf_params,
                   q_opt_state, reward_opt_state, vf_opt_state,
                   batch, key):
-
-        key, critic_key, flow_matching_key = jax.random.split(key, 3)
+        key, flow_matching_key, critic_key = jax.random.split(key, 3)
         info = dict()
-
 
         (_, reward_info), reward_grads = reward_grad_fn(
             reward_params, reward_fn, batch

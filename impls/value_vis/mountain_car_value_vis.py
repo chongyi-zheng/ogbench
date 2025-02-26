@@ -33,13 +33,21 @@ def collect_dataset(env_name, dataset_size=200_000, seed=None):
     env = gym.make(env_name)
     dataset = dict()
     size = 0
+    if env_name == 'MountainCar-v0':
+        options = dict(low=-0.6, high=0.4)
+    else:
+        options = dict()
     while size < dataset_size:
-        observation, info = env.reset(seed=seed)
+        observation, info = env.reset(seed=seed, options=options)
         done = False
         while not done:
             action = env.action_space.sample()
             next_observation, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
+            # reward = 0
+            # if terminated:
+            #     reward = 100.0
+            # reward -= np.power(action - 1, 2) * 0.1
             size += 1
 
             for k in ['observation', 'action', 'reward', 'next_observation', 'done']:
@@ -124,8 +132,6 @@ def get_batch(dataset, batch_size, discount=0.99):
     return batch
 
 
-
-
 def main():
     discount = 0.99
     env_name = 'MountainCar-v0'
@@ -151,7 +157,8 @@ def main():
     key, mcfac_key = jax.random.split(key)
     metrics = train_and_eval_mcfac(env, get_batch_fn, mcfac_key)
 
-    print()
+    print(metrics['eval/episode_length'])
+    print(metrics['eval/episode_return'])
 
 
 if __name__ == "__main__":

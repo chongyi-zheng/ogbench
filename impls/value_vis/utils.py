@@ -4,6 +4,8 @@ import flax.linen as nn
 import numpy as np
 from tqdm import tqdm
 
+from gymnasium.envs.classic_control.mountain_car import MountainCarEnv
+
 
 def default_init(scale=1.0):
     """Default kernel initializer."""
@@ -12,8 +14,12 @@ def default_init(scale=1.0):
 
 def evaluate(actor_fn, env, params, num_eval_episodes=20, desc='evaluation'):
     stats = defaultdict(list)
+    if isinstance(env.unwrapped, MountainCarEnv):
+        options = dict(low=-0.6, high=0.4)
+    else:
+        options = dict()
     for _ in tqdm(range(num_eval_episodes), desc=desc, position=0, leave=True):
-        observation, info = env.reset()
+        observation, info = env.reset(options=options)
         done = False
         episode_length = 0
         reward_sum = 0.0
@@ -25,6 +31,13 @@ def evaluate(actor_fn, env, params, num_eval_episodes=20, desc='evaluation'):
 
             next_observation, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
+            # reward = 0
+            # if terminated:
+            #     reward = 100.0
+            # reward -= np.power(action - 1, 2) * 0.1
+            # if terminated:
+            #     reward = 0.0
+            # done = truncated
 
             reward_sum += reward
             episode_length += 1
