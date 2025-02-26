@@ -25,6 +25,7 @@ import optax
 
 from impls.value_vis.agents import (
     train_and_eval_q_learning,
+    train_and_eval_td3bc,
     train_and_eval_mcfac,
 )
 
@@ -134,8 +135,8 @@ def get_batch(dataset, batch_size, discount=0.99):
 
 def main():
     discount = 0.99
-    env_name = 'MountainCar-v0'
-    dataset_path = '~/research/ogbench/impls/value_vis/mountain_car.hdf5'
+    env_name = 'MountainCarContinuous-v0'
+    dataset_path = '~/research/ogbench/impls/value_vis/mountain_car_continous.hdf5'
     dataset_path = osp.expanduser(dataset_path)
     key = jax.random.PRNGKey(np.random.randint(0, 2 ** 32))
 
@@ -154,8 +155,11 @@ def main():
     # key, q_learning_key = jax.random.split(key)
     # metrics = train_and_eval_q_learning(env, get_batch_fn, q_learning_key)
 
-    key, mcfac_key = jax.random.split(key)
-    metrics = train_and_eval_mcfac(env, get_batch_fn, mcfac_key)
+    key, td3_key = jax.random.split(key)
+    metrics = train_and_eval_td3bc(env, get_batch_fn, td3_key)
+
+    # key, mcfac_key = jax.random.split(key)
+    # metrics = train_and_eval_mcfac(env, get_batch_fn, mcfac_key)
 
     print(metrics['eval/episode_length'])
     print(metrics['eval/episode_return'])
