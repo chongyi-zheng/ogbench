@@ -30,6 +30,11 @@ from impls.value_vis.utils import (
     preprocess_dataset
 )
 
+from impls.value_vis.agents import (
+    train_and_eval_td3bc,
+    train_and_eval_mcfac,
+)
+
 
 def get_batch(dataset, batch_size, discount=0.99):
     dataset_size = dataset['observations'].shape[0]
@@ -72,6 +77,9 @@ def main():
 
     # key, td3_key = jax.random.split(key)
     # metrics = train_and_eval_td3bc(env, get_batch_fn, td3_key)
+
+    key, mcfac_key = jax.random.split(key)
+    metrics = train_and_eval_mcfac(env, get_batch_fn, mcfac_key)
 
     print(metrics['eval/episode_length'])
     print(metrics['eval/episode_return'])

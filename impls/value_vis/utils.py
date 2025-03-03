@@ -1,19 +1,30 @@
 from collections import defaultdict
-
-import h5py
-import gymnasium as gym
-from tqdm import tqdm
+import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter1d
 
 import numpy as np
 import jax.numpy as jnp
 import flax.linen as nn
 
+import gymnasium as gym
+import h5py
 from gymnasium.envs.classic_control.mountain_car import MountainCarEnv
+from tqdm import tqdm
 
 
 def default_init(scale=1.0):
     """Default kernel initializer."""
     return nn.initializers.variance_scaling(scale, 'fan_avg', 'uniform')
+
+
+def sinusoidal_pos_embedding(times, emb_dim=64):
+    half_dim = emb_dim // 2
+    emb = jnp.log(10000) / (half_dim - 1)
+    emb = jnp.exp(jnp.arange(half_dim) * -emb)
+    emb = times * jnp.expand_dims(emb, axis=0)
+    emb = jnp.concatenate([jnp.sin(emb), jnp.cos(emb)], axis=-1)
+
+    return emb
 
 
 def collect_dataset(env_name, dataset_size=200_000, seed=None):
@@ -99,7 +110,39 @@ def preprocess_dataset(dataset):
     return new_dataset
 
 
-def explore(actor_fn, env, params, temperature=1.0, num_expl_steps=4000, desc='evaluation'):
+def plot_metrics(metrics, logyscale_stats=[], suptitle='learning_curve'):
+    # learning curves
+    nrows = np.ceil(len(metrics) / 4).astype(int)
+    ncols = 4
+    f, axes = plt.subplots(nrows=nrows, ncols=ncols)
+    if nrows == 1:
+        axes = np.array([axes])
+    f.set_figheight(3 * nrows)
+    f.set_figwidth(3 * ncols)
+
+    for idx, (name, val) in enumerate(metrics.items()):
+        v = np.array(val)
+        if len(v) == 0:
+            continue
+
+        x, y = v[:, 0], v[:, 1]
+        ax = axes[idx // 4, idx % 4]
+
+        if 'train' in name:
+            y = gaussian_filter1d(y, 100)
+        ax.plot(x, y)
+        if name in logyscale_stats:
+            ax.set_yscale('log')
+        ax.set_title(name)
+
+        ax.grid()
+
+    f.suptitle(suptitle)
+
+    return f
+
+
+def explore(actor_fn, env, params, temperature=1.0, num_expl_steps=2000, desc='evaluation'):
     stats, trajs = defaultdict(list), defaultdict(list)
 
     done, reward_sum, episode_length = False, 0, 0

@@ -24,6 +24,7 @@ import flax.linen as nn
 import optax
 
 from impls.value_vis.agents import train_and_eval_online_sac
+from impls.value_vis.utils import plot_metrics
 
 
 def main():
@@ -41,7 +42,8 @@ def main():
     #     save_dataset_to_h5(dataset, dataset_path)
     #     print("Save {} dataset to: {}".format(env_name, dataset_path))
     #
-    env = gym.make(env_name)
+    expl_env = gym.make(env_name)
+    eval_env = gym.make(env_name)
     # dataset = preprocess_dataset(dataset)
     # get_batch_fn = functools.partial(get_batch, dataset, discount=discount)
 
@@ -49,13 +51,20 @@ def main():
     # metrics = train_and_eval_q_learning(env, get_batch_fn, q_learning_key)
 
     key, sac_key = jax.random.split(key)
-    metrics, dataset = train_and_eval_online_sac(env, sac_key)
+    metrics, dataset = train_and_eval_online_sac(expl_env, eval_env, sac_key)
 
     # key, mcfac_key = jax.random.split(key)
     # metrics = train_and_eval_mcfac(env, get_batch_fn, mcfac_key)
 
-    print(metrics['eval/episode_length'])
-    print(metrics['eval/episode_return'])
+    fig = plot_metrics(metrics)
+
+    fig_path = '~/research/ogbench/impls/value_vis/figures/mountain_car_data_collection.pdf'
+    fig_path = osp.expanduser(fig_path)
+    fig.savefig(fig_path)
+    print("Figure saved to {}".format(fig_path))
+
+    # print(metrics['eval/episode_length'])
+    # print(metrics['eval/episode_return'])
 
 
 if __name__ == "__main__":

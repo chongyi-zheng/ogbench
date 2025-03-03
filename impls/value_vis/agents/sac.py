@@ -15,16 +15,16 @@ from impls.value_vis.utils import default_init, explore, evaluate
 
 
 class QValue(nn.Module):
-    kernel_init: Any = default_init()
+    # kernel_init: Any = default_init()
 
     @nn.compact
     def __call__(self, observations, actions):
         q = nn.Sequential([
-            nn.Dense(512, kernel_init=self.kernel_init),
+            nn.Dense(256),
             nn.relu,
-            nn.Dense(512, kernel_init=self.kernel_init),
+            nn.Dense(256),
             nn.relu,
-            nn.Dense(1, kernel_init=self.kernel_init),
+            nn.Dense(1),
         ])(jnp.concatenate([observations, actions], axis=-1))
 
         q = q.squeeze(axis=-1)
@@ -42,17 +42,13 @@ class Actor(nn.Module):
     @nn.compact
     def __call__(self, observations, temperature=1.0):
         outputs = nn.Sequential([
-            nn.Dense(512, kernel_init=self.kernel_init),
+            nn.Dense(256),
             nn.relu,
-            nn.Dense(512, kernel_init=self.kernel_init),
-            nn.relu,
-            nn.Dense(512, kernel_init=self.kernel_init),
+            nn.Dense(256),
             nn.relu,
         ])(observations)
-        means = nn.Dense(self.action_dim,
-                         kernel_init=default_init(self.final_fc_init_scale))(outputs)
-        log_stds = nn.Dense(self.action_dim,
-                            kernel_init=default_init(self.final_fc_init_scale))(outputs)
+        means = nn.Dense(self.action_dim)(outputs)
+        log_stds = nn.Dense(self.action_dim)(outputs)
 
         log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
 
@@ -79,12 +75,12 @@ def get_batch(dataset, batch_size, discount=0.99):
     return batch
 
 
-def train_and_eval_online_sac(env, key,
+def train_and_eval_online_sac(expl_env, eval_env, key,
                               discount=0.99, tau=0.005,
                               num_ensembles=2, target_entropy_multiplier=0.5,
-                              batch_size=256, learning_rate=3e-4,
-                              num_training_steps=50_000, expl_interval=1000, eval_interval=10_000):
-    target_entropy = -target_entropy_multiplier * env.action_space.shape[0]
+                              batch_size=512, learning_rate=1e-3,
+                              num_training_steps=100_000, expl_interval=1000, eval_interval=10_000):
+    target_entropy = -target_entropy_multiplier * expl_env.action_space.shape[0]
 
     def alpha_loss_fn(alpha_params, actor_params, alpha_fn, actor_fn, batch, key):
         key, action_key = jax.random.split(key)
@@ -160,14 +156,14 @@ def train_and_eval_online_sac(env, key,
 
     key, obs_key, action_key = jax.random.split(key, 3)
     example_observations = np.stack([
-        env.observation_space.sample(), env.observation_space.sample()], axis=0)
+        expl_env.observation_space.sample(), expl_env.observation_space.sample()], axis=0)
     example_actions = np.stack([
-        env.action_space.sample(), env.action_space.sample()], axis=0)
+        expl_env.action_space.sample(), expl_env.action_space.sample()], axis=0)
 
     key, alpha_key, actor_key, q_value_key = jax.random.split(key, 4)
 
     alpha_fn = LogParam()
-    actor_fn = Actor(env.action_space.shape[0])
+    actor_fn = Actor(expl_env.action_space.shape[0])
     if num_ensembles > 1:
         q_value_fn = ensemblize(QValue, num_ensembles)()
     else:
@@ -258,7 +254,7 @@ def train_and_eval_online_sac(env, key,
     for step in tqdm(range(num_training_steps + 1), desc="sac training"):
         if step % expl_interval == 0:
             key, sample_key = jax.random.split(key)
-            expl_info, expl_episodes = explore(expl_sample_action_fn, env, actor_params, desc='sac exploration')
+            expl_info, expl_episodes = explore(expl_sample_action_fn, expl_env, actor_params, desc='sac exploration')
 
             for k, v in expl_episodes.items():
                 data_key = k + 's'
@@ -294,7 +290,7 @@ def train_and_eval_online_sac(env, key,
 
         if step % eval_interval == 0:
             key, eval_key = jax.random.split(key)
-            eval_info = evaluate(eval_sample_action_fn, env, actor_params, desc='sac evaluation')
+            eval_info = evaluate(eval_sample_action_fn, eval_env, actor_params, desc='sac evaluation')
 
             for k, v in eval_info.items():
                 eval_k = 'eval/' + k

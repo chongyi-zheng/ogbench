@@ -50,7 +50,7 @@ class Actor(nn.Module):
 
 def train_and_eval_td3bc(env, get_batch_fn, key,
                          discount=0.99, tau=0.005,
-                         noise_clip=0.5, num_ensembles=2, alpha=0.3,
+                         noise_clip=0.15, num_ensembles=2, alpha=0.3,
                          batch_size=256, learning_rate=3e-4,
                          num_training_steps=50_000, eval_interval=10_000):
     def actor_loss_fn(actor_params, q_params,
@@ -61,10 +61,11 @@ def train_and_eval_td3bc(env, get_batch_fn, key,
 
         # Compute actor loss
         qs = q_value_fn.apply(q_params, batch['observations'], q_actions)
-        q = qs.mean(axis=0)
+        q = qs.min(axis=0)
 
         # Normalize Q values by the absolute mean to make the loss scale invariant.
-        q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
+        # q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
+        q_loss = -q.mean()
         bc_loss = alpha * jnp.square(batch['actions'] - q_actions).mean()
         actor_loss = q_loss + bc_loss
 
@@ -160,7 +161,7 @@ def train_and_eval_td3bc(env, get_batch_fn, key,
                 q_opt_state, actor_opt_state, info)
 
     @jax.jit
-    def sample_actions(params, observations, seed=None):
+    def sample_actions(params, observations, seed=None, temperature=1.0):
         actions = actor_fn.apply(params, observations)
         actions = jnp.clip(actions, -1, 1)
 
