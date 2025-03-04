@@ -60,7 +60,7 @@ def main():
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.995, 0.99, 0.95]:
-                    for alpha in [100.0, 10.0, 1.0, 0.1]:
+                    for alpha in [0.3, 0.03, 0.01, 0.003, 0.001]:
                         for distill_type in ['fwd_sample']:
                             for distill_mixup in [False]:
                                 for critic_loss_type in ['expectile']:
@@ -69,7 +69,7 @@ def main():
                                             for q_agg in ['min']:
                                                 for normalize_q_loss in [True]:
                                                     for use_target_reward in [True, False]:
-                                                        for reward_type in ['state_action']:
+                                                        for reward_type in ['state', 'state_action']:
                                                             for seed in [10]:
                                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_discount={discount}_obs_norm={obs_norm_type}_alpha={alpha}_distill={distill_type}_mixup={distill_mixup}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                 log_dir = os.path.expanduser(
