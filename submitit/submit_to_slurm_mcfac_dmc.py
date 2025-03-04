@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        # slurm_array_parallelism=24,
+        slurm_array_parallelism=25,
     )
 
     with executor.batch():  # job array
@@ -59,8 +59,8 @@ def main():
             "walker_walk",
         ]:
             for obs_norm_type in ['none']:
-                for discount in [0.995, 0.99, 0.95]:
-                    for alpha in [0.3, 0.03, 0.01, 0.003, 0.001]:
+                for discount in [0.99]:
+                    for alpha in [0.001, 0.0003, 0.0001, 0.00001]:
                         for distill_type in ['fwd_sample']:
                             for distill_mixup in [False]:
                                 for critic_loss_type in ['expectile']:
