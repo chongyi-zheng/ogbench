@@ -91,10 +91,15 @@ class MCFACAgent(flax.struct.PyTreeNode):
             assert self.config['reward_type'] == 'state'
             goal_actions = None
 
-        target_q = (
-            (1 - self.config['discount']) * rewards
-            + self.config['discount'] * self.network.select('reward')(flow_goals, actions=goal_actions)
-        )
+        # target_q = (
+        #     (1 - self.config['discount']) * rewards
+        #     + self.config['discount'] * self.network.select('reward')(flow_goals, actions=goal_actions)
+        # )
+        if self.config['use_target_reward']:
+            future_rewards = self.network.select('target_reward')(flow_goals, actions=goal_actions)
+        else:
+            future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
+        target_q = rewards + self.config['discount'] / (1.0 - self.config['discount']) * future_rewards
 
         if self.config['critic_loss_type'] == 'mse':
             critic_loss = jnp.square(target_q - qs).mean()
@@ -301,13 +306,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
 
         return noisy_actions
 
-    def compute_fwd_flow_goals(self, noises, observations, actions,
-                               use_target_network=False):
-        if use_target_network:
-            module_name = 'target_critic_vf'
-        else:
-            module_name = 'critic_vf'
-
+    def compute_fwd_flow_goals(self, noises, observations, actions):
         noisy_goals = noises
         num_flow_steps = self.config['num_flow_steps']
         step_size = 1.0 / num_flow_steps
@@ -320,7 +319,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
             (noisy_goals,) = carry
 
             times = jnp.full(noisy_goals.shape[:-1], i * step_size)
-            vf = self.network.select(module_name)(
+            vf = self.network.select('critic_vf')(
                 noisy_goals, times, observations, actions)
             new_noisy_goals = noisy_goals + vf * step_size
 
@@ -378,7 +377,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        self.target_update(new_network, 'critic_vf')
+        self.target_update(new_network, 'reward')
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -492,18 +491,18 @@ class MCFACAgent(flax.struct.PyTreeNode):
             critic_vf=(critic_vf_def, (
                 ex_observations, ex_times, ex_observations, ex_actions)),
             critic=(critic_def, (ex_observations, ex_actions)),
-            target_critic_vf=(copy.deepcopy(critic_vf_def), (
-                ex_observations, ex_times, ex_observations, ex_actions)),
             actor_vf=(actor_vf_def, (ex_actions, ex_times, ex_observations)),
             actor=(actor_def, (ex_actions, ex_observations)),
         )
         if config['reward_type'] == 'state':
             network_info.update(
                 reward=(reward_def, (ex_observations, )),
+                target_reward=(copy.deepcopy(reward_def), (ex_observations, )),
             )
         else:
             network_info.update(
                 reward=(reward_def, (ex_observations, ex_actions)),
+                target_reward=(copy.deepcopy(reward_def), (ex_observations, ex_actions)),
             )
         # if encoders.get('actor_bc_flow') is not None:
         #     # Add actor_bc_flow_encoder to ModuleDict to make it separately callable.
@@ -523,7 +522,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
         network = TrainState.create(network_def, network_params, tx=network_tx)
 
         params = network.params
-        params['modules_target_critic_vf'] = params['modules_critic_vf']
+        params['modules_target_reward'] = params['modules_reward']
 
         cond_prob_path = cond_prob_path_class[config['prob_path_class']](
             scheduler=scheduler_class[config['scheduler_class']]()
@@ -560,6 +559,7 @@ def get_config():
             alpha=10.0,  # BC coefficient (need to be tuned for each environment).
             num_flow_steps=10,  # Number of flow steps.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
+            use_target_reward=True,  # Whether to use the target reward network.
             reward_type='state',  # Reward type. ('state', 'state_action')
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             encoder_actor_loss_grad=False,  # Whether to backpropagate gradients from the actor loss into the encoder.
