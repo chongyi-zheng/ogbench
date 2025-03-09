@@ -45,7 +45,7 @@ def main():
 
     with executor.batch():  # job array
         for env_name in [
-            # "antmaze-large-navigate-singletask-v0",
+            "antmaze-large-navigate-singletask-v0",
             "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
             # "antmaze-medium-play-v2",
@@ -64,10 +64,10 @@ def main():
                                 for critic_loss_type in ['expectile']:
                                     for critic_noise_type in ['normal']:
                                         for expectile in [0.9, 0.95, 0.99]:
-                                            for q_agg in ['mean', 'min']:
+                                            for q_agg in ['min']:
                                                 for normalize_q_loss in [True, False]:
-                                                    for use_target_reward in [True]:
-                                                        for reward_type in ['state', 'state_action']:
+                                                    for use_target_reward in [True, False]:
+                                                        for reward_type in ['state']:
                                                             for seed in [10]:
                                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_distill={distill_type}_mixup={distill_mixup}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                 log_dir = os.path.expanduser(

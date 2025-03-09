@@ -50,7 +50,7 @@ def main():
             # "antsoccer-arena-navigate-singletask-v0"
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
-            "door-human-v1",
+            # "door-human-v1",
             # "cube-single-play-singletask-task2-v0",
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
@@ -65,7 +65,7 @@ def main():
                                     for q_agg in ['mean', 'min']:
                                         for normalize_q_loss in [True, False]:
                                             for use_target_reward in [False, True]:
-                                                for reward_type in ['state', 'state_action']:
+                                                for reward_type in ['state']:
                                                     for seed in [10]:
                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_distill={distill_type}_value_noise={value_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                         log_dir = os.path.expanduser(
