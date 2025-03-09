@@ -40,10 +40,10 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=30,
+        # slurm_array_parallelism=30,
     )
 
-    # ddpgbc hyperparameters: discount, alpha, num_flow_steps, actor_layer_norm, vf_q_loss, normalize_q_loss
+    # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
     with executor.batch():  # job array
         for env_name in [
             # "antmaze-large-navigate-singletask-v0",
