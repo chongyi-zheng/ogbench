@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -40,12 +40,12 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        # slurm_array_parallelism=24,
+        slurm_array_parallelism=30,
     )
 
     with executor.batch():  # job array
         for env_name in [
-            "antmaze-large-navigate-singletask-v0",
+            # "antmaze-large-navigate-singletask-v0",
             "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
             # "antmaze-medium-play-v2",
@@ -56,17 +56,17 @@ def main():
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
         ]:
-            for obs_norm_type in ['none']:
+            for obs_norm_type in ['none', 'normal']:
                 for discount in [0.99]:
-                    for alpha in [3000, 3000, 30, 3]:
-                        for distill_type in ['fwd_sample', 'fwd_int']:
+                    for alpha in [30000, 10000, 5000, 3000, 1000]:
+                        for distill_type in ['fwd_sample']:
                             for distill_mixup in [False]:
                                 for critic_loss_type in ['expectile']:
                                     for critic_noise_type in ['normal']:
-                                        for expectile in [0.9, 0.95, 0.99]:
-                                            for q_agg in ['mean', 'min']:
-                                                for normalize_q_loss in [True, False]:
-                                                    for use_target_reward in [True]:
+                                        for expectile in [0.85, 0.9, 0.95, 0.99]:
+                                            for q_agg in ['min']:
+                                                for normalize_q_loss in [False]:
+                                                    for use_target_reward in [True, False]:
                                                         for reward_type in ['state', 'state_action']:
                                                             for seed in [10]:
                                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_distill={distill_type}_mixup={distill_mixup}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_use_target_reward={use_target_reward}_reward={reward_type}"
