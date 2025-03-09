@@ -81,7 +81,7 @@ def main():
                                                 echo task_id: $SLURM_ARRAY_TASK_ID;
                                                 squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
                                                 echo seed: {seed};
-        
+                                                
                                                 export PROJECT_DIR=$PWD;
                                                 export PYTHONPATH=$HOME/research/ogbench/impls;
                                                 export PATH="$PATH":"$CONDA_PREFIX"/bin;
@@ -90,6 +90,9 @@ def main():
                                                 export PYOPENGL_PLATFORM=egl;
                                                 export EGL_DEVICE_ID=0;
                                                 export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
+                                                export D4RL_SUPPRESS_IMPORT_ERROR=1;
+                                                export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
+                                                export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
         
                                                 rm -rf {log_dir};
                                                 mkdir -p {log_dir};
