@@ -58,9 +58,9 @@ def main():
             # "cheetah_run",
             "walker_walk",
         ]:
-            for obs_norm_type in ['none', 'normal']:
+            for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [0.003, 0.001]:
+                    for alpha in [100, 30, 10]:
                         for distill_type in ['fwd_sample']:
                             for distill_mixup in [False]:
                                 for critic_loss_type in ['expectile']:
