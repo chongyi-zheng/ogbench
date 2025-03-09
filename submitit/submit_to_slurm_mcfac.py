@@ -21,6 +21,10 @@ def main():
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
+    elif cluster_name == 'neuronic.cs.princeton.edu':
+        log_root_dir = '/n/fs/prl-chongyiz'
+        partition = 'all'
+        account = None
     else:
         raise NotImplementedError
 
@@ -36,12 +40,12 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        # slurm_array_parallelism=24,
+        slurm_array_parallelism=30,
     )
 
     with executor.batch():  # job array
         for env_name in [
-            "antmaze-large-navigate-singletask-v0",
+            # "antmaze-large-navigate-singletask-v0",
             "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
             # "antmaze-medium-play-v2",

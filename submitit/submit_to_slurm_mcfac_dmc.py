@@ -20,7 +20,11 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
+    elif cluster_name == 'neuronic.cs.princeton.edu':
+        log_root_dir = '/n/fs/prl-chongyiz'
+        partition = 'all'
+        account = None
     else:
         raise NotImplementedError
 
@@ -36,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        # slurm_array_parallelism=24,
+        slurm_array_parallelism=30,
     )
 
     with executor.batch():  # job array
@@ -54,19 +58,19 @@ def main():
             # "cheetah_run",
             "walker_walk",
         ]:
-            for obs_norm_type in ['none']:
-                for discount in [0.995, 0.99, 0.95]:
-                    for alpha in [100.0, 10.0, 1.0, 0.1]:
+            for obs_norm_type in ['none', 'normal']:
+                for discount in [0.99]:
+                    for alpha in [0.003, 0.001]:
                         for distill_type in ['fwd_sample']:
                             for distill_mixup in [False]:
                                 for critic_loss_type in ['expectile']:
                                     for critic_noise_type in ['normal']:
-                                        for expectile in [0.9, 0.95, 0.99]:
+                                        for expectile in [0.85, 0.9, 0.95, 0.99]:
                                             for q_agg in ['min']:
-                                                for normalize_q_loss in [True]:
-                                                    for use_target_reward in [True, False]:
-                                                        for reward_type in ['state_action']:
-                                                            for seed in [10]:
+                                                for normalize_q_loss in [True, False]:
+                                                    for use_target_reward in [False]:
+                                                        for reward_type in ['state', 'state_action']:
+                                                            for seed in [20]:
                                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_discount={discount}_obs_norm={obs_norm_type}_alpha={alpha}_distill={distill_type}_mixup={distill_mixup}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/mcfac/{exp_name}/{seed}")
