@@ -55,7 +55,7 @@ def main():
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
                     for alpha in [3000, 3000, 30, 3]:
-                        for distill_type in ['fwd_sample', 'fwd_int']:
+                        for distill_type in ['fwd_sample']:
                             for distill_mixup in [False]:
                                 for critic_loss_type in ['expectile']:
                                     for critic_noise_type in ['normal']:

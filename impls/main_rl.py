@@ -6,6 +6,7 @@ import random
 import time
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import tqdm
 import wandb
@@ -112,6 +113,14 @@ def main(_):
     # if config['discrete']:
     #     # Fill with the maximum action to let the agent know the action space size.
     #     example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)
+
+    if config['agent_name'] in ['mcfac', 'ifac']:
+        if hasattr(train_dataset, 'dataset'):
+            dataset_observations = train_dataset.dataset['observations']
+        else:
+            dataset_observations = train_dataset['observations']
+        config['dataset_obs_min'] = jnp.min(dataset_observations, axis=0)
+        config['dataset_obs_max'] = jnp.max(dataset_observations, axis=0)
 
     agent_class = agents[config['agent_name']]
     agent = agent_class.create(
