@@ -45,7 +45,7 @@ def main():
 
     with executor.batch():  # job array
         for env_name in [
-            "antmaze-large-navigate-singletask-v0",
+            # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
             # "antmaze-medium-play-v2",
@@ -55,10 +55,12 @@ def main():
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
+            "cheetah_run",
+            "walker_walk",
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [100, 30]:
+                    for alpha in [100, 30, 10]:
                         for distill_type in ['fwd_sample']:
                             for value_noise_type in ['normal']:
                                 for expectile in [0.9, 0.95, 0.99]:
