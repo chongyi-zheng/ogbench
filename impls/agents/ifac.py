@@ -53,6 +53,7 @@ class IFACAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
         actions = batch['actions']
         rewards = batch['rewards']
+        masks = batch['masks']
         goals = batch['value_goals']
 
         if self.config['encoder'] is not None:
@@ -88,7 +89,7 @@ class IFACAgent(flax.struct.PyTreeNode):
         else:
             future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
 
-        target_v = rewards + self.config['discount'] / (1 - self.config['discount']) * future_rewards
+        target_v = (1 - self.config['discount']) * rewards + self.config['discount'] * masks * future_rewards
         v = self.network.select('value')(observations, params=grad_params)
         value_loss = self.expectile_loss(target_v - v, target_v - v, self.config['expectile']).mean()
 
@@ -118,7 +119,7 @@ class IFACAgent(flax.struct.PyTreeNode):
         )
 
         next_v = self.network.select('value')(next_observations)
-        target_q = rewards + self.config['discount'] * masks * next_v
+        target_q = (1 - self.config['discount']) * rewards + self.config['discount'] * masks * next_v
         critic_loss = jnp.square(target_q - qs).mean()
 
         # For logging
