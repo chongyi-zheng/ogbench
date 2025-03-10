@@ -46,7 +46,7 @@ def main():
     with executor.batch():  # job array
         for env_name in [
             "antmaze-large-navigate-singletask-v0",
-            "humanoidmaze-medium-navigate-singletask-v0",
+            # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
