@@ -464,7 +464,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
         )
         critic_def = Value(
             hidden_dims=config['value_hidden_dims'],
-            layer_norm=config['layer_norm'],
+            layer_norm=config['value_layer_norm'],
             num_ensembles=2,
             # encoder=encoders.get('actor_critic'),
         )
@@ -484,7 +484,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
 
         reward_def = Value(
             hidden_dims=config['reward_hidden_dims'],
-            layer_norm=config['layer_norm'],
+            layer_norm=config['reward_layer_norm'],
             # encoder=encoders.get('actor_critic'),
         )
 
@@ -542,7 +542,7 @@ def get_config():
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             reward_hidden_dims=(512, 512, 512, 512),  # Reward network hidden dimensions.
-            layer_norm=True,  # Whether to use layer normalization.
+            reward_layer_norm=True,  # Whether to use layer normalization for the reward.
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             discount=0.99,  # Discount factor.
