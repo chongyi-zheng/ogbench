@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        # slurm_array_parallelism=24,
+        slurm_array_parallelism=30,
     )
 
     with executor.batch():  # job array
@@ -70,7 +70,7 @@ def main():
                                                         for use_target_reward in [False, True]:
                                                             for reward_type in ['state', 'state_action']:
                                                                 for seed in [20]:
-                                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_network_type={network_type}_num_residual_blocks={num_residual_blocks}_alpha={alpha}_distill={distill_type}_value_noise={value_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_network={network_type}_num_res_blks={num_residual_blocks}_alpha={alpha}_distill={distill_type}_value_noise={value_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                     log_dir = os.path.expanduser(
                                                                         f"{log_root_dir}/exp_logs/ogbench_logs/ifac/{exp_name}/{seed}")
 
