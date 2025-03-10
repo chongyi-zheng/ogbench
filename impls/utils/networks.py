@@ -75,6 +75,7 @@ class SimBaMLP(nn.Module):
     num_residual_blocks: int
     hidden_dims: Sequence[int]
     layer_norm: bool = False
+    activate_final: bool = False
 
     @nn.compact
     def __call__(self, x):
@@ -92,6 +93,8 @@ class SimBaMLP(nn.Module):
             x = nn.LayerNorm()(x)
 
         x = nn.Dense(self.hidden_dims[-1], kernel_init=nn.initializers.orthogonal(1))(x)
+        if self.activate_final:
+            x = self.activations(x)
 
         return x
 
@@ -189,15 +192,27 @@ class Value(nn.Module):
     """
 
     hidden_dims: Sequence[int]
+    network_type: str = 'mlp'
     layer_norm: bool = True
+    num_residual_blocks: int = 1
     num_ensembles: int = 1
     encoder: nn.Module = None
 
     def setup(self):
         mlp_class = MLP
+        if self.network_type == 'mlp':
+            mlp_class = MLP
+            kwargs = dict(hidden_dims=(*self.hidden_dims, 1),
+                          activate_final=False, layer_norm=self.layer_norm)
+        elif self.network_type == 'simba':
+            mlp_class = SimBaMLP
+            kwargs = dict(hidden_dims=(*self.hidden_dims, 1), num_residual_blocks=self.num_residual_blocks,
+                          activate_final=False, layer_norm=self.layer_norm)
+
         if self.num_ensembles > 1:
             mlp_class = ensemblize(mlp_class, self.num_ensembles)
-        value_net = mlp_class((*self.hidden_dims, 1), activate_final=False, layer_norm=self.layer_norm)
+
+        value_net = mlp_class(**kwargs)
 
         self.value_net = value_net
 
@@ -697,6 +712,7 @@ class GCFMVectorField(nn.Module):
     time_dim: int = 64
     network_type: str = 'mlp'
     layer_norm: bool = True
+    num_residual_blocks: int = 1
     num_ensembles: int = 1
     state_encoder: nn.Module = None
     goal_encoder: nn.Module = None
@@ -704,41 +720,46 @@ class GCFMVectorField(nn.Module):
     def setup(self):
         if self.network_type == 'mlp':
             network_module = MLP
+            kwargs = dict(hidden_dims=(*self.hidden_dims, self.vector_dim),
+                          activate_final=False, layer_norm=self.layer_norm)
         else:
-            raise NotImplementedError
+            network_module = SimBaMLP
+            kwargs = dict(hidden_dims=(*self.hidden_dims, self.vector_dim),
+                          num_residual_blocks=self.num_residual_blocks,
+                          activate_final=False, layer_norm=self.layer_norm)
 
         if self.num_ensembles > 1:
             network_module = ensemblize(network_module, self.num_ensembles)
 
-        if self.network_type == 'mlp':
-            # time_net = MLP(
-            #     (self.hidden_dims[0],),
-            #     activate_final=False,
-            #     layer_norm=self.layer_norm
-            # )
-            # cond_net = MLP(
-            #     (self.hidden_dims[0],),
-            #     activate_final=False,
-            #     layer_norm=self.layer_norm
-            # )
-            # proj_net = MLP(
-            #     (self.hidden_dims[0],),
-            #     activate_final=False,
-            #     layer_norm=self.layer_norm
-            # )
-            velocity_field_net = network_module(
-                (*self.hidden_dims, self.vector_dim),
-                activate_final=False,
-                layer_norm=self.layer_norm
-            )
-        else:
-            raise NotImplementedError
-
+        # if self.network_type == 'mlp':
+        #     # time_net = MLP(
+        #     #     (self.hidden_dims[0],),
+        #     #     activate_final=False,
+        #     #     layer_norm=self.layer_norm
+        #     # )
+        #     # cond_net = MLP(
+        #     #     (self.hidden_dims[0],),
+        #     #     activate_final=False,
+        #     #     layer_norm=self.layer_norm
+        #     # )
+        #     # proj_net = MLP(
+        #     #     (self.hidden_dims[0],),
+        #     #     activate_final=False,
+        #     #     layer_norm=self.layer_norm
+        #     # )
+        #     velocity_field_net = network_module(
+        #         (*self.hidden_dims, self.vector_dim),
+        #         activate_final=False,
+        #         layer_norm=self.layer_norm
+        #     )
+        # else:
+        #     raise NotImplementedError
+        self.velocity_field_net = network_module(**kwargs)
         self.time_embedding = SinusoidalPosEmb(emb_dim=self.time_dim)
         # self.time_net = time_net
         # self.cond_net = cond_net
         # self.proj_net = proj_net
-        self.velocity_field_net = velocity_field_net
+        # self.velocity_field_net = velocity_field_net
 
     def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None):
         """Return the value/critic velocity field.
@@ -938,6 +959,7 @@ class GCFMValue(nn.Module):
     network_type: str = 'mlp'
     layer_norm: bool = True
     activate_final: bool = False
+    num_residual_blocks: int = 1
     num_ensembles: int = 1
     state_encoder: nn.Module = None
     goal_encoder: nn.Module = None
@@ -945,22 +967,27 @@ class GCFMValue(nn.Module):
     def setup(self):
         if self.network_type == 'mlp':
             network_module = MLP
+            kwargs = dict(hidden_dims=(*self.hidden_dims, self.output_dim),
+                          activate_final=self.activate_final, layer_norm=self.layer_norm)
         else:
-            raise NotImplementedError
+            network_module = SimBaMLP
+            kwargs = dict(hidden_dims=(*self.hidden_dims, self.output_dim),
+                          num_residual_blocks=self.num_residual_blocks,
+                          activate_final=self.activate_final, layer_norm=self.layer_norm)
 
         if self.num_ensembles > 1:
             network_module = ensemblize(network_module, self.num_ensembles)
 
-        if self.network_type == 'mlp':
-            value_net = network_module(
-                (*self.hidden_dims, self.output_dim),
-                activate_final=self.activate_final,
-                layer_norm=self.layer_norm
-            )
-        else:
-            raise NotImplementedError
+        # if self.network_type == 'mlp':
+        #     value_net = network_module(
+        #         (*self.hidden_dims, self.output_dim),
+        #         activate_final=self.activate_final,
+        #         layer_norm=self.layer_norm
+        #     )
+        # else:
+        #     raise NotImplementedError
 
-        self.value_net = value_net
+        self.value_net = network_module(**kwargs)
 
     def __call__(self, goals, observations, actions=None, commanded_goals=None):
         """Return the value/critic function.

@@ -445,28 +445,38 @@ class IFACAgent(flax.struct.PyTreeNode):
 
         # Define value and actor networks.
         critic_def = Value(
+            network_type=config['network_type'],
+            num_residual_blocks=config['num_residual_blocks'],
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
             num_ensembles=2,
             # encoder=encoders.get('actor_critic'),
         )
         value_vf_def = GCFMVectorField(
+            network_type=config['network_type'],
+            num_residual_blocks=config['num_residual_blocks'],
             vector_dim=observation_dim,
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
         )
         value_def = Value(
+            network_type=config['network_type'],
+            num_residual_blocks=config['num_residual_blocks'],
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
         )
 
         actor_vf_def = GCFMVectorField(
+            network_type=config['network_type'],
+            num_residual_blocks=config['num_residual_blocks'],
             vector_dim=action_dim,
             hidden_dims=config['actor_hidden_dims'],
             layer_norm=config['actor_layer_norm'],
             # state_encoder=encoders.get('actor_critic'),
         )
         actor_def = GCFMValue(
+            network_type=config['network_type'],
+            num_residual_blocks=config['num_residual_blocks'],
             hidden_dims=config['actor_hidden_dims'],
             output_dim=action_dim,
             layer_norm=config['actor_layer_norm'],
@@ -474,6 +484,8 @@ class IFACAgent(flax.struct.PyTreeNode):
         )
 
         reward_def = Value(
+            network_type=config['network_type'],
+            num_residual_blocks=config['num_residual_blocks'],
             hidden_dims=config['reward_hidden_dims'],
             layer_norm=config['reward_layer_norm'],
             # encoder=encoders.get('actor_critic'),
@@ -531,6 +543,8 @@ def get_config():
             agent_name='ifac',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
+            network_type='mlp',  # Type of the network
+            num_residual_blocks=1,  # Number of residual blocks for simba network.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             reward_hidden_dims=(512, 512, 512, 512),  # Reward network hidden dimensions.
