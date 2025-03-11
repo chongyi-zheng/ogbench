@@ -114,11 +114,11 @@ def main():
                                                                                 --enable_wandb=1 \
                                                                                 --env_name={env_name} \
                                                                                 --obs_norm_type={obs_norm_type} \
-                                                                                --batch_size={batch_size} \
                                                                                 --eval_episodes=50 \
                                                                                 --dataset_class=GCDataset \
                                                                                 --offline_steps=1_000_000 \
                                                                                 --agent=impls/agents/mcfac.py \
+                                                                                --agent.batch_size={batch_size} \
                                                                                 --agent.discount={discount} \
                                                                                 --agent.alpha={alpha} \
                                                                                 --agent.num_flow_steps=10 \
