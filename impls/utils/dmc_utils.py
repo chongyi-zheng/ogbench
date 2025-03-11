@@ -402,7 +402,7 @@ def get_dataset(
         dataset_dir: Directory to save the datasets.
     """
     dataset_dir = os.path.expanduser(dataset_dir)
-    h5path = os.path.join(dataset_dir, env_name + '.hdf5')
+    h5path = os.path.join(dataset_dir, 'rnd_' + env_name + '.hdf5')
 
     dataset = {}
     with h5py.File(h5path, 'r') as dataset_file:
