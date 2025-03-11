@@ -61,7 +61,7 @@ def main():
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
                     for batch_size in [1024]:
-                        for alpha in [100, 10, 1]:
+                        for alpha in [100, 30, 10, 1]:
                             for distill_type in ['fwd_sample']:
                                 for distill_mixup in [False]:
                                     for critic_loss_type in ['expectile']:
@@ -69,7 +69,7 @@ def main():
                                             for expectile in [0.85, 0.9, 0.95, 0.99]:
                                                 for q_agg in ['min']:
                                                     for normalize_q_loss in [True, False]:
-                                                        for reward_layer_norm in [True, False]:
+                                                        for reward_layer_norm in [True]:
                                                             for use_target_reward in [False]:
                                                                 for reward_type in ['state', 'state_action']:
                                                                     for seed in [20]:
