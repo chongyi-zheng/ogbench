@@ -37,10 +37,10 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="32G",
+        slurm_mem="20G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=30,
+        slurm_array_parallelism=35,
     )
 
     with executor.batch():  # job array
@@ -117,9 +117,9 @@ def main():
                                                                             --dataset_class=GCDataset \
                                                                             --agent=impls/agents/ifac.py \
                                                                             --agent.batch_size={batch_size} \
-                                                                            --agent.actor_hidden_dims=({network_size},{network_size},{network_size},{network_size}) \
-                                                                            --agent.value_hidden_dims=({network_size},{network_size},{network_size},{network_size}) \
-                                                                            --agent.reward_hidden_dim=({network_size},{network_size},{network_size},{network_size}) \
+                                                                            --agent.actor_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
+                                                                            --agent.value_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
+                                                                            --agent.reward_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
                                                                             --agent.lr={lr} \
                                                                             --agent.network_type=mlp \
                                                                             --agent.num_residual_blocks=1 \
