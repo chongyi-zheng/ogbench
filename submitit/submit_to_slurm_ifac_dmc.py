@@ -59,7 +59,7 @@ def main():
             "walker_walk",
         ]:
             for obs_norm_type in ['none']:
-                for discount in [0.99]:
+                for lr in [1e-4]:
                     for batch_size in [1024]:
                         for alpha in [100, 30, 10, 1]:
                             for distill_type in ['fwd_sample']:
@@ -71,7 +71,7 @@ def main():
                                                     for use_target_reward in [False]:
                                                         for reward_type in ['state', 'state_action']:
                                                             for seed in [20]:
-                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_discount={discount}_obs_norm={obs_norm_type}_bs={batch_size}_alpha={alpha}_distill={distill_type}_value_noise={value_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_alpha={alpha}_distill={distill_type}_value_noise={value_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/ifac/{exp_name}/{seed}")
 
@@ -116,7 +116,7 @@ def main():
                                                                         --dataset_class=GCDataset \
                                                                         --agent=impls/agents/ifac.py \
                                                                         --agent.batch_size={batch_size} \
-                                                                        --agent.discount={discount} \
+                                                                        --agent.lr={lr} \
                                                                         --agent.network_type=mlp \
                                                                         --agent.num_residual_blocks=1 \
                                                                         --agent.alpha={alpha} \
