@@ -62,11 +62,11 @@ def main():
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for network_size in [512]:
-                            for alpha in [1000, 100, 10, 1, 0.1]:
+                            for alpha in [1000, 100, 10, 1, 0.1, 0.01]:
                                 for distill_type in ['fwd_sample']:
                                     for value_noise_type in ['normal']:
                                         for expectile in [0.85, 0.9, 0.95, 0.99]:
-                                            for q_agg in ['mean', 'min']:
+                                            for q_agg in ['min']:
                                                 for normalize_q_loss in [True, False]:
                                                     for reward_layer_norm in [True]:
                                                         for use_target_reward in [True, False]:
