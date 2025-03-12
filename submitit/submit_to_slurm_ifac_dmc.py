@@ -59,9 +59,9 @@ def main():
             "walker_walk",
         ]:
             for obs_norm_type in ['none']:
-                for lr in [3e-4]:
-                    for batch_size in [256]:
-                        for network_size in [512]:
+                for lr in [1e-4]:
+                    for batch_size in [1024]:
+                        for network_size in [1024]:
                             for alpha in [1000, 100, 10, 1]:
                                 for distill_type in ['fwd_sample']:
                                     for value_noise_type in ['normal']:
