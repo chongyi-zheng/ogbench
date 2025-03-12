@@ -54,6 +54,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
         actions = batch['actions']
         rewards = batch['rewards']
+        masks = batch['masks']
         goals = batch['value_goals']
 
         if self.config['encoder'] is not None:
@@ -99,8 +100,8 @@ class MCFACAgent(flax.struct.PyTreeNode):
             future_rewards = self.network.select('target_reward')(flow_goals, actions=goal_actions)
         else:
             future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
-        # target_q = rewards + self.config['discount'] / (1.0 - self.config['discount']) * future_rewards
-        target_q = (1.0 - self.config['discount']) * rewards + self.config['discount'] * future_rewards
+        # target_q = rewards + self.config['discount'] / (1.0 - self.config['discount']) * masks * future_rewards
+        target_q = (1.0 - self.config['discount']) * rewards + self.config['discount'] * masks * future_rewards
 
         if self.config['critic_loss_type'] == 'mse':
             critic_loss = jnp.square(target_q - qs).mean()
