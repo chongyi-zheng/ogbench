@@ -278,8 +278,8 @@ class GCDataset:
             successes = (idxs[:, None] == value_goal_idxs).astype(float)
         else:
             successes = (idxs == value_goal_idxs).astype(float)
-        batch['masks'] = 1.0 - successes
         if self.config['relabel_reward']:
+            batch['masks'] = 1.0 - successes
             batch['rewards'] = successes - (1.0 if self.config['gc_negative'] else 0.0)
 
         # final_state_idxs = self.terminal_locs[np.searchsorted(self.terminal_locs, idxs)]

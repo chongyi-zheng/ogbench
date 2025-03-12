@@ -59,17 +59,17 @@ def main():
             "walker_walk",
         ]:
             for obs_norm_type in ['none']:
-                for lr in [1e-4]:
-                    for batch_size in [1024]:
-                        for network_size in [1024]:
-                            for alpha in [1000, 100, 10, 1]:
+                for lr in [3e-4]:
+                    for batch_size in [256]:
+                        for network_size in [512]:
+                            for alpha in [1000, 100, 10, 1, 0.1]:
                                 for distill_type in ['fwd_sample']:
                                     for value_noise_type in ['normal']:
                                         for expectile in [0.85, 0.9, 0.95, 0.99]:
-                                            for q_agg in ['min']:
+                                            for q_agg in ['mean', 'min']:
                                                 for normalize_q_loss in [True, False]:
                                                     for reward_layer_norm in [True]:
-                                                        for use_target_reward in [False]:
+                                                        for use_target_reward in [True, False]:
                                                             for reward_type in ['state', 'state_action']:
                                                                 for seed in [20]:
                                                                     exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_distill={distill_type}_value_noise={value_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"

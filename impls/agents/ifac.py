@@ -556,7 +556,6 @@ def get_config():
             tau=0.005,  # Target network update rate.
             expectile=0.9,  # IQL style expectile.
             q_agg='mean',  # Aggregation method for target Q values.
-            critic_loss_type='mse',  # Critic loss type. ('mse', 'expectile').
             value_noise_type='normal',  # Critic noise type. ('marginal_state', 'marginal_goal', 'normal').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
