@@ -369,6 +369,6 @@ def get_dataset(
         actions=dataset['actions'].astype(np.float32),
         next_observations=dataset['next_observations'].astype(np.float32),
         terminals=dataset['terminals'].astype(np.float32),
-        rewards=dataset['terminals'].astype(np.float32),
+        rewards=dataset['rewards'].astype(np.float32),
         masks=dataset['masks'].astype(np.float32),
     )

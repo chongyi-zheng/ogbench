@@ -60,18 +60,6 @@ class EpisodeMonitor(gymnasium.Wrapper):
 
 
 class DMCEpisodeMonitor(EpisodeMonitor):
-    # @staticmethod
-    # def _flatten_obs(obs):
-    #     obs_pieces = []
-    #     for v in obs.values():
-    #         flat = np.array([v]) if np.isscalar(v) else v.ravel()
-    #         obs_pieces.append(flat)
-    #     return np.concatenate(obs_pieces, axis=0)
-
-    def _get_obs(self, time_step):
-        obs = self._flatten_obs(time_step.observation)
-        return obs
-
     def step(self, action):
         time_step = self.env.step(action)
 
@@ -191,7 +179,7 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5):
     elif 'walker' in env_name or 'cheetah' in env_name or 'quadruped' in env_name or 'jaco' in env_name:
         # DMC
         from utils import dmc_utils
-        
+
         env = dmc_utils.make_env(env_name)
         eval_env = dmc_utils.make_env(env_name)
         dataset = dmc_utils.get_dataset(env_name)

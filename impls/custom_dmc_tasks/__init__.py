@@ -42,5 +42,5 @@ def make(domain, task,
     assert None
 
 
-def make_jaco(task, obs_type, seed, image_wh=None) -> tp.Any:
+def make_jaco(task, obs_type, seed, image_wh=None):
     return jaco.make(task, obs_type, seed, image_wh)
