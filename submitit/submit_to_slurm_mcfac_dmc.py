@@ -62,7 +62,7 @@ def main():
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for alpha in [100, 30, 10, 3, 1]:
-                            for network_size in [512]:
+                            for network_size in [1024]:
                                 for distill_type in ['fwd_sample']:
                                     for num_flow_steps in [10, 20, 40]:
                                         for critic_loss_type in ['expectile']:
