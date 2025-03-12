@@ -35,11 +35,10 @@ import os
 _DEFAULT_TIME_LIMIT = 20
 SUITE = containers.TaggedTasks()
 
-
-TASKS = [('reach_top_left', np.array([-0.15, 0.15, 0.01])),
-         ('reach_top_right', np.array([0.15, 0.15, 0.01])),
-         ('reach_bottom_left', np.array([-0.15, -0.15, 0.01])),
-         ('reach_bottom_right', np.array([0.15, -0.15, 0.01]))]
+TASKS = [('reach_top_left', np.array([-0.15, 0.15])),
+         ('reach_top_right', np.array([0.15, 0.15])),
+         ('reach_bottom_left', np.array([-0.15, -0.15])),
+         ('reach_bottom_right', np.array([0.15, -0.15]))]
 
 
 def make(task,
@@ -66,8 +65,8 @@ def get_model_and_assets(task):
 
 @SUITE.add('benchmarking')
 def reach_top_left(time_limit=_DEFAULT_TIME_LIMIT,
-              random=None,
-              environment_kwargs=None):
+                   random=None,
+                   environment_kwargs=None):
     """Returns the Run task."""
     physics = Physics.from_xml_string(*get_model_and_assets('reach_top_left'))
     task = MultiTaskPointMassMaze(target_id=0, random=random)
@@ -77,10 +76,11 @@ def reach_top_left(time_limit=_DEFAULT_TIME_LIMIT,
                                time_limit=time_limit,
                                **environment_kwargs)
 
+
 @SUITE.add('benchmarking')
 def reach_top_right(time_limit=_DEFAULT_TIME_LIMIT,
-              random=None,
-              environment_kwargs=None):
+                    random=None,
+                    environment_kwargs=None):
     """Returns the Run task."""
     physics = Physics.from_xml_string(*get_model_and_assets('reach_top_right'))
     task = MultiTaskPointMassMaze(target_id=1, random=random)
@@ -90,10 +90,11 @@ def reach_top_right(time_limit=_DEFAULT_TIME_LIMIT,
                                time_limit=time_limit,
                                **environment_kwargs)
 
+
 @SUITE.add('benchmarking')
 def reach_bottom_left(time_limit=_DEFAULT_TIME_LIMIT,
-              random=None,
-              environment_kwargs=None):
+                      random=None,
+                      environment_kwargs=None):
     """Returns the Run task."""
     physics = Physics.from_xml_string(*get_model_and_assets('reach_bottom_left'))
     task = MultiTaskPointMassMaze(target_id=2, random=random)
@@ -103,10 +104,11 @@ def reach_bottom_left(time_limit=_DEFAULT_TIME_LIMIT,
                                time_limit=time_limit,
                                **environment_kwargs)
 
+
 @SUITE.add('benchmarking')
 def reach_bottom_right(time_limit=_DEFAULT_TIME_LIMIT,
-              random=None,
-              environment_kwargs=None):
+                       random=None,
+                       environment_kwargs=None):
     """Returns the Run task."""
     physics = Physics.from_xml_string(*get_model_and_assets('reach_bottom_right'))
     task = MultiTaskPointMassMaze(target_id=3, random=random)
@@ -122,13 +124,14 @@ class Physics(mujoco.Physics):
 
     def mass_to_target_dist(self, target):
         """Returns the distance from mass to the target."""
-        d = target - self.named.data.geom_xpos['pointmass']
+        d = target - self.named.data.geom_xpos['pointmass'][:2]
         return np.linalg.norm(d)
 
 
 class MultiTaskPointMassMaze(base.Task):
     """A point_mass `Task` to reach target with smooth reward."""
-    def __init__(self, target_id, random=None):
+
+    def __init__(self, target_id, random=None) -> None:
         """Initialize an instance of `PointMassMaze`.
 
     Args:
@@ -154,9 +157,7 @@ class MultiTaskPointMassMaze(base.Task):
             physics, self.random)
         physics.data.qpos[0] = np.random.uniform(-0.29, -0.15)
         physics.data.qpos[1] = np.random.uniform(0.15, 0.29)
-        #import ipdb; ipdb.set_trace()
-        physics.named.data.geom_xpos['target'][:] = self._target
-        
+        physics.named.data.geom_xpos['target'][:2] = self._target
 
         super().initialize_episode(physics)
 
@@ -166,7 +167,7 @@ class MultiTaskPointMassMaze(base.Task):
         obs['position'] = physics.position()
         obs['velocity'] = physics.velocity()
         return obs
-    
+
     def get_reward_spec(self):
         return specs.Array(shape=(1,), dtype=np.float32, name='reward')
 
@@ -174,10 +175,10 @@ class MultiTaskPointMassMaze(base.Task):
         """Returns a reward to the agent."""
         target_size = .015
         control_reward = rewards.tolerance(physics.control(), margin=1,
-                                       value_at_margin=0,
-                                       sigmoid='quadratic').mean()
+                                           value_at_margin=0,
+                                           sigmoid='quadratic').mean()
         small_control = (control_reward + 4) / 5
         near_target = rewards.tolerance(physics.mass_to_target_dist(self._target),
-                                bounds=(0, target_size), margin=target_size)
+                                        bounds=(0, target_size), margin=target_size)
         reward = near_target * small_control
         return reward

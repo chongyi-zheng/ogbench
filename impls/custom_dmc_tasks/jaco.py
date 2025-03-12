@@ -18,16 +18,13 @@ import collections
 
 from dm_control import composer
 from dm_control.composer import initializers
-from dm_control.composer.observation import observable
 from dm_control.composer.variation import distributions
 from dm_control.entities import props
 from dm_control.manipulation.shared import arenas
 from dm_control.manipulation.shared import cameras
 from dm_control.manipulation.shared import constants
 from dm_control.manipulation.shared import observations
-from dm_control.manipulation.shared import registry
 from dm_control.manipulation.shared import robots
-from dm_control.manipulation.shared import tags
 from dm_control.manipulation.shared import workspaces
 from dm_control.utils import rewards
 from dm_env import specs
@@ -62,8 +59,10 @@ TASKS = [('reach_top_left', np.array([-0.09, 0.09, _PROP_Z_OFFSET])),
          ('reach_bottom_right', np.array([0.09, -0.09, _PROP_Z_OFFSET]))]
 
 
-def make(task_id, obs_type, seed):
+def make(task_id, obs_type, seed, image_wh=None):
     obs_settings = observations.VISION if obs_type == 'pixels' else observations.PERFECT_FEATURES
+    if image_wh is not None:
+        obs_settings = obs_settings._replace(camera=obs_settings.camera._replace(height=64, width=64))
     task = _reach(task_id, obs_settings=obs_settings, use_site=True)
     return composer.Environment(task,
                                 time_limit=_TIME_LIMIT,
@@ -72,6 +71,7 @@ def make(task_id, obs_type, seed):
 
 class MultiTaskReach(composer.Task):
     """Bring the hand close to a target prop or site."""
+
     def __init__(self, task_id, arena, arm, hand, prop, obs_settings,
                  workspace, control_timestep):
         """Initializes a new `Reach` task.
@@ -109,6 +109,7 @@ class MultiTaskReach(composer.Task):
             self._targets = [
                 target for (task, target) in TASKS if task == task_id
             ]
+            assert len(self._targets) > 0
 
         #target_pos_distribution = distributions.Uniform(*TASKS[task_id])
         self._prop = prop
