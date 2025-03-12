@@ -54,7 +54,7 @@ def main():
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [1000, 100, 10, 1]:
+                    for alpha in [0.1, 0.01, 0.001]:
                         for num_flow_steps in [10]:
                             for distill_type in ["fwd_sample", "fwd_int"]:
                                 for q_agg in ["mean", "min"]:
