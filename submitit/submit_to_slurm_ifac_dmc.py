@@ -75,7 +75,7 @@ def main():
                                                                     for use_target_reward in [True, False]:
                                                                         for reward_type in ['state', 'state_action']:
                                                                             for seed in [10]:
-                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fl={num_flow_goals}_clip_fg={clip_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fl={num_flow_goals}_clip_fg={clip_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}_norm_v"
                                                                                 log_dir = os.path.expanduser(
                                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/ifac/{exp_name}/{seed}")
 

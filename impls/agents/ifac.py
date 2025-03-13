@@ -96,7 +96,7 @@ class IFACAgent(flax.struct.PyTreeNode):
             future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
 
         future_rewards = future_rewards.mean(axis=0)  # MC estimation
-        target_v = 1 / (1 - self.config['discount']) * future_rewards
+        target_v = future_rewards
         v = self.network.select('value')(observations, params=grad_params)
         value_loss = self.expectile_loss(target_v - v, target_v - v, self.config['expectile']).mean()
 
@@ -126,7 +126,7 @@ class IFACAgent(flax.struct.PyTreeNode):
         )
 
         next_v = self.network.select('value')(next_observations)
-        target_q = rewards + self.config['discount'] * masks * next_v
+        target_q = (1 - self.config['discount']) * rewards + self.config['discount'] * masks * next_v
         critic_loss = jnp.square(target_q - qs).mean()
 
         # For logging
@@ -520,7 +520,7 @@ class IFACAgent(flax.struct.PyTreeNode):
         # if encoders.get('actor_bc_flow') is not None:
         #     # Add actor_bc_flow_encoder to ModuleDict to make it separately callable.
         #     network_info['actor_bc_flow_encoder'] = (encoders.get('actor_bc_flow'), (ex_observations,))
-            # Add actor_bc_flow_encoder to ModuleDict to make it separately callable.
+        # Add actor_bc_flow_encoder to ModuleDict to make it separately callable.
         if encoders.get('value_vf') is not None:
             network_info['value_vf_encoder'] = (encoders.get('value_vf'), (ex_orig_observations,))
         if encoders.get('actor_critic') is not None:
