@@ -216,7 +216,6 @@ class MCFACAgent(flax.struct.PyTreeNode):
         if self.config['normalize_q_loss']:
             lam = jax.lax.stop_gradient(1 / jnp.abs(q).mean())
             q_loss = lam * q_loss
-            q_loss = lam * q_loss
 
         # distill loss
         train_mask = jnp.float32((actions * 1e8 % 10)[:, 0] != 4)

@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -40,7 +40,7 @@ def main():
         slurm_mem="20G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        # slurm_array_parallelism=25,
+        slurm_array_parallelism=40,
     )
 
     with executor.batch():  # job array
@@ -58,24 +58,24 @@ def main():
             "cheetah_run",
             # "walker_walk",
         ]:
-            for obs_norm_type in ['normal']:
+            for obs_norm_type in ['none', 'normal']:
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for network_type in ['mlp']:
                             for num_residual_blocks in [1]:
                                 for network_size in [512]:
-                                    for alpha in [10, 1, 0.1]:
+                                    for alpha in [10, 1, 0.1, 0.01]:
                                         for distill_type in ['fwd_sample']:
                                             for num_flow_goals in [8, 16, 32]:
                                                 for clip_flow_goals in [True, False]:
-                                                    for expectile in [0.7, 0.75, 0.8, 0.85, 0.9]:
+                                                    for expectile in [0.8, 0.85, 0.9, 0.99]:
                                                         for q_agg in ['min']:
                                                             for normalize_q_loss in [True, False]:
-                                                                for reward_layer_norm in [True, False]:
+                                                                for reward_layer_norm in [True]:
                                                                     for use_target_reward in [True, False]:
                                                                         for reward_type in ['state', 'state_action']:
                                                                             for seed in [10]:
-                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_flow_goals={num_flow_goals}_clip_flow_goals={clip_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fl={num_flow_goals}_clip_fg={clip_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                                 log_dir = os.path.expanduser(
                                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/ifac/{exp_name}/{seed}")
 
@@ -92,12 +92,12 @@ def main():
                                                                                     conda activate ogbench;
                                                                                     which python;
                                                                                     echo $CONDA_PREFIX;
-    
+
                                                                                     echo job_id: $SLURM_ARRAY_JOB_ID;
                                                                                     echo task_id: $SLURM_ARRAY_TASK_ID;
                                                                                     squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
                                                                                     echo seed: {seed};
-    
+
                                                                                     export PROJECT_DIR=$PWD;
                                                                                     export PYTHONPATH=$HOME/research/ogbench/impls;
                                                                                     export PATH="$PATH":"$CONDA_PREFIX"/bin;
@@ -109,7 +109,7 @@ def main():
                                                                                     export D4RL_SUPPRESS_IMPORT_ERROR=1;
                                                                                     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
                                                                                     export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-    
+
                                                                                     rm -rf {log_dir};
                                                                                     mkdir -p {log_dir};
                                                                                     python $PROJECT_DIR/impls/main_rl.py \
@@ -142,7 +142,7 @@ def main():
                                                                                         --seed={seed} \
                                                                                         --save_dir={log_dir} \
                                                                                     2>&1 | tee {log_dir}/stream.log;
-    
+
                                                                                     export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
                                                                                     echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
                                                                                     echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
