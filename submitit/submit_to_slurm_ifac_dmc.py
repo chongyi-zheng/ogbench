@@ -64,7 +64,7 @@ def main():
                         for network_type in ['mlp']:
                             for num_residual_blocks in [1]:
                                 for network_size in [512]:
-                                    for alpha in [100, 10, 1, 0.1, 0.01]:
+                                    for alpha in [100, 10, 1, 0.1]:
                                         for distill_type in ['fwd_sample']:
                                             for num_flow_goals in [8, 32]:
                                                 for clip_flow_goals in [True, False]:
