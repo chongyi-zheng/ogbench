@@ -37,7 +37,7 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="20G",
+        slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=40,
@@ -66,7 +66,7 @@ def main():
                                 for network_size in [512]:
                                     for alpha in [10, 1, 0.1, 0.01]:
                                         for distill_type in ['fwd_sample']:
-                                            for num_flow_goals in [8, 16, 32]:
+                                            for num_flow_goals in [8, 32]:
                                                 for clip_flow_goals in [True, False]:
                                                     for expectile in [0.8, 0.85, 0.9, 0.99]:
                                                         for q_agg in ['min']:
