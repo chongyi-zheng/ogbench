@@ -52,8 +52,8 @@ class IFACAgent(flax.struct.PyTreeNode):
         """Compute the value loss."""
         observations = batch['observations']
         actions = batch['actions']
-        rewards = batch['rewards']
-        masks = batch['masks']
+        # rewards = batch['rewards']
+        # masks = batch['masks']
         goals = batch['value_goals']
 
         if self.config['encoder'] is not None:
@@ -96,7 +96,7 @@ class IFACAgent(flax.struct.PyTreeNode):
             future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
 
         future_rewards = future_rewards.mean(axis=0)  # MC estimations
-        target_v = rewards + self.config['discount'] / (1 - self.config['discount']) * masks * future_rewards
+        target_v = 1.0 / (1 - self.config['discount']) * future_rewards
         v = self.network.select('value')(observations, params=grad_params)
         value_loss = self.expectile_loss(target_v - v, target_v - v, self.config['expectile']).mean()
 
@@ -582,13 +582,13 @@ def get_config():
             value_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the value goal.
             value_p_randomgoal=0.0,  # Probability of using a random state as the value goal.
             value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
-            value_geom_start=1,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
+            value_geom_start=0,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
             num_value_goals=1,  # Number of value goals to sample
             actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
             actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
             actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
             actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
-            actor_geom_start=1,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
+            actor_geom_start=0,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
             num_actor_goals=1,  # Number of actor goals to sample
             dataset_obs_min=ml_collections.config_dict.placeholder(jnp.ndarray),
             dataset_obs_max=ml_collections.config_dict.placeholder(jnp.ndarray),
