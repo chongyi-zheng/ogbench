@@ -262,6 +262,7 @@ class GCDataset:
             self.config['value_p_randomgoal'],
             self.config['value_geom_sample'],
             self.config['num_value_goals'],
+            self.config['value_geom_start'],
         )
         actor_goal_idxs = self.sample_goals(
             idxs,
@@ -270,6 +271,7 @@ class GCDataset:
             self.config['actor_p_randomgoal'],
             self.config['actor_geom_sample'],
             self.config['num_actor_goals'],
+            self.config['actor_geom_start'],
         )
 
         batch['value_goals'] = self.get_observations(value_goal_idxs)
@@ -306,7 +308,7 @@ class GCDataset:
 
         return batch
 
-    def sample_goals(self, idxs, p_curgoal, p_trajgoal, p_randomgoal, geom_sample, num_goals):
+    def sample_goals(self, idxs, p_curgoal, p_trajgoal, p_randomgoal, geom_sample, num_goals, geom_start=1):
         """Sample goals for the given indices."""
         batch_size = len(idxs)
         if num_goals > 1:
@@ -324,7 +326,8 @@ class GCDataset:
             # Geometric sampling.
 
             # truncated geometric sampling.
-            offsets = np.random.geometric(p=1 - self.config['discount'], size=size)  # in [1, inf)
+            support_shift = geom_start - 1
+            offsets = np.random.geometric(p=1 - self.config['discount'], size=size) + support_shift  # in [1, inf)
             if num_goals > 1:
                 middle_goal_idxs = np.minimum(idxs[:, None] + offsets, final_state_idxs[:, None])
             else:

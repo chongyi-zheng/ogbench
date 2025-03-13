@@ -52,8 +52,8 @@ class IFACAgent(flax.struct.PyTreeNode):
         """Compute the value loss."""
         observations = batch['observations']
         actions = batch['actions']
-        rewards = batch['rewards']
-        masks = batch['masks']
+        # rewards = batch['rewards']
+        # masks = batch['masks']
         goals = batch['value_goals']
 
         if self.config['encoder'] is not None:
@@ -61,14 +61,20 @@ class IFACAgent(flax.struct.PyTreeNode):
             goals = self.network.select('value_vf_encoder')(batch['value_goals'])
 
         rng, noise_rng = jax.random.split(rng)
+        assert self.config['value_noise_type'] == 'normal'
         if self.config['value_noise_type'] == 'normal':
-            noises = jax.random.normal(noise_rng, shape=observations.shape, dtype=observations.dtype)
+            noises = jax.random.normal(
+                noise_rng, shape=(self.config['num_flow_goals'], *observations.shape), dtype=observations.dtype)
         elif self.config['value_noise_type'] == 'marginal_state':
             noises = jax.random.permutation(noise_rng, observations, axis=0)
         elif self.config['value_noise_type'] == 'marginal_goal':
             noises = jax.random.permutation(noise_rng, goals, axis=0)
-        flow_goals = self.compute_fwd_flow_goals(noises, observations)
-        flow_goals = jnp.clip(flow_goals, self.config['dataset_obs_min'], self.config['dataset_obs_max'])
+        flow_goals = self.compute_fwd_flow_goals(
+            noises,
+            jnp.repeat(jnp.expand_dims(observations, axis=0), self.config['num_flow_goals'], axis=0)
+        )
+        if self.config['clip_flow_goals']:
+            flow_goals = jnp.clip(flow_goals, self.config['dataset_obs_min'], self.config['dataset_obs_max'])
 
         if self.config['reward_type'] == 'state_action':
             rng, noise_rng = jax.random.split(rng)
@@ -89,7 +95,8 @@ class IFACAgent(flax.struct.PyTreeNode):
         else:
             future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
 
-        target_v = rewards + self.config['discount'] / (1 - self.config['discount']) * masks * future_rewards
+        future_rewards = future_rewards.mean(axis=0)  # MC estimation
+        target_v = 1 / (1 - self.config['discount']) * future_rewards
         v = self.network.select('value')(observations, params=grad_params)
         value_loss = self.expectile_loss(target_v - v, target_v - v, self.config['expectile']).mean()
 
@@ -119,7 +126,7 @@ class IFACAgent(flax.struct.PyTreeNode):
         )
 
         next_v = self.network.select('value')(next_observations)
-        target_q = rewards + self.config['discount'] / (1 - self.config['discount']) * masks * next_v
+        target_q = rewards + self.config['discount'] * masks * next_v
         critic_loss = jnp.square(target_q - qs).mean()
 
         # For logging
@@ -151,6 +158,7 @@ class IFACAgent(flax.struct.PyTreeNode):
 
         # value flow matching
         rng, value_noise_rng, value_time_rng = jax.random.split(rng, 3)
+        assert self.config['value_noise_type'] == 'normal'
         if self.config['value_noise_type'] == 'normal':
             value_noises = jax.random.normal(value_noise_rng, shape=goals.shape, dtype=actions.dtype)
         elif self.config['value_noise_type'] == 'marginal_state':
@@ -557,6 +565,8 @@ def get_config():
             expectile=0.9,  # IQL style expectile.
             q_agg='mean',  # Aggregation method for target Q values.
             value_noise_type='normal',  # Critic noise type. ('marginal_state', 'marginal_goal', 'normal').
+            num_flow_goals=1,  # Number of future flow goals for the compute target value.
+            clip_flow_goals=False,  # Whether to clip the flow goals.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').
@@ -573,11 +583,13 @@ def get_config():
             value_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the value goal.
             value_p_randomgoal=0.0,  # Probability of using a random state as the value goal.
             value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
+            value_geom_start=0,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
             num_value_goals=1,  # Number of value goals to sample
             actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
             actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
             actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
             actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
+            actor_geom_start=0,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
             num_actor_goals=1,  # Number of actor goals to sample
             dataset_obs_min=ml_collections.config_dict.placeholder(jnp.ndarray),
             dataset_obs_max=ml_collections.config_dict.placeholder(jnp.ndarray),
