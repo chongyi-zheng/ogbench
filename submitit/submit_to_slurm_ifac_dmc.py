@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=40,
+        slurm_array_parallelism=10,
     )
 
     with executor.batch():  # job array
@@ -64,7 +64,7 @@ def main():
                         for network_type in ['mlp']:
                             for num_residual_blocks in [1]:
                                 for network_size in [512]:
-                                    for alpha in [100, 10, 1, 0.1]:
+                                    for alpha in [0.01, 0.001]:
                                         for distill_type in ['fwd_sample']:
                                             for num_flow_goals in [8, 32]:
                                                 for clip_flow_goals in [True, False]:
