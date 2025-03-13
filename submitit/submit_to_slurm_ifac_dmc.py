@@ -58,13 +58,13 @@ def main():
             "cheetah_run",
             # "walker_walk",
         ]:
-            for obs_norm_type in ['none', 'normal']:
+            for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for network_type in ['mlp']:
                             for num_residual_blocks in [1]:
                                 for network_size in [512]:
-                                    for alpha in [10, 1, 0.1, 0.01]:
+                                    for alpha in [100, 10, 1, 0.1, 0.01]:
                                         for distill_type in ['fwd_sample']:
                                             for num_flow_goals in [8, 32]:
                                                 for clip_flow_goals in [True, False]:
@@ -73,9 +73,9 @@ def main():
                                                             for normalize_q_loss in [True, False]:
                                                                 for reward_layer_norm in [True]:
                                                                     for use_target_reward in [True, False]:
-                                                                        for reward_type in ['state', 'state_action']:
+                                                                        for reward_type in ['state']:
                                                                             for seed in [10]:
-                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fl={num_flow_goals}_clip_fg={clip_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}_norm_v"
+                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fl={num_flow_goals}_clip_fg={clip_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                                 log_dir = os.path.expanduser(
                                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/ifac/{exp_name}/{seed}")
 
