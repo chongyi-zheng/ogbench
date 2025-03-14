@@ -58,24 +58,24 @@ def main():
             "cheetah_run",
             # "walker_walk",
         ]:
-            for obs_norm_type in ['normal']:
+            for obs_norm_type in ['none', 'normal']:
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for network_type in ['mlp']:
                             for num_residual_blocks in [1]:
                                 for network_size in [512]:
-                                    for alpha in [0.1, 0.01, 0.001, 0.0001]:
+                                    for alpha in [0.3, 0.1, 0.03, 0.01, 0.003, 0.001]:
                                         for distill_type in ['fwd_sample']:
                                             for num_flow_goals in [8, 32]:
-                                                for clip_flow_goals in [True, False]:
-                                                    for expectile in [0.8, 0.85, 0.9, 0.99]:
+                                                for clip_flow_goals in [True]:  # doesn't matter
+                                                    for expectile in [0.75, 0.8, 0.85, 0.9]:
                                                         for q_agg in ['min']:
-                                                            for normalize_q_loss in [True, False]:
+                                                            for normalize_q_loss in [False]:  # doesn't matter
                                                                 for reward_layer_norm in [True]:
-                                                                    for use_target_reward in [True, False]:
+                                                                    for use_target_reward in [False]:  # False could be better
                                                                         for reward_type in ['state']:
                                                                             for seed in [10]:
-                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fl={num_flow_goals}_clip_fg={clip_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_clip_fg={clip_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                                 log_dir = os.path.expanduser(
                                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/ifac/{exp_name}/{seed}")
 

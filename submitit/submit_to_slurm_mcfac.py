@@ -56,22 +56,22 @@ def main():
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
         ]:
-            for obs_norm_type in ['none']:
+            for obs_norm_type in ['normal']:
                 for discount in [0.99]:
                     for batch_size in [256]:
-                        for alpha in [30, 10, 3]:
+                        for alpha in [3.0, 0.3, 0.03, 0.03]:
                             for distill_type in ['fwd_sample']:
-                                for distill_mixup in [False]:
-                                    for critic_loss_type in ['expectile']:
+                                for num_flow_goals in [8]:
+                                    for clip_flow_goals in [True]:  # doesn't matter
                                         for critic_noise_type in ['normal']:
-                                            for expectile in [0.9, 0.95, 0.99]:
+                                            for expectile in [0.75, 0.8, 0.85, 0.9, 0.95]:
                                                 for q_agg in ['min']:
-                                                    for normalize_q_loss in [True, False]:
+                                                    for normalize_q_loss in [False]:  # doesn't matter
                                                         for reward_layer_norm in [True]:
-                                                            for use_target_reward in [True, False]:
+                                                            for use_target_reward in [False]:
                                                                 for reward_type in ['state']:
                                                                     for seed in [10]:
-                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_discount={discount}_bs={batch_size}_alpha={alpha}_distill={distill_type}_mixup={distill_mixup}_critic_loss={critic_loss_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_discount={discount}_bs={batch_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_clip_fg={clip_flow_goals}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                         log_dir = os.path.expanduser(
                                                                             f"{log_root_dir}/exp_logs/ogbench_logs/mcfac/{exp_name}/{seed}")
 
@@ -120,9 +120,11 @@ def main():
                                                                                 --agent.alpha={alpha} \
                                                                                 --agent.num_flow_steps=10 \
                                                                                 --agent.distill_type={distill_type} \
-                                                                                --agent.distill_mixup={distill_mixup} \
-                                                                                --agent.critic_loss_type={critic_loss_type} \
+                                                                                --agent.distill_mixup=False \
+                                                                                --agent.critic_loss_type=expectile \
                                                                                 --agent.critic_noise_type={critic_noise_type} \
+                                                                                --agent.num_flow_goals={num_flow_goals} \
+                                                                                --agent.clip_flow_goals={clip_flow_goals} \
                                                                                 --agent.expectile={expectile} \
                                                                                 --agent.q_agg={q_agg} \
                                                                                 --agent.reward_layer_norm={reward_layer_norm} \
