@@ -565,7 +565,7 @@ def get_config():
             q_agg='mean',  # Aggregation method for target Q values.
             value_noise_type='normal',  # Critic noise type. ('marginal_state', 'marginal_goal', 'normal').
             num_flow_goals=1,  # Number of future flow goals for the compute target value.
-            clip_flow_goals=False,  # Whether to clip the flow goals.
+            clip_flow_goals=True,  # Whether to clip the flow goals.
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').

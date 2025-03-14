@@ -73,7 +73,7 @@ def main():
                                                             for use_target_reward in [False]:
                                                                 for reward_type in ['state']:
                                                                     for seed in [10]:
-                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_discount={discount}_bs={batch_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_clip_fg={clip_flow_goals}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_discount={discount}_bs={batch_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                         log_dir = os.path.expanduser(
                                                                             f"{log_root_dir}/exp_logs/ogbench_logs/mcfac/{exp_name}/{seed}")
 
@@ -126,7 +126,7 @@ def main():
                                                                                 --agent.critic_loss_type=expectile \
                                                                                 --agent.critic_noise_type={critic_noise_type} \
                                                                                 --agent.num_flow_goals={num_flow_goals} \
-                                                                                --agent.clip_flow_goals={clip_flow_goals} \
+                                                                                --agent.clip_flow_goals=True \
                                                                                 --agent.expectile={expectile} \
                                                                                 --agent.q_agg={q_agg} \
                                                                                 --agent.reward_layer_norm={reward_layer_norm} \
