@@ -64,10 +64,10 @@ def main():
                         for network_type in ['mlp']:
                             for num_residual_blocks in [1]:
                                 for network_size in [512]:
-                                    for alpha in [0.3, 0.1, 0.03, 0.01, 0.003, 0.001]:
+                                    for alpha in [0.3, 0.1, 0.03]:
                                         for distill_type in ['fwd_sample']:
-                                            for num_flow_goals in [8, 32]:
-                                                for clip_flow_goals in [True]:  # doesn't matter
+                                            for num_flow_goals in [1, 8]:
+                                                for ode_solver_type in ['dopri5']:
                                                     for expectile in [0.75, 0.8, 0.85, 0.9]:
                                                         for q_agg in ['min']:
                                                             for normalize_q_loss in [False]:  # doesn't matter
@@ -75,7 +75,7 @@ def main():
                                                                     for use_target_reward in [False]:  # False could be better
                                                                         for reward_type in ['state']:
                                                                             for seed in [10]:
-                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_clip_fg={clip_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_ode_solver={ode_solver_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                                 log_dir = os.path.expanduser(
                                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/ifac/{exp_name}/{seed}")
 
@@ -131,7 +131,8 @@ def main():
                                                                                         --agent.distill_type={distill_type} \
                                                                                         --agent.value_noise_type=normal \
                                                                                         --agent.num_flow_goals={num_flow_goals} \
-                                                                                        --agent.clip_flow_goals={clip_flow_goals} \
+                                                                                        --agent.clip_flow_goals=True \
+                                                                                        --agent.ode_solver_type={ode_solver_type} \
                                                                                         --agent.expectile={expectile} \
                                                                                         --agent.q_agg={q_agg} \
                                                                                         --agent.reward_layer_norm={reward_layer_norm} \

@@ -6,6 +6,10 @@ import jax
 import jax.numpy as jnp
 import ml_collections
 import optax
+from diffrax import (
+    diffeqsolve, ODETerm,
+    Euler, Dopri5,
+)
 
 from utils.encoders import encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
@@ -19,6 +23,7 @@ class MCFACAgent(flax.struct.PyTreeNode):
     rng: Any
     network: Any
     cond_prob_path: Any
+    ode_solver: Any
     config: Any = nonpytree_field()
 
     @staticmethod
@@ -317,28 +322,49 @@ class MCFACAgent(flax.struct.PyTreeNode):
 
         return noisy_actions
 
+    # def compute_fwd_flow_goals(self, noises, observations, actions):
+    #     noisy_goals = noises
+    #     num_flow_steps = self.config['num_flow_steps']
+    #     step_size = 1.0 / num_flow_steps
+
+    #     def body_fn(carry, i):
+    #         """
+    #         carry: (noisy_goals, )
+    #         i: current step index
+    #         """
+    #         (noisy_goals,) = carry
+
+    #         times = jnp.full(noisy_goals.shape[:-1], i * step_size)
+    #         vf = self.network.select('critic_vf')(
+    #             noisy_goals, times, observations, actions)
+    #         new_noisy_goals = noisy_goals + vf * step_size
+
+    #         return (new_noisy_goals, ), None
+
+    #     # Use lax.scan to iterate over num_flow_steps
+    #     (noisy_goals, ), _ = jax.lax.scan(
+    #         body_fn, (noisy_goals, ), jnp.arange(num_flow_steps))
+
+    #     return noisy_goals
+    
     def compute_fwd_flow_goals(self, noises, observations, actions):
-        noisy_goals = noises
-        num_flow_steps = self.config['num_flow_steps']
-        step_size = 1.0 / num_flow_steps
+        def vector_field(time, noisy_goals, carry):
+            (observations, actions) = carry
+            times = jnp.full(noisy_goals.shape[:-1], time)
 
-        def body_fn(carry, i):
-            """
-            carry: (noisy_goals, )
-            i: current step index
-            """
-            (noisy_goals,) = carry
-
-            times = jnp.full(noisy_goals.shape[:-1], i * step_size)
             vf = self.network.select('critic_vf')(
                 noisy_goals, times, observations, actions)
-            new_noisy_goals = noisy_goals + vf * step_size
 
-            return (new_noisy_goals, ), None
+            return vf
 
-        # Use lax.scan to iterate over num_flow_steps
-        (noisy_goals, ), _ = jax.lax.scan(
-            body_fn, (noisy_goals, ), jnp.arange(num_flow_steps))
+        ode_term = ODETerm(vector_field)
+        ode_sol = diffeqsolve(
+            ode_term, self.ode_solver,
+            t0=0.0, t1=1.0, dt0=1 / self.config['num_flow_steps'],
+            y0=noises, args=(observations, actions),
+            throw=False,  # (chongyi): setting throw to false is important for speed
+        )
+        noisy_goals = ode_sol.ys[-1]
 
         return noisy_goals
 
@@ -538,9 +564,16 @@ class MCFACAgent(flax.struct.PyTreeNode):
         cond_prob_path = cond_prob_path_class[config['prob_path_class']](
             scheduler=scheduler_class[config['scheduler_class']]()
         )
+        
+        if config['ode_solver_type'] == 'euler':
+            ode_solver = Euler()
+        elif config['ode_solver_type'] == 'dopri5':
+            ode_solver = Dopri5()
+        else:
+            raise TypeError("Unknown ode_solver_type: {}".format(config['ode_solver_type']))
 
-        return cls(rng, network=network, cond_prob_path=cond_prob_path, config=flax.core.FrozenDict(**config))
-
+        return cls(rng, network=network, cond_prob_path=cond_prob_path,
+                   ode_solver=ode_solver, config=flax.core.FrozenDict(**config))
 
 def get_config():
     config = ml_collections.ConfigDict(
@@ -563,6 +596,7 @@ def get_config():
             critic_noise_type='normal',  # Critic noise type. ('marginal_state', 'marginal_goal', 'normal').
             num_flow_goals=1,  # Number of future flow goals for the compute target value.
             clip_flow_goals=True,  # Whether to clip the flow goals.
+            ode_solver_type='euler',  # Type of ODE solver ('euler', 'dopri5').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').
