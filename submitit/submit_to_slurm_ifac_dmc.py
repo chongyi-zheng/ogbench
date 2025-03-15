@@ -131,7 +131,7 @@ def main():
                                                                                         --agent.distill_type={distill_type} \
                                                                                         --agent.value_noise_type=normal \
                                                                                         --agent.num_flow_goals={num_flow_goals} \
-                                                                                        --agent.clip_flow_goals=True \
+                                                                                        --agent.clip_flow_goals=False \
                                                                                         --agent.ode_solver_type={ode_solver_type} \
                                                                                         --agent.expectile={expectile} \
                                                                                         --agent.q_agg={q_agg} \

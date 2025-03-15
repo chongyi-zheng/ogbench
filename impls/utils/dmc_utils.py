@@ -344,17 +344,24 @@ def get_keys(h5file):
 
 def get_dataset(
     env_name,
+    reward_free=False,
+    unsupervised_algo='rnd',
     dataset_dir=DEFAULT_DATASET_DIR,
 ):
     """Make D4RL dataset.
 
     Args:
-        env: Environment instance.
         env_name: Name of the environment.
+        reward_free: Whether to use reward-free dataset.
         dataset_dir: Directory to save the datasets.
     """
     dataset_dir = os.path.expanduser(dataset_dir)
-    h5path = os.path.join(dataset_dir, 'rnd_' + env_name + '.hdf5')
+    reward_free_prefix = 'reward_free' if reward_free else 'reward_labeled'
+    env_suffix = env_name.split('_')[0] if reward_free else env_name
+    h5path = os.path.join(
+        dataset_dir,
+        '_'.join([unsupervised_algo, reward_free_prefix, env_suffix]) + '.hdf5'
+    )
 
     dataset = {}
     with h5py.File(h5path, 'r') as dataset_file:
@@ -364,11 +371,20 @@ def get_dataset(
             except ValueError as e:  # try loading as a scalar
                 dataset[k] = dataset_file[k][()]
 
-    return Dataset.create(
-        observations=dataset['observations'].astype(np.float32),
-        actions=dataset['actions'].astype(np.float32),
-        next_observations=dataset['next_observations'].astype(np.float32),
-        terminals=dataset['terminals'].astype(np.float32),
-        rewards=dataset['rewards'].astype(np.float32),
-        masks=dataset['masks'].astype(np.float32),
-    )
+    if reward_free:
+        return Dataset.create(
+            observations=dataset['observations'].astype(np.float32),
+            actions=dataset['actions'].astype(np.float32),
+            next_observations=dataset['next_observations'].astype(np.float32),
+            terminals=dataset['terminals'].astype(np.float32),
+            masks=dataset['masks'].astype(np.float32),
+        )
+    else:
+        return Dataset.create(
+            observations=dataset['observations'].astype(np.float32),
+            actions=dataset['actions'].astype(np.float32),
+            next_observations=dataset['next_observations'].astype(np.float32),
+            terminals=dataset['terminals'].astype(np.float32),
+            rewards=dataset['rewards'].astype(np.float32),
+            masks=dataset['masks'].astype(np.float32),
+        )

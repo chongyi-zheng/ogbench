@@ -1,4 +1,5 @@
 import copy
+from functools import partial
 from typing import Any
 
 import flax
@@ -302,54 +303,69 @@ class IFACAgent(flax.struct.PyTreeNode):
 
         return noisy_actions
 
-    # def compute_fwd_flow_goals(self, noises, observations):
-    #     noisy_goals = noises
-    #     num_flow_steps = self.config['num_flow_steps']
-    #     step_size = 1.0 / num_flow_steps
-    #
-    #     def body_fn(carry, i):
-    #         """
-    #         carry: (noisy_goals, )
-    #         i: current step index
-    #         """
-    #         (noisy_goals,) = carry
-    #
-    #         times = jnp.full(noisy_goals.shape[:-1], i * step_size)
-    #         vf = self.network.select('value_vf')(
-    #             noisy_goals, times, observations)
-    #         new_noisy_goals = noisy_goals + vf * step_size
-    #
-    #         return (new_noisy_goals, ), None
-    #
-    #     # Use lax.scan to iterate over num_flow_steps
-    #     (noisy_goals, ), _ = jax.lax.scan(
-    #         body_fn, (noisy_goals, ), jnp.arange(num_flow_steps))
-    #
-    #     return noisy_goals
-
     def compute_fwd_flow_goals(self, noises, observations):
-        def vector_field(time, noisy_goals, carry):
-            (observations, ) = carry
-            times = jnp.full(noisy_goals.shape[:-1], time)
+        noisy_goals = noises
+        num_flow_steps = self.config['num_flow_steps']
+        step_size = 1.0 / num_flow_steps
 
+        def body_fn(carry, i):
+            """
+            carry: (noisy_goals, )
+            i: current step index
+            """
+            (noisy_goals,) = carry
+
+            times = jnp.full(noisy_goals.shape[:-1], i * step_size)
             vf = self.network.select('value_vf')(
                 noisy_goals, times, observations)
+            new_noisy_goals = noisy_goals + vf * step_size
 
-            return vf
+            return (new_noisy_goals, ), None
 
-        ode_term = ODETerm(vector_field)
-        ode_sol = diffeqsolve(
-            ode_term, self.ode_solver,
-            t0=0.0, t1=1.0, dt0=1 / self.config['num_flow_steps'],
-            y0=noises, args=(observations, ),
-            throw=False,  # (chongyi): setting throw to false is important for speed
-        )
-        noisy_goals = ode_sol.ys[-1]
+        # Use lax.scan to iterate over num_flow_steps
+        (noisy_goals, ), _ = jax.lax.scan(
+            body_fn, (noisy_goals, ), jnp.arange(num_flow_steps))
 
         return noisy_goals
 
+    # def compute_fwd_flow_goals(self, noises, observations):
+    #     def vector_field(time, noisy_goals, carry):
+    #         (observations, ) = carry
+    #         times = jnp.full(noisy_goals.shape[:-1], time)
+    #
+    #         vf = self.network.select('value_vf')(
+    #             noisy_goals, times, observations)
+    #
+    #         return vf
+    #
+    #     ode_term = ODETerm(vector_field)
+    #     ode_sol = diffeqsolve(
+    #         ode_term, self.ode_solver,
+    #         t0=0.0, t1=1.0, dt0=1 / self.config['num_flow_steps'],
+    #         y0=noises, args=(observations, ),
+    #         throw=False,  # (chongyi): setting throw to false is important for speed
+    #     )
+    #     noisy_goals = ode_sol.ys[-1]
+    #
+    #     return noisy_goals
+
     @jax.jit
-    def total_loss(self, batch, grad_params, rng=None):
+    def pretraining_loss(self, batch, grad_params, rng=None):
+        info = {}
+        rng = rng if rng is not None else self.rng
+
+        rng, flow_matching_rng = jax.random.split(rng)
+
+        flow_matching_loss, flow_matching_info = self.flow_matching_loss(
+            batch, grad_params, flow_matching_rng)
+        for k, v in flow_matching_info.items():
+            info[f'flow_matching/{k}'] = v
+
+        loss = flow_matching_loss
+        return loss, info
+
+    @partial(jax.jit, static_argnames=('full_update',))
+    def total_loss(self, batch, grad_params, full_update=True, rng=None):
         """Compute the total loss."""
         info = {}
         rng = rng if rng is not None else self.rng
@@ -373,9 +389,14 @@ class IFACAgent(flax.struct.PyTreeNode):
         for k, v in flow_matching_info.items():
             info[f'flow_matching/{k}'] = v
 
-        actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
-        for k, v in actor_info.items():
-            info[f'actor/{k}'] = v
+        if full_update:
+            # Update the actor.
+            actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
+            for k, v in actor_info.items():
+                info[f'actor/{k}'] = v
+        else:
+            # Skip actor update.
+            actor_loss = 0.0
 
         loss = reward_loss + value_loss + critic_loss + flow_matching_loss + actor_loss
         return loss, info
@@ -390,12 +411,39 @@ class IFACAgent(flax.struct.PyTreeNode):
         network.params[f'modules_target_{module_name}'] = new_target_params
 
     @jax.jit
+    def pretrain(self, batch):
+        """Pre-train the agent and return a new agent with information dictionary."""
+        new_rng, rng = jax.random.split(self.rng)
+
+        def loss_fn(grad_params):
+            return self.pretraining_loss(batch, grad_params, rng=rng)
+
+        new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
+
+        return self.replace(network=new_network, rng=new_rng), info
+
+    @partial(jax.jit, static_argnames=('full_update',))
+    def finetune(self, batch, full_update=True):
+        """Update the agent and return a new agent with information dictionary."""
+        new_rng, rng = jax.random.split(self.rng)
+
+        def loss_fn(grad_params):
+            return self.total_loss(batch, grad_params, full_update, rng=rng)
+
+        new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
+        if full_update:
+            # Update the target networks only when `full_update` is True.
+            self.target_update(new_network, 'reward')
+
+        return self.replace(network=new_network, rng=new_rng), info
+
+    @jax.jit
     def update(self, batch):
         """Update the agent and return a new agent with information dictionary."""
         new_rng, rng = jax.random.split(self.rng)
 
         def loss_fn(grad_params):
-            return self.total_loss(batch, grad_params, rng=rng)
+            return self.total_loss(batch, grad_params, full_update=True, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
         self.target_update(new_network, 'reward')
@@ -599,10 +647,11 @@ def get_config():
             q_agg='mean',  # Aggregation method for target Q values.
             value_noise_type='normal',  # Critic noise type. ('marginal_state', 'marginal_goal', 'normal').
             num_flow_goals=1,  # Number of future flow goals for the compute target value.
-            clip_flow_goals=True,  # Whether to clip the flow goals.
+            clip_flow_goals=False,  # Whether to clip the flow goals.
             ode_solver_type='euler',  # Type of ODE solver ('euler', 'dopri5').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
+            actor_freq=2,  # Actor update frequency.
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').
             alpha=10.0,  # BC coefficient (need to be tuned for each environment).
             num_flow_steps=10,  # Number of flow steps.

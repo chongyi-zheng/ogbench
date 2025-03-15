@@ -139,13 +139,14 @@ def setup_egl():
             os.environ['EGL_DEVICE_ID'] = os.environ['SLURM_STEP_GPUS']
 
 
-def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5):
+def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5, reward_free=False):
     """Make Offline RL environment and datasets.
 
     Args:
         env_name: Name of the environment or dataset.
         frame_stack: Number of frames to stack.
         action_clip_eps: Epsilon for action clipping.
+        reward_free: Whether to use reward-free dataset.
 
     Returns:
         A tuple of the environment, evaluation environment, training dataset, and validation dataset.
@@ -182,7 +183,7 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5):
 
         env = dmc_utils.make_env(env_name)
         eval_env = dmc_utils.make_env(env_name)
-        dataset = dmc_utils.get_dataset(env_name)
+        dataset = dmc_utils.get_dataset(env_name, reward_free=reward_free)
         train_dataset, val_dataset = dataset, None
     else:
         env, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)

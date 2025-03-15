@@ -595,7 +595,7 @@ def get_config():
             critic_loss_type='mse',  # Critic loss type. ('mse', 'expectile').
             critic_noise_type='normal',  # Critic noise type. ('marginal_state', 'marginal_goal', 'normal').
             num_flow_goals=1,  # Number of future flow goals for the compute target value.
-            clip_flow_goals=True,  # Whether to clip the flow goals.
+            clip_flow_goals=False,  # Whether to clip the flow goals.
             ode_solver_type='euler',  # Type of ODE solver ('euler', 'dopri5').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.

@@ -123,7 +123,7 @@ def main():
                                                                             --agent.critic_loss_type=expectile \
                                                                             --agent.critic_noise_type={critic_noise_type} \
                                                                             --agent.num_flow_goals={num_flow_goals} \
-                                                                            --agent.clip_flow_goals=True \
+                                                                            --agent.clip_flow_goals=False \
                                                                             --agent.expectile={expectile} \
                                                                             --agent.q_agg={q_agg} \
                                                                             --agent.reward_layer_norm={reward_layer_norm} \

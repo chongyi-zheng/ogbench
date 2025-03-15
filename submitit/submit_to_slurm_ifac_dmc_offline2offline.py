@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -30,7 +30,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="mcfac",
+        slurm_name="ifac",
         slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=25,
+        slurm_array_parallelism=40,
     )
 
     with executor.batch():  # job array
@@ -59,23 +59,23 @@ def main():
             # "walker_walk",
         ]:
             for obs_norm_type in ['normal']:
-                for discount in [0.99]:
+                for lr in [3e-4]:
                     for batch_size in [256]:
-                        for alpha in [0.3, 0.1, 0.03]:
-                            for distill_type in ['fwd_sample']:
-                                for num_flow_goals in [1, 8]:
-                                    for ode_solver_type in ['dopri5']:
-                                        for critic_noise_type in ['normal']:
-                                            for expectile in [0.75, 0.8, 0.85, 0.9]:
-                                                for q_agg in ['min']:
+                        for network_size in [512]:
+                            for alpha in [1.0, 0.1, 0.01, 0.001]:
+                                for distill_type in ['fwd_sample']:
+                                    for num_flow_goals in [16, 32]:
+                                        for actor_freq in [2, 4]:
+                                            for expectile in [0.65, 0.7, 0.75, 0.8, 0.85]:
+                                                for q_agg in ['mean', 'min']:
                                                     for normalize_q_loss in [False]:  # doesn't matter
                                                         for reward_layer_norm in [True]:
-                                                            for use_target_reward in [False]:
+                                                            for use_target_reward in [False]:  # False could be better
                                                                 for reward_type in ['state']:
                                                                     for seed in [10]:
-                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_mcfac_{env_name}_obs_norm={obs_norm_type}_discount={discount}_bs={batch_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_ode_solver={ode_solver_type}_critic_noise={critic_noise_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                         log_dir = os.path.expanduser(
-                                                                            f"{log_root_dir}/exp_logs/ogbench_logs/mcfac/{exp_name}/{seed}")
+                                                                            f"{log_root_dir}/exp_logs/ogbench_logs/ifac/{exp_name}/{seed}")
 
                                                                         # change the log folder of slurm executor
                                                                         submitit_log_dir = os.path.join(
@@ -110,24 +110,28 @@ def main():
 
                                                                             rm -rf {log_dir};
                                                                             mkdir -p {log_dir};
-                                                                            python $PROJECT_DIR/impls/main_rl.py \
+                                                                            python $PROJECT_DIR/impls/main_offline2offline.py \
                                                                                 --enable_wandb=1 \
                                                                                 --env_name={env_name} \
                                                                                 --obs_norm_type={obs_norm_type} \
                                                                                 --eval_episodes=50 \
                                                                                 --dataset_class=GCDataset \
-                                                                                --agent=impls/agents/mcfac.py \
-                                                                                --agent.discount={discount} \
+                                                                                --agent=impls/agents/ifac.py \
                                                                                 --agent.batch_size={batch_size} \
+                                                                                --agent.actor_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
+                                                                                --agent.value_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
+                                                                                --agent.reward_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
+                                                                                --agent.lr={lr} \
+                                                                                --agent.network_type=mlp \
+                                                                                --agent.num_residual_blocks=1 \
                                                                                 --agent.alpha={alpha} \
                                                                                 --agent.num_flow_steps=10 \
                                                                                 --agent.distill_type={distill_type} \
-                                                                                --agent.distill_mixup=False \
-                                                                                --agent.critic_loss_type=expectile \
-                                                                                --agent.critic_noise_type={critic_noise_type} \
+                                                                                --agent.value_noise_type=normal \
                                                                                 --agent.num_flow_goals={num_flow_goals} \
-                                                                                --agent.ode_solver_type={ode_solver_type} \
+                                                                                --agent.actor_freq={actor_freq} \
                                                                                 --agent.clip_flow_goals=False \
+                                                                                --agent.ode_solver_type=euler \
                                                                                 --agent.expectile={expectile} \
                                                                                 --agent.q_agg={q_agg} \
                                                                                 --agent.reward_layer_norm={reward_layer_norm} \
@@ -146,10 +150,11 @@ def main():
                                                                             echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
                                                                         """
 
-                                                                        cmd_func = submitit.helpers.CommandFunction([
-                                                                            "/bin/zsh", "-c",
-                                                                            cmds,
-                                                                        ], verbose=True)
+                                                                        cmd_func = submitit.helpers.CommandFunction(
+                                                                            [
+                                                                                "/bin/zsh", "-c",
+                                                                                cmds,
+                                                                            ], verbose=True)
 
                                                                         executor.submit(cmd_func)
 
