@@ -16,6 +16,7 @@ from agents.ifac import IFACAgent
 from agents.qrl import QRLAgent
 from agents.rg_fmrl import RewardGuidedFMRLAgent
 from agents.sac import SACAgent
+from agents.sarsa_ifac import SARSAIFACAgent
 from agents.td_fmrl import TDFMRLAgent
 from agents.gctd_fmrl import GCTDFMRLAgent
 from agents.td_infonce import TDInfoNCEAgent
@@ -39,6 +40,7 @@ agents = dict(
     qrl=QRLAgent,
     rg_fmrl=RewardGuidedFMRLAgent,
     sac=SACAgent,
+    sarsa_ifac=SARSAIFACAgent,
     td_fmrl=TDFMRLAgent,
     gctd_fmrl=GCTDFMRLAgent,
     td_infonce=TDInfoNCEAgent,

@@ -114,7 +114,7 @@ def main(_):
     #     # Fill with the maximum action to let the agent know the action space size.
     #     example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)
 
-    if config['agent_name'] in ['mcfac', 'ifac']:
+    if config['agent_name'] in ['mcfac', 'ifac', 'sarsa_ifac']:
         if hasattr(train_dataset, 'dataset'):
             dataset_observations = train_dataset.dataset['observations']
         else:
