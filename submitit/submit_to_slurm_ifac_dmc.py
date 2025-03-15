@@ -58,18 +58,18 @@ def main():
             "cheetah_run",
             # "walker_walk",
         ]:
-            for obs_norm_type in ['none', 'normal']:
+            for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for network_type in ['mlp']:
                             for num_residual_blocks in [1]:
                                 for network_size in [1024]:
-                                    for alpha in [10.0, 1.0, 0.3, 0.1, 0.03]:
+                                    for alpha in [1.0, 0.1, 0.01]:
                                         for distill_type in ['fwd_sample']:
-                                            for num_flow_goals in [1, 8, 32]:
+                                            for num_flow_goals in [16, 32, 64]:
                                                 for ode_solver_type in ['euler']:
-                                                    for expectile in [0.75, 0.8, 0.85, 0.9]:
-                                                        for q_agg in ['min']:
+                                                    for expectile in [0.65, 0.7, 0.75, 0.8, 0.85]:
+                                                        for q_agg in ['mean', 'min']:
                                                             for normalize_q_loss in [False]:  # doesn't matter
                                                                 for reward_layer_norm in [True]:
                                                                     for use_target_reward in [False]:  # False could be better
