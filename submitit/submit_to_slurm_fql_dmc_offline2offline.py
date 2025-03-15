@@ -60,9 +60,9 @@ def main():
                                 for actor_freq in [2, 4]:
                                     for normalize_q_loss in [False]:
                                         for seed in [10]:
-                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_actor_freq={actor_freq}_normalize_q_loss={normalize_q_loss}"
+                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_actor_freq={actor_freq}_normalize_q_loss={normalize_q_loss}"
                                             log_dir = os.path.expanduser(
-                                                f"{log_root_dir}/exp_logs/ogbench_logs/fql/{exp_name}/{seed}")
+                                                f"{log_root_dir}/exp_logs/ogbench_logs/fql_offline2offline/{exp_name}/{seed}")
 
                                             # change the log folder of slurm executor
                                             submitit_log_dir = os.path.join(os.path.dirname(log_dir),

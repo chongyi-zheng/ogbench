@@ -73,9 +73,9 @@ def main():
                                                             for use_target_reward in [False]:  # False could be better
                                                                 for reward_type in ['state']:
                                                                     for seed in [10]:
-                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                         log_dir = os.path.expanduser(
-                                                                            f"{log_root_dir}/exp_logs/ogbench_logs/ifac/{exp_name}/{seed}")
+                                                                            f"{log_root_dir}/exp_logs/ogbench_logs/ifac_offline2offline/{exp_name}/{seed}")
 
                                                                         # change the log folder of slurm executor
                                                                         submitit_log_dir = os.path.join(
