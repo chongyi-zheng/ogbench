@@ -37,7 +37,7 @@ flags.DEFINE_integer('pretraining_steps', 1_000_000, 'Number of offline steps.')
 flags.DEFINE_integer('finetuning_steps', 500_000, 'Number of online steps.')
 flags.DEFINE_integer('log_interval', 5_000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 50_000, 'Evaluation interval.')
-flags.DEFINE_integer('save_interval', 100_000, 'Saving interval.')
+flags.DEFINE_integer('save_interval', 500_000, 'Saving interval.')
 
 flags.DEFINE_integer('eval_episodes', 50, 'Number of evaluation episodes.')
 flags.DEFINE_integer('video_episodes', 0, 'Number of video episodes for each task.')
