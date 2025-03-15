@@ -92,7 +92,7 @@ def main():
                 
                                                         rm -rf {log_dir};
                                                         mkdir -p {log_dir};
-                                                        python $PROJECT_DIR/impls/main_offline2offline.py \
+                                                        python $PROJECT_DIR/impls/main_rl.py \
                                                             --enable_wandb=1 \
                                                             --env_name={env_name} \
                                                             --obs_norm_type={obs_norm_type} \
