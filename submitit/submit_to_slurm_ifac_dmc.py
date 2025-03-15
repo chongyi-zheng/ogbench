@@ -63,11 +63,11 @@ def main():
                     for batch_size in [256]:
                         for network_type in ['mlp']:
                             for num_residual_blocks in [1]:
-                                for network_size in [512]:
-                                    for alpha in [0.3, 0.1, 0.03]:
+                                for network_size in [1024]:
+                                    for alpha in [10.0, 1.0, 0.3, 0.1, 0.03]:
                                         for distill_type in ['fwd_sample']:
-                                            for num_flow_goals in [1, 8]:
-                                                for ode_solver_type in ['dopri5']:
+                                            for num_flow_goals in [1, 8, 32]:
+                                                for ode_solver_type in ['euler']:
                                                     for expectile in [0.75, 0.8, 0.85, 0.9]:
                                                         for q_agg in ['min']:
                                                             for normalize_q_loss in [False]:  # doesn't matter
