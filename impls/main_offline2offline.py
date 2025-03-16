@@ -171,12 +171,16 @@ def main(_):
         if i % FLAGS.log_interval == 0:
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
             if i <= FLAGS.pretraining_steps:
-                val_batch = pretraining_val_dataset.sample(config['batch_size'])
-                _, val_info = agent.pretraining_loss(val_batch, grad_params=None)
+                val_dataset = pretraining_val_dataset
+                loss_fn = agent.pretraining_loss
             else:
-                val_batch = finetuning_val_dataset.sample(config['batch_size'])
-                _, val_info = agent.total_loss(val_batch, grad_params=None)
-            train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
+                val_dataset = finetuning_val_dataset
+                loss_fn = agent.total_loss
+            if val_dataset is not None:
+                val_batch = val_dataset.sample(config['batch_size'])
+                _, val_info = loss_fn(val_batch, grad_params=None)
+                train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
+
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval
             train_metrics['time/total_time'] = time.time() - first_time
             train_metrics.update(expl_metrics)
