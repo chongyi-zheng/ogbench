@@ -55,23 +55,23 @@ def main():
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
-            # "cheetah_run",
+            "cheetah_run",
             "walker_walk",
         ]:
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for network_size in [512]:
-                            for alpha in [1.0, 0.1, 0.01, 0.001]:
+                            for alpha in [1000.0, 100.0, 10.0]:
                                 for distill_type in ['fwd_sample']:
                                     for num_flow_goals in [16, 32]:
                                         for actor_freq in [2, 4]:
-                                            for expectile in [0.65, 0.7, 0.75, 0.8, 0.85]:
-                                                for q_agg in ['mean', 'min']:
+                                            for expectile in [0.7, 0.75, 0.8, 0.85, 0.95, 0.99]:
+                                                for q_agg in ['min']:
                                                     for normalize_q_loss in [False]:  # doesn't matter
                                                         for reward_layer_norm in [True]:
-                                                            for use_target_reward in [False]:  # False could be better
-                                                                for reward_type in ['state']:
+                                                            for use_target_reward in [False, True]:  # False could be better
+                                                                for reward_type in ['state', 'state_action']:
                                                                     for seed in [10]:
                                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                         log_dir = os.path.expanduser(
