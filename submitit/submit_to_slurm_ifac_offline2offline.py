@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -62,7 +62,7 @@ def main():
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for network_size in [512]:
-                            for alpha in [1000.0, 100.0, 10.0, 1.0, 0.1]:
+                            for alpha in [10000.0]:
                                 for distill_type in ['fwd_sample']:
                                     for num_flow_goals in [16, 32]:
                                         for actor_freq in [2, 4]:
