@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -31,7 +31,7 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="fql",
-        slurm_time=int(8 * 60),  # minute
+        slurm_time=int(4 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=30,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -48,12 +48,13 @@ def main():
         for env_name in [
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
-            # "antsoccer-arena-navigate-singletask-v0"
+            # "antsoccer-arena-navigate-singletask-v0",
+            "cube-single-play-singletask-task2-v0",
             # "cheetah_run",
-            "walker_walk",
+            # "walker_walk",
         ]:
             for obs_norm_type in ['none']:
-                for alpha in [10.0, 1.0, 0.1, 0.01, 0.001]:
+                for alpha in [1000.0, 10.0, 1.0, 0.1]:
                     for num_flow_steps in [10]:
                         for distill_type in ["fwd_sample"]:
                             for q_agg in ["mean", "min"]:

@@ -2,26 +2,26 @@ import d4rl
 import gymnasium
 import numpy as np
 
-from utils.env_utils import EpisodeMonitor
 from utils.datasets import Dataset
 
 
 def make_env(env_name):
     """Make D4RL environment."""
     env = gymnasium.make('GymV21Environment-v0', env_id=env_name)
-    env = EpisodeMonitor(env)
     return env
 
 
 def get_dataset(
     env,
     env_name,
+    max_size=np.inf,
 ):
     """Make D4RL dataset.
 
     Args:
         env: Environment instance.
         env_name: Name of the environment.
+        max_size: Maximum size of the dataset.
     """
     dataset = d4rl.qlearning_dataset(env)
 
@@ -47,6 +47,10 @@ def get_dataset(
             masks[i] = 1 - dataset['terminals'][i]
     masks[-1] = 1 - dataset['terminals'][-1]
     terminals[-1] = 1
+
+    if dataset['observations'].shape[0] > max_size:
+        for k, v in dataset.items():
+            dataset[k] = v[:max_size]
 
     return Dataset.create(
         observations=dataset['observations'].astype(np.float32),

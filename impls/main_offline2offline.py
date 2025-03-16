@@ -69,9 +69,9 @@ def main(_):
     # Make environment and datasets.
     config = FLAGS.agent
     _, _, pretraining_train_dataset, pretraining_val_dataset = make_env_and_datasets(
-        FLAGS.env_name, frame_stack=FLAGS.frame_stack, reward_free=True)
+        FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=10_000_000, reward_free=True)
     _, eval_env, finetuning_train_dataset, finetuning_val_dataset = make_env_and_datasets(
-        FLAGS.env_name, frame_stack=FLAGS.frame_stack, reward_free=False)
+        FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=500_000, reward_free=False)
     if FLAGS.video_episodes > 0:
         assert 'singletask' in FLAGS.env_name, 'Rendering is currently only supported for OGBench environments.'
 

@@ -139,7 +139,8 @@ def setup_egl():
             os.environ['EGL_DEVICE_ID'] = os.environ['SLURM_STEP_GPUS']
 
 
-def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5, reward_free=False):
+def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
+                          reward_free=False, max_size=np.inf):
     """Make Offline RL environment and datasets.
 
     Args:
@@ -147,6 +148,7 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5, rewa
         frame_stack: Number of frames to stack.
         action_clip_eps: Epsilon for action clipping.
         reward_free: Whether to use reward-free dataset.
+        max_size: Maximum size of the dataset.
 
     Returns:
         A tuple of the environment, evaluation environment, training dataset, and validation dataset.
@@ -154,10 +156,27 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5, rewa
 
     if 'singletask' in env_name:
         # OGBench.
-        env, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)
+        if reward_free:
+            dataset_env_name = '-'.join([*env_name.split('-')[:2], 'noisy', env_name.split('-')[-1]])
+        else:
+            dataset_env_name = env_name
+        _, train_dataset, val_dataset = ogbench.make_env_and_datasets(dataset_env_name)
+        if train_dataset['observations'].shape[0] > max_size:
+            for k, v in train_dataset.items():
+                train_dataset[k] = v[:max_size]
+        if val_dataset['observations'].shape[0] > max_size:
+            for k, v in val_dataset.items():
+                val_dataset[k] = v[:max_size]
+
+        if 'mask' not in train_dataset:
+            train_dataset['masks'] = 1.0 - train_dataset['terminals']
+            val_dataset['masks'] = 1.0 - val_dataset['terminals']
+
+        env = ogbench.make_env_and_datasets(env_name, env_only=True)
         eval_env = ogbench.make_env_and_datasets(env_name, env_only=True)
         env = EpisodeMonitor(env, filter_regexes=['.*privileged.*', '.*proprio.*'])
         eval_env = EpisodeMonitor(eval_env, filter_regexes=['.*privileged.*', '.*proprio.*'])
+
         train_dataset = Dataset.create(**train_dataset)
         val_dataset = Dataset.create(**val_dataset)
     elif 'antmaze' in env_name and ('diverse' in env_name or 'play' in env_name or 'umaze' in env_name):
@@ -175,6 +194,9 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5, rewa
 
         env = d4rl_utils.make_env(env_name)
         eval_env = d4rl_utils.make_env(env_name)
+        env = EpisodeMonitor(env)
+        eval_env = EpisodeMonitor(eval_env)
+
         dataset = d4rl_utils.get_dataset(env, env_name)
         train_dataset, val_dataset = dataset, None
     elif 'walker' in env_name or 'cheetah' in env_name or 'quadruped' in env_name or 'jaco' in env_name:
@@ -183,7 +205,11 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5, rewa
 
         env = dmc_utils.make_env(env_name)
         eval_env = dmc_utils.make_env(env_name)
-        dataset = dmc_utils.get_dataset(env_name, reward_free=reward_free)
+
+        env = DMCEpisodeMonitor(env, filter_regexes=['internal_state'])
+        eval_env = DMCEpisodeMonitor(eval_env, filter_regexes=['internal_state'])
+
+        dataset = dmc_utils.get_dataset(env_name, reward_free=reward_free, max_size=max_size)
         train_dataset, val_dataset = dataset, None
     else:
         env, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)

@@ -16,7 +16,6 @@ from dm_control.suite.wrappers import action_scale, pixels
 
 import custom_dmc_tasks as cdmc
 
-from utils.env_utils import DMCEpisodeMonitor
 from utils.datasets import Dataset
 
 
@@ -324,7 +323,6 @@ def make_env(env_name):
     assert np.all(env.action_spec().maximum == 1.0)
     assert np.all(env.action_spec().minimum == -1.0)
 
-    env = DMCEpisodeMonitor(env)
     return env
 
 
@@ -345,6 +343,7 @@ def get_keys(h5file):
 def get_dataset(
     env_name,
     reward_free=False,
+    max_size=np.inf,
     unsupervised_algo='rnd',
     dataset_dir=DEFAULT_DATASET_DIR,
 ):
@@ -353,6 +352,8 @@ def get_dataset(
     Args:
         env_name: Name of the environment.
         reward_free: Whether to use reward-free dataset.
+        max_size: Maximum size of the dataset.
+        unsupervised_algo: Name of the unsupervised algorithm used to collect the dataset.
         dataset_dir: Directory to save the datasets.
     """
     dataset_dir = os.path.expanduser(dataset_dir)
@@ -370,6 +371,10 @@ def get_dataset(
                 dataset[k] = dataset_file[k][:]
             except ValueError as e:  # try loading as a scalar
                 dataset[k] = dataset_file[k][()]
+
+    if dataset['observations'].shape[0] > max_size:
+        for k, v in dataset.items():
+            dataset[k] = v[:max_size]
 
     if reward_free:
         return Dataset.create(
