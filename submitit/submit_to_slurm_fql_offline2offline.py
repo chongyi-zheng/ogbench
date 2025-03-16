@@ -49,7 +49,8 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0",
-            "cube-single-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task2-v0",
+            "cube-double-play-singletask-task2-v0",
             # "cheetah_run",
             # "walker_walk",
         ]:
