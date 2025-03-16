@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=40,
+        slurm_array_parallelism=20,
     )
 
     with executor.batch():  # job array
@@ -63,19 +63,19 @@ def main():
                     for batch_size in [256]:
                         for network_type in ['mlp']:
                             for num_residual_blocks in [1]:
-                                for network_size in [1024]:
-                                    for alpha in [1.0, 0.1, 0.01]:
+                                for network_size in [512]:
+                                    for alpha in [10.0, 1.0, 0.1, 0.01, 0.001]:
                                         for distill_type in ['fwd_sample']:
-                                            for num_flow_goals in [16, 32, 64]:
+                                            for num_flow_goals in [16, 32]:
                                                 for ode_solver_type in ['euler']:
                                                     for expectile in [0.65, 0.7, 0.75, 0.8, 0.85]:
                                                         for q_agg in ['mean', 'min']:
-                                                            for normalize_q_loss in [False]:  # doesn't matter
-                                                                for reward_layer_norm in [True]:
-                                                                    for use_target_reward in [False]:  # False could be better
+                                                            for normalize_q_loss in [True, False]:  # doesn't matter
+                                                                for value_layer_norm in [True]:
+                                                                    for use_target_reward in [True, False]:  # False could be better
                                                                         for reward_type in ['state']:
                                                                             for seed in [10]:
-                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_ode_solver={ode_solver_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_reward_layer_norm={reward_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_ifac_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_network={network_type}_res_blocks={num_residual_blocks}_ns={network_size}_alpha={alpha}_distill={distill_type}_num_fg={num_flow_goals}_ode_solver={ode_solver_type}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_value_layer_norm={value_layer_norm}_use_target_reward={use_target_reward}_reward={reward_type}"
                                                                                 log_dir = os.path.expanduser(
                                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/ifac/{exp_name}/{seed}")
 
@@ -135,7 +135,8 @@ def main():
                                                                                         --agent.ode_solver_type={ode_solver_type} \
                                                                                         --agent.expectile={expectile} \
                                                                                         --agent.q_agg={q_agg} \
-                                                                                        --agent.reward_layer_norm={reward_layer_norm} \
+                                                                                        --agent.reward_layer_norm=True \
+                                                                                        --agent.value_layer_norm={value_layer_norm} \
                                                                                         --agent.actor_layer_norm=False \
                                                                                         --agent.normalize_q_loss={normalize_q_loss} \
                                                                                         --agent.use_target_reward={use_target_reward} \
