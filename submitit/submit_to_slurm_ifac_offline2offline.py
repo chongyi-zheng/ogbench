@@ -51,8 +51,8 @@ def main():
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
-            "cube-single-play-singletask-task2-v0",
-            # "cube-double-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task2-v0",
+            "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
@@ -62,7 +62,7 @@ def main():
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for network_size in [512]:
-                            for alpha in [10000.0]:
+                            for alpha in [3000.0, 1000.0, 300.0]:
                                 for distill_type in ['fwd_sample']:
                                     for num_flow_goals in [16, 32]:
                                         for actor_freq in [2, 4]:
