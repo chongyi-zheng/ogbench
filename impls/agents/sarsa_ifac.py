@@ -101,7 +101,7 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
             future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
 
         future_rewards = future_rewards.mean(axis=0)  # MC estimations
-        target_v = 1.0 / (1 - self.config['discount']) * future_rewards
+        target_v = 1 / (1 - self.config['discount']) * future_rewards
         v = self.network.select('value')(observations, params=grad_params)
         value_loss = self.expectile_loss(target_v - v, target_v - v, self.config['expectile']).mean()
 
@@ -181,61 +181,89 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
         # )
         # value_flow_matching_loss = jnp.square(value_vf_pred - value_path_sample.dx_t).mean()
 
-        # SARSA value flow matching
-        rng, current_time_rng, current_noise_rng = jax.random.split(rng, 3)
-        current_times = jax.random.uniform(current_time_rng, shape=(batch_size, ), dtype=observations.dtype)
+        # SARSA naive value flow matching
+        # rng, current_time_rng, current_noise_rng = jax.random.split(rng, 3)
+        # current_times = jax.random.uniform(current_time_rng, shape=(batch_size, ), dtype=observations.dtype)
+        # if self.config['value_noise_type'] == 'normal':
+        #     current_noises = jax.random.normal(
+        #         current_noise_rng, shape=observations.shape, dtype=observations.dtype)
+        # elif self.config['value_noise_type'] == 'marginal_state':
+        #     current_noises = jax.random.permutation(current_noise_rng, observations, axis=0)
+        # elif self.config['value_noise_type'] == 'marginal_goal':
+        #     current_noises = jax.random.permutation(current_noise_rng, goals, axis=0)
+        # current_path_sample = self.cond_prob_path(
+        #     x_0=current_noises, x_1=observations, t=current_times)
+        # current_vf_pred = self.network.select('value_vf')(
+        #     current_path_sample.x_t,
+        #     current_times,
+        #     observations,
+        #     params=grad_params,
+        # )
+        # current_loss = jnp.square(current_vf_pred - current_path_sample.dx_t).mean()
+        #
+        # rng, future_goal_rng = jax.random.split(rng)
+        # if self.config['value_noise_type'] == 'normal':
+        #     future_goal_noises = jax.random.normal(
+        #         future_goal_rng, shape=observations.shape, dtype=observations.dtype)
+        # elif self.config['value_noise_type'] == 'marginal_state':
+        #     future_goal_noises = jax.random.permutation(future_goal_rng, observations, axis=0)
+        # elif self.config['value_noise_type'] == 'marginal_goal':
+        #     future_goal_noises = jax.random.permutation(current_noise_rng, goals, axis=0)
+        # future_flow_goals = self.compute_fwd_flow_goals(
+        #     future_goal_noises, next_observations,
+        #     use_target_network=True
+        # )
+        # future_flow_goals = jax.lax.stop_gradient(future_flow_goals)
+        #
+        # rng, future_time_rng, future_noise_rng = jax.random.split(rng, 3)
+        # future_times = jax.random.uniform(future_time_rng, shape=(batch_size,), dtype=observations.dtype)
+        # if self.config['value_noise_type'] == 'normal':
+        #     future_noises = jax.random.normal(
+        #         future_noise_rng, shape=observations.shape, dtype=observations.dtype)
+        # elif self.config['value_noise_type'] == 'marginal_state':
+        #     future_noises = jax.random.permutation(future_noise_rng, observations, axis=0)
+        # elif self.config['value_noise_type'] == 'marginal_goal':
+        #     future_noises = jax.random.permutation(future_noise_rng, goals, axis=0)
+        # future_path_sample = self.cond_prob_path(
+        #     x_0=future_noises, x_1=future_flow_goals, t=future_times)
+        # future_vf_pred = self.network.select('value_vf')(
+        #     future_path_sample.x_t,
+        #     future_times,
+        #     observations,
+        #     params=grad_params,
+        # )
+        # future_loss = jnp.square(future_vf_pred - future_path_sample.dx_t).mean()
+        #
+        # value_flow_matching_loss = ((1 - self.config['discount']) * current_loss +
+        #                             self.config['discount'] * future_loss)
+
+        # coupled SARSA value flow matching
+        rng, noise_rng, bern_rng, time_rng = jax.random.split(rng, 4)
         if self.config['value_noise_type'] == 'normal':
-            current_noises = jax.random.normal(
-                current_noise_rng, shape=observations.shape, dtype=observations.dtype)
+            noises = jax.random.normal(noise_rng, shape=observations.shape, dtype=observations.dtype)
         elif self.config['value_noise_type'] == 'marginal_state':
-            current_noises = jax.random.permutation(current_noise_rng, observations, axis=0)
+            noises = jax.random.permutation(noise_rng, observations, axis=0)
         elif self.config['value_noise_type'] == 'marginal_goal':
-            current_noises = jax.random.permutation(current_noise_rng, goals, axis=0)
-        current_path_sample = self.cond_prob_path(
-            x_0=current_noises, x_1=observations, t=current_times)
-        current_vf_pred = self.network.select('value_vf')(
-            current_path_sample.x_t,
-            current_times,
+            noises = jax.random.permutation(noise_rng, goals, axis=0)
+        flow_observations = self.compute_fwd_flow_goals(noises, next_observations, use_target_network=True)
+        flow_observations = jax.lax.stop_gradient(flow_observations)
+        if self.config['clip_flow_goals']:
+            flow_observations = jnp.clip(flow_observations, self.config['dataset_obs_min'], self.config['dataset_obs_max'])
+
+        bern = jax.random.bernoulli(
+            bern_rng, p=self.config['discount'], shape=(batch_size, 1)).astype(observations.dtype)
+        future_observations = (1 - bern) * observations + bern * flow_observations
+
+        times = jax.random.uniform(time_rng, shape=(batch_size, ), dtype=observations.dtype)
+        path_sample = self.cond_prob_path(
+            x_0=noises, x_1=future_observations, t=times)
+        vf_pred = self.network.select('value_vf')(
+            path_sample.x_t,
+            times,
             observations,
             params=grad_params,
         )
-        current_loss = jnp.square(current_vf_pred - current_path_sample.dx_t).mean()
-
-        rng, future_goal_rng = jax.random.split(rng)
-        if self.config['value_noise_type'] == 'normal':
-            future_goal_noises = jax.random.normal(
-                future_goal_rng, shape=observations.shape, dtype=observations.dtype)
-        elif self.config['value_noise_type'] == 'marginal_state':
-            future_goal_noises = jax.random.permutation(future_goal_rng, observations, axis=0)
-        elif self.config['value_noise_type'] == 'marginal_goal':
-            future_goal_noises = jax.random.permutation(current_noise_rng, goals, axis=0)
-        future_flow_goals = self.compute_fwd_flow_goals(
-            future_goal_noises, next_observations,
-            use_target_network=True
-        )
-        future_flow_goals = jax.lax.stop_gradient(future_flow_goals)
-
-        rng, future_time_rng, future_noise_rng = jax.random.split(rng, 3)
-        future_times = jax.random.uniform(future_time_rng, shape=(batch_size,), dtype=observations.dtype)
-        if self.config['value_noise_type'] == 'normal':
-            future_noises = jax.random.normal(
-                future_noise_rng, shape=observations.shape, dtype=observations.dtype)
-        elif self.config['value_noise_type'] == 'marginal_state':
-            future_noises = jax.random.permutation(future_noise_rng, observations, axis=0)
-        elif self.config['value_noise_type'] == 'marginal_goal':
-            future_noises = jax.random.permutation(future_noise_rng, goals, axis=0)
-        future_path_sample = self.cond_prob_path(
-            x_0=future_noises, x_1=future_flow_goals, t=future_times)
-        future_vf_pred = self.network.select('value_vf')(
-            future_path_sample.x_t,
-            future_times,
-            observations,
-            params=grad_params,
-        )
-        future_loss = jnp.square(future_vf_pred - future_path_sample.dx_t).mean()
-
-        value_flow_matching_loss = ((1 - self.config['discount']) * current_loss +
-                                    self.config['discount'] * future_loss)
+        value_flow_matching_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
 
         # actor flow matching
         if self.config['encoder'] is not None:
@@ -258,8 +286,6 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
 
         return flow_matching_loss, {
             'flow_matching_loss': flow_matching_loss,
-            'value_flow_matching_current_loss': current_loss,
-            'value_flow_matching_future_loss': future_loss,
             'value_flow_matching_loss': value_flow_matching_loss,
             'actor_flow_matching_loss': actor_flow_matching_loss,
         }
@@ -361,56 +387,61 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
 
         return noisy_actions
 
-    # def compute_fwd_flow_goals(self, noises, observations):
-    #     noisy_goals = noises
-    #     num_flow_steps = self.config['num_flow_steps']
-    #     step_size = 1.0 / num_flow_steps
-    #
-    #     def body_fn(carry, i):
-    #         """
-    #         carry: (noisy_goals, )
-    #         i: current step index
-    #         """
-    #         (noisy_goals,) = carry
-    #
-    #         times = jnp.full(noisy_goals.shape[:-1], i * step_size)
-    #         vf = self.network.select('value_vf')(
-    #             noisy_goals, times, observations)
-    #         new_noisy_goals = noisy_goals + vf * step_size
-    #
-    #         return (new_noisy_goals, ), None
-    #
-    #     # Use lax.scan to iterate over num_flow_steps
-    #     (noisy_goals, ), _ = jax.lax.scan(
-    #         body_fn, (noisy_goals, ), jnp.arange(num_flow_steps))
-    #
-    #     return noisy_goals
-
     def compute_fwd_flow_goals(self, noises, observations, use_target_network=False):
         if use_target_network:
             module_name = 'target_value_vf'
         else:
             module_name = 'value_vf'
 
-        def vector_field(time, noisy_goals, carry):
-            (observations, ) = carry
-            times = jnp.full(noisy_goals.shape[:-1], time)
+        noisy_goals = noises
+        num_flow_steps = self.config['num_flow_steps']
+        step_size = 1.0 / num_flow_steps
 
+        def body_fn(carry, i):
+            """
+            carry: (noisy_goals, )
+            i: current step index
+            """
+            (noisy_goals,) = carry
+
+            times = jnp.full(noisy_goals.shape[:-1], i * step_size)
             vf = self.network.select(module_name)(
                 noisy_goals, times, observations)
+            new_noisy_goals = noisy_goals + vf * step_size
 
-            return vf
+            return (new_noisy_goals, ), None
 
-        ode_term = ODETerm(vector_field)
-        ode_sol = diffeqsolve(
-            ode_term, self.ode_solver,
-            t0=0.0, t1=1.0, dt0=1 / self.config['num_flow_steps'],
-            y0=noises, args=(observations, ),
-            throw=False,  # (chongyi): setting throw to false is important for speed
-        )
-        noisy_goals = ode_sol.ys[-1]
+        # Use lax.scan to iterate over num_flow_steps
+        (noisy_goals, ), _ = jax.lax.scan(
+            body_fn, (noisy_goals, ), jnp.arange(num_flow_steps))
 
         return noisy_goals
+
+    # def compute_fwd_flow_goals(self, noises, observations, use_target_network=False):
+    #     if use_target_network:
+    #         module_name = 'target_value_vf'
+    #     else:
+    #         module_name = 'value_vf'
+    #
+    #     def vector_field(time, noisy_goals, carry):
+    #         (observations, ) = carry
+    #         times = jnp.full(noisy_goals.shape[:-1], time)
+    #
+    #         vf = self.network.select(module_name)(
+    #             noisy_goals, times, observations)
+    #
+    #         return vf
+    #
+    #     ode_term = ODETerm(vector_field)
+    #     ode_sol = diffeqsolve(
+    #         ode_term, self.ode_solver,
+    #         t0=0.0, t1=1.0, dt0=1 / self.config['num_flow_steps'],
+    #         y0=noises, args=(observations, ),
+    #         throw=False,  # (chongyi): setting throw to false is important for speed
+    #     )
+    #     noisy_goals = ode_sol.ys[-1]
+    #
+    #     return noisy_goals
 
     @jax.jit
     def total_loss(self, batch, grad_params, rng=None):
