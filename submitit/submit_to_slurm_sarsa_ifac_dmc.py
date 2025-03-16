@@ -64,7 +64,7 @@ def main():
                         for tau in [0.005, 0.01, 0.1, 1.0]:
                             for network_size in [512]:
                                 for alpha in [10.0, 1.0, 0.1, 0.01]:
-                                    for num_flow_goals in [8, 16]:
+                                    for num_flow_goals in [16]:
                                         for expectile in [0.8, 0.85, 0.9, 0.95, 0.99]:
                                             for q_agg in ['min']:
                                                 for normalize_q_loss in [False]:  # doesn't matter
