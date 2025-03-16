@@ -64,12 +64,12 @@ def main():
                         for network_type in ['mlp']:
                             for num_residual_blocks in [1]:
                                 for network_size in [512]:
-                                    for alpha in [10.0, 1.0, 0.1, 0.01, 0.001]:
+                                    for alpha in [1.0, 0.1, 0.01, 0.001]:
                                         for distill_type in ['fwd_sample']:
                                             for num_flow_goals in [16, 32]:
                                                 for ode_solver_type in ['euler']:
                                                     for expectile in [0.65, 0.7, 0.75, 0.8, 0.85]:
-                                                        for q_agg in ['mean', 'min']:
+                                                        for q_agg in ['min']:
                                                             for normalize_q_loss in [True, False]:  # doesn't matter
                                                                 for value_layer_norm in [True]:
                                                                     for use_target_reward in [True, False]:  # False could be better
