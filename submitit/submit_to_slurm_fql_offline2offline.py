@@ -31,7 +31,7 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="fql",
-        slurm_time=int(4 * 60),  # minute
+        slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
