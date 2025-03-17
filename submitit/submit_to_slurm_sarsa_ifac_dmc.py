@@ -115,7 +115,6 @@ def main():
                                                                                 --env_name={env_name} \
                                                                                 --obs_norm_type={obs_norm_type} \
                                                                                 --eval_episodes=50 \
-                                                                                --dataset_class=GCDataset \
                                                                                 --agent=impls/agents/sarsa_ifac.py \
                                                                                 --agent.batch_size={batch_size} \
                                                                                 --agent.actor_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \

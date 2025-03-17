@@ -60,11 +60,11 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
         actions = batch['actions']
         # rewards = batch['rewards']
         # masks = batch['masks']
-        goals = batch['value_goals']
+        # goals = batch['value_goals']
 
         if self.config['encoder'] is not None:
             observations = self.network.select('value_vf_encoder')(batch['observations'])
-            goals = self.network.select('value_vf_encoder')(batch['value_goals'])
+            # goals = self.network.select('value_vf_encoder')(batch['value_goals'])
 
         rng, noise_rng = jax.random.split(rng)
         assert self.config['value_noise_type'] == 'normal'
@@ -73,8 +73,8 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
                 noise_rng, shape=(self.config['num_flow_goals'], *observations.shape), dtype=observations.dtype)
         elif self.config['value_noise_type'] == 'marginal_state':
             noises = jax.random.permutation(noise_rng, observations, axis=0)
-        elif self.config['value_noise_type'] == 'marginal_goal':
-            noises = jax.random.permutation(noise_rng, goals, axis=0)
+        # elif self.config['value_noise_type'] == 'marginal_goal':
+        #     noises = jax.random.permutation(noise_rng, goals, axis=0)
         flow_goals = self.compute_fwd_flow_goals(
             noises,
             jnp.repeat(jnp.expand_dims(observations, axis=0), self.config['num_flow_goals'], axis=0)
@@ -155,34 +155,29 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
         actions = batch['actions']
         next_observations = batch['next_observations']
-        goals = batch['value_goals']
         
         if self.config['encoder'] is not None:
             observations = self.network.select('value_vf_encoder')(
                 batch['observations'], params=grad_params)
-            goals = self.network.select('value_vf_encoder')(
-                batch['value_goals'], params=grad_params)
 
-        if self.config['value_fm_loss_type'] == 'mc':
-            # MC value flow matching
-            rng, value_noise_rng, value_time_rng = jax.random.split(rng, 3)
-            assert self.config['value_noise_type'] == 'normal'
-            if self.config['value_noise_type'] == 'normal':
-                value_noises = jax.random.normal(value_noise_rng, shape=goals.shape, dtype=actions.dtype)
-            elif self.config['value_noise_type'] == 'marginal_state':
-                value_noises = jax.random.permutation(value_noise_rng, observations, axis=0)
-            elif self.config['value_noise_type'] == 'marginal_goal':
-                value_noises = jax.random.permutation(value_noise_rng, goals, axis=0)
-            value_times = jax.random.uniform(value_time_rng, shape=(batch_size, ))
-            value_path_sample = self.cond_prob_path(x_0=value_noises, x_1=goals, t=value_times)
-            value_vf_pred = self.network.select('value_vf')(
-                value_path_sample.x_t,
-                value_times,
-                observations,
-                params=grad_params,
-            )
-            value_flow_matching_loss = jnp.square(value_vf_pred - value_path_sample.dx_t).mean()
-        elif self.config['value_fm_loss_type'] == 'naive_sarsa':
+        # if self.config['value_fm_loss_type'] == 'mc':
+        #     # MC value flow matching
+        #     rng, value_noise_rng, value_time_rng = jax.random.split(rng, 3)
+        #     assert self.config['value_noise_type'] == 'normal'
+        #     if self.config['value_noise_type'] == 'normal':
+        #         value_noises = jax.random.normal(value_noise_rng, shape=goals.shape, dtype=goals.dtype)
+        #     elif self.config['value_noise_type'] == 'marginal_state':
+        #         value_noises = jax.random.permutation(value_noise_rng, observations, axis=0)
+        #     value_times = jax.random.uniform(value_time_rng, shape=(batch_size, ))
+        #     value_path_sample = self.cond_prob_path(x_0=value_noises, x_1=goals, t=value_times)
+        #     value_vf_pred = self.network.select('value_vf')(
+        #         value_path_sample.x_t,
+        #         value_times,
+        #         observations,
+        #         params=grad_params,
+        #     )
+        #     value_flow_matching_loss = jnp.square(value_vf_pred - value_path_sample.dx_t).mean()
+        if self.config['value_fm_loss_type'] == 'naive_sarsa':
             # naive SARSA value flow matching
             rng, current_time_rng, current_noise_rng = jax.random.split(rng, 3)
             current_times = jax.random.uniform(current_time_rng, shape=(batch_size, ), dtype=observations.dtype)
@@ -191,8 +186,8 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
                     current_noise_rng, shape=observations.shape, dtype=observations.dtype)
             elif self.config['value_noise_type'] == 'marginal_state':
                 current_noises = jax.random.permutation(current_noise_rng, observations, axis=0)
-            elif self.config['value_noise_type'] == 'marginal_goal':
-                current_noises = jax.random.permutation(current_noise_rng, goals, axis=0)
+            # elif self.config['value_noise_type'] == 'marginal_goal':
+            #     current_noises = jax.random.permutation(current_noise_rng, goals, axis=0)
             current_path_sample = self.cond_prob_path(
                 x_0=current_noises, x_1=observations, t=current_times)
             current_vf_pred = self.network.select('value_vf')(
@@ -209,8 +204,8 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
                     future_goal_rng, shape=observations.shape, dtype=observations.dtype)
             elif self.config['value_noise_type'] == 'marginal_state':
                 future_goal_noises = jax.random.permutation(future_goal_rng, observations, axis=0)
-            elif self.config['value_noise_type'] == 'marginal_goal':
-                future_goal_noises = jax.random.permutation(current_noise_rng, goals, axis=0)
+            # elif self.config['value_noise_type'] == 'marginal_goal':
+            #     future_goal_noises = jax.random.permutation(current_noise_rng, goals, axis=0)
             future_flow_goals = self.compute_fwd_flow_goals(
                 future_goal_noises, next_observations,
                 use_target_network=True
@@ -226,8 +221,8 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
                     future_noise_rng, shape=observations.shape, dtype=observations.dtype)
             elif self.config['value_noise_type'] == 'marginal_state':
                 future_noises = jax.random.permutation(future_noise_rng, observations, axis=0)
-            elif self.config['value_noise_type'] == 'marginal_goal':
-                future_noises = jax.random.permutation(future_noise_rng, goals, axis=0)
+            # elif self.config['value_noise_type'] == 'marginal_goal':
+            #     future_noises = jax.random.permutation(future_noise_rng, goals, axis=0)
             future_path_sample = self.cond_prob_path(
                 x_0=future_noises, x_1=future_flow_goals, t=future_times)
             future_vf_pred = self.network.select('value_vf')(
@@ -247,8 +242,8 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
                 noises = jax.random.normal(noise_rng, shape=observations.shape, dtype=observations.dtype)
             elif self.config['value_noise_type'] == 'marginal_state':
                 noises = jax.random.permutation(noise_rng, observations, axis=0)
-            elif self.config['value_noise_type'] == 'marginal_goal':
-                noises = jax.random.permutation(noise_rng, goals, axis=0)
+            # elif self.config['value_noise_type'] == 'marginal_goal':
+            #     noises = jax.random.permutation(noise_rng, goals, axis=0)
             flow_observations = self.compute_fwd_flow_goals(noises, next_observations, use_target_network=True)
             flow_observations = jax.lax.stop_gradient(flow_observations)
             if self.config['clip_flow_goals']:
@@ -278,9 +273,9 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
             elif self.config['value_noise_type'] == 'marginal_state':
                 current_noises = jax.random.permutation(
                     current_noise_rng, observations, axis=0)
-            elif self.config['value_noise_type'] == 'marginal_goal':
-                current_noises = jax.random.permutation(
-                    current_noise_rng, goals, axis=0)
+            # elif self.config['value_noise_type'] == 'marginal_goal':
+            #     current_noises = jax.random.permutation(
+            #         current_noise_rng, goals, axis=0)
             current_path_sample = self.cond_prob_path(
                 x_0=current_noises, x_1=observations, t=times)
             current_vf_pred = self.network.select('value_vf')(
@@ -297,9 +292,9 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
             elif self.config['value_noise_type'] == 'marginal_state':
                 future_noises = jax.random.permutation(
                     future_noise_rng, observations, axis=0)
-            elif self.config['value_noise_type'] == 'marginal_goal':
-                future_noises = jax.random.permutation(
-                    future_noise_rng, goals, axis=0)
+            # elif self.config['value_noise_type'] == 'marginal_goal':
+            #     future_noises = jax.random.permutation(
+            #         future_noise_rng, goals, axis=0)
             flow_future_observations = self.compute_fwd_flow_goals(
                 future_noises, next_observations, use_target_network=True)
             if self.config['clip_flow_goals']:
@@ -802,13 +797,14 @@ def get_config():
             tau=0.005,  # Target network update rate.
             expectile=0.9,  # IQL style expectile.
             q_agg='mean',  # Aggregation method for target Q values.
-            value_noise_type='normal',  # Critic noise type. ('marginal_state', 'marginal_goal', 'normal').
-            value_fm_loss_type='sarsa_squared',  # Type of value flow matching loss. ('mc', 'naive_sarsa', 'coupled_sarsa', 'sarsa_squared')
+            value_noise_type='normal',  # Critic noise type. ('marginal_state', 'normal').
+            value_fm_loss_type='sarsa_squared',  # Type of value flow matching loss. ('naive_sarsa', 'coupled_sarsa', 'sarsa_squared')
             num_flow_goals=1,  # Number of future flow goals for the compute target value.
             clip_flow_goals=False,  # Whether to clip the flow goals.
             ode_solver_type='euler',  # Type of ODE solver ('euler', 'dopri5').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
+            actor_freq=2,  # Actor update frequency.
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').
             alpha=10.0,  # BC coefficient (need to be tuned for each environment).
             num_flow_steps=10,  # Number of flow steps.
@@ -817,20 +813,6 @@ def get_config():
             reward_type='state',  # Reward type. ('state', 'state_action')
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             encoder_actor_loss_grad=False,  # Whether to backpropagate gradients from the actor loss into the encoder.
-            # Dataset hyperparameters.
-            relabel_reward=False,  # Whether to relabel the reward.
-            value_p_curgoal=0.0,  # Probability of using the current state as the value goal.
-            value_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the value goal.
-            value_p_randomgoal=0.0,  # Probability of using a random state as the value goal.
-            value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
-            value_geom_start=0,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
-            num_value_goals=1,  # Number of value goals to sample
-            actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
-            actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
-            actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
-            actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
-            actor_geom_start=0,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
-            num_actor_goals=1,  # Number of actor goals to sample
             dataset_obs_min=ml_collections.config_dict.placeholder(jnp.ndarray),
             dataset_obs_max=ml_collections.config_dict.placeholder(jnp.ndarray),
         )
