@@ -85,7 +85,7 @@ class IFACAgent(flax.struct.PyTreeNode):
         if self.config['reward_type'] == 'state_action':
             rng, noise_rng = jax.random.split(rng)
             a_noises = jax.random.normal(
-                noise_rng, shape=(self.config['num_flow_actions'], *actions.shape), dtype=actions.dtype)
+                noise_rng, shape=(self.config['num_flow_goals'], *actions.shape), dtype=actions.dtype)
             if self.config['distill_type'] == 'fwd_sample':
                 goal_actions = self.network.select('actor')(a_noises, flow_goals)
             elif self.config['distill_type'] == 'fwd_int':
