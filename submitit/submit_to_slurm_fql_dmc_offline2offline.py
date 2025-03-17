@@ -50,7 +50,9 @@ def main():
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
             # "cheetah_run",
-            "walker_walk",
+            # "walker_walk",
+            "quadruped_jump",
+            "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['none']:
                 for alpha in [10.0, 1.0, 0.1, 0.01, 0.001]:
