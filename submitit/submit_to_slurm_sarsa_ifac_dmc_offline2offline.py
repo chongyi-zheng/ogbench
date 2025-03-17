@@ -56,17 +56,17 @@ def main():
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             "cheetah_run",
-            "walker_walk",
+            # "walker_walk",
         ]:
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for tau in [0.005]:
                             for network_size in [512]:
-                                for alpha in [10.0, 1.0, 0.1, 0.01]:
+                                for alpha in [1000.0, 100.0, 0.001]:
                                     for num_flow_goals in [16]:
                                         for actor_freq in [2, 4]:
-                                            for expectile in [0.8, 0.85, 0.9, 0.95, 0.99]:
+                                            for expectile in [0.7, 0.75, 0.8, 0.85]:
                                                 for q_agg in ['min']:
                                                     for normalize_q_loss in [False]:  # doesn't matter
                                                         for value_fm_loss_type in ['sarsa_squared']:
