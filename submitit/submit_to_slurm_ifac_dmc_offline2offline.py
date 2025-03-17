@@ -30,7 +30,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="ifac",
+        slurm_name="ifac_offline2offline",
         slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
