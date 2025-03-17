@@ -55,7 +55,7 @@ def main():
             # "walker_walk",
         ]:
             for obs_norm_type in ['none']:
-                for alpha in [1000.0, 10.0, 1.0, 0.1]:
+                for alpha in [100000.0, 10000.0, 0.01, 0.001]:
                     for num_flow_steps in [10]:
                         for distill_type in ["fwd_sample"]:
                             for q_agg in ["mean", "min"]:
