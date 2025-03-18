@@ -76,7 +76,7 @@ def main():
                                                                 for use_target_reward in [False]:  # False could be better
                                                                     for reward_type in ['state', 'state_action']:
                                                                         for seed in [10]:
-                                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_noise_type={critic_noise_type}_critic_fm_loss={critic_fm_loss_type}_clip_fg={clip_flow_goals}_use_target_reward={use_target_reward}_reward={reward_type}"
+                                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_noise_type={critic_noise_type}_critic_fm_loss={critic_fm_loss_type}_clip_fg={clip_flow_goals}_reward={reward_type}"
                                                                             log_dir = os.path.expanduser(
                                                                                 f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifac_q_offline2offline/{exp_name}/{seed}")
 
@@ -141,7 +141,7 @@ def main():
                                                                                     --agent.reward_layer_norm=True \
                                                                                     --agent.actor_layer_norm=False \
                                                                                     --agent.normalize_q_loss={normalize_q_loss} \
-                                                                                    --agent.use_target_reward={use_target_reward} \
+                                                                                    --agent.use_target_reward=False \
                                                                                     --agent.reward_type={reward_type} \
                                                                                     --seed={seed} \
                                                                                     --save_dir={log_dir} \
