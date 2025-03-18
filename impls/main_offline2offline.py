@@ -98,7 +98,7 @@ def main(_):
         if dataset is not None:
             dataset.p_aug = FLAGS.p_aug
             dataset.frame_stack = FLAGS.frame_stack
-            if config['agent_name'] == 'rebrac':
+            if config['agent_name'] in ['rebrac', 'sarsa_ifac_q']:
                 dataset.return_next_actions = True
     if FLAGS.dataset_class == 'GCDataset':
         config['p_aug'] = FLAGS.p_aug
@@ -115,7 +115,7 @@ def main(_):
     #     # Fill with the maximum action to let the agent know the action space size.
     #     example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)
 
-    if config['agent_name'] in ['mcfac', 'ifac', 'sarsa_ifac']:
+    if config['agent_name'] in ['mcfac', 'ifac', 'sarsa_ifac', 'sarsa_ifac_q']:
         if hasattr(pretraining_train_dataset, 'dataset'):
             dataset_observations = pretraining_train_dataset.dataset['observations']
         else:
