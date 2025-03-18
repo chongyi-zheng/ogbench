@@ -12,7 +12,7 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
-    elif cluster_name == 'della':
+    elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
