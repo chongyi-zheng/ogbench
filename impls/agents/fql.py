@@ -300,16 +300,13 @@ class FQLAgent(flax.struct.PyTreeNode):
         Args:
             seed: Random seed.
             ex_observations: Example observations.
-            ex_actions: Example batch of actions. In discrete-action MDPs, this should contain the maximum action value.
+            ex_actions: Example batch of actions.
             config: Configuration dictionary.
         """
         rng = jax.random.PRNGKey(seed)
         rng, init_rng = jax.random.split(rng, 2)
 
-        if config['discrete']:
-            action_dim = ex_actions.max() + 1
-        else:
-            action_dim = ex_actions.shape[-1]
+        action_dim = ex_actions.shape[-1]
 
         rng, time_rng = jax.random.split(rng)
         ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],))
@@ -324,45 +321,24 @@ class FQLAgent(flax.struct.PyTreeNode):
             encoders['actor'] = encoder_module()
 
         # Define value and actor networks.
-        if config['discrete']:
-            # critic_def = GCDiscreteBilinearCritic(
-            #     hidden_dims=config['value_hidden_dims'],
-            #     latent_dim=config['latent_dim'],
-            #     layer_norm=config['layer_norm'],
-            #     ensemble=True,
-            #     value_exp=True,
-            #     state_encoder=encoders.get('critic_state'),
-            #     goal_encoder=encoders.get('critic_goal'),
-            #     action_dim=action_dim,
-            # )
-            raise NotImplementedError
-        else:
-            critic_def = GCValue(
-                hidden_dims=config['value_hidden_dims'],
-                layer_norm=config['layer_norm'],
-                num_ensembles=2,
-                gc_encoder=encoders.get('critic'),
-            )
-
-        if config['discrete']:
-            actor_def = GCDiscreteActor(
-                hidden_dims=config['actor_hidden_dims'],
-                action_dim=action_dim,
-                gc_encoder=encoders.get('actor'),
-            )
-        else:
-            actor_vf_def = GCFMVectorField(
-                vector_dim=action_dim,
-                hidden_dims=config['actor_hidden_dims'],
-                layer_norm=config['actor_layer_norm'],
-                state_encoder=encoders.get('actor_vf'),
-            )
-            actor_def = GCFMValue(
-                hidden_dims=config['actor_hidden_dims'],
-                output_dim=action_dim,
-                layer_norm=config['actor_layer_norm'],
-                state_encoder=encoders.get('actor'),
-            )
+        critic_def = GCValue(
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            num_ensembles=2,
+            gc_encoder=encoders.get('critic'),
+        )
+        actor_vf_def = GCFMVectorField(
+            vector_dim=action_dim,
+            hidden_dims=config['actor_hidden_dims'],
+            layer_norm=config['actor_layer_norm'],
+            state_encoder=encoders.get('actor_vf'),
+        )
+        actor_def = GCFMValue(
+            hidden_dims=config['actor_hidden_dims'],
+            output_dim=action_dim,
+            layer_norm=config['actor_layer_norm'],
+            state_encoder=encoders.get('actor'),
+        )
 
         network_info = dict(
             critic=(critic_def, (ex_observations, ex_actions)),
@@ -412,7 +388,6 @@ def get_config():
             distill_type='fwd_sample',  # Distillation type. ('fwd_sample', 'fwd_int').
             alpha=10.0,  # BC coefficient (need to be tuned for each environment).
             num_flow_steps=10,  # Number of flow steps.
-            discrete=False,  # Whether the action space is discrete.
             vf_q_loss=False,  # Whether to use vector fields to compute Q in the Q loss.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
