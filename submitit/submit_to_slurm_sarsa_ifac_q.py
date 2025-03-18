@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -72,7 +72,7 @@ def main():
                                                     for critic_fm_loss_type in ['sarsa_squared']:
                                                         for reward_type in ['state']:
                                                             for seed in [10]:
-                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_noise_type={critic_noise_type}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}"
+                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_num_fg={num_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_noise_type={critic_noise_type}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifac_q/{exp_name}/{seed}")
 
