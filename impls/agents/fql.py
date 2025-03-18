@@ -52,7 +52,7 @@ class FQLAgent(flax.struct.PyTreeNode):
             noises = jax.random.normal(noise_rng, shape=batch['actions'].shape, dtype=batch['actions'].dtype)
             action_vfs = self.network.select('actor')(noises, batch['observations'])
             q = self.network.select('critic')(
-                batch['observations'], action_vfs, params=grad_params)
+                batch['observations'], actions=action_vfs, params=grad_params)
         else:
             q = self.network.select('critic')(
                 batch['observations'], actions=batch['actions'], params=grad_params)
@@ -341,8 +341,8 @@ class FQLAgent(flax.struct.PyTreeNode):
         )
 
         network_info = dict(
-            critic=(critic_def, (ex_observations, ex_actions)),
-            target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_actions)),
+            critic=(critic_def, (ex_observations, None, ex_actions)),
+            target_critic=(copy.deepcopy(critic_def), (ex_observations, None, ex_actions)),
             actor_vf=(actor_vf_def, (ex_actions, ex_times, ex_observations)),
             actor=(actor_def, (ex_actions, ex_observations)),
         )
