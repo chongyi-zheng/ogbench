@@ -45,21 +45,21 @@ def main():
 
     with executor.batch():  # job array
         for env_name in [
-            "antmaze-large-navigate-singletask-v0",
+            # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
             # "cube-single-play-singletask-task2-v0",
-            # "cube-double-play-singletask-task2-v0",
+            "cube-double-play-singletask-task2-v0",
             "cube-triple-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
             # "walker_walk",
         ]:
-            for obs_norm_type in ['normal']:
+            for obs_norm_type in ['none', 'normal']:
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for tau in [0.005]:
@@ -68,9 +68,9 @@ def main():
                                     for num_flow_goals in [16]:
                                         for expectile in [0.8, 0.85, 0.9, 0.95, 0.99]:
                                             for q_agg in ['min']:
-                                                for normalize_q_loss in [False]:  # doesn't matter
+                                                for normalize_q_loss in [True, False]:
                                                     for value_fm_loss_type in ['sarsa_squared']:
-                                                        for clip_flow_goals in [True, False]:
+                                                        for clip_flow_goals in [False]:
                                                             for use_target_reward in [False]:  # False could be better
                                                                 for reward_type in ['state']:
                                                                     for seed in [10]:
