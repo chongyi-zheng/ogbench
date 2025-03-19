@@ -64,15 +64,15 @@ def main():
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for network_size in [512]:
-                            for alpha in [10.0, 1.0, 0.1, 0.01]:
-                                for num_flow_goals in [32]:
+                            for alpha in [1.0, 0.1, 0.01, 10.0]:
+                                for num_flow_goals in [16]:
                                     for actor_freq in [2, 4]:
-                                        for expectile in [0.85, 0.9, 0.95, 0.99]:
+                                        for expectile in [0.65, 0.7, 0.75]:
                                             for q_agg in ['min']:
-                                                for normalize_q_loss in [True, False]:
+                                                for normalize_q_loss in [False]:
                                                     for critic_noise_type in ['normal']:
                                                         for critic_fm_loss_type in ['sarsa_squared']:
-                                                            for reward_type in ['state', 'state_action']:
+                                                            for reward_type in ['state']:
                                                                 for use_terminal_masks in [True, False]:
                                                                     for seed in [10]:
                                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_noise_type={critic_noise_type}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_use_mask={use_terminal_masks}"
