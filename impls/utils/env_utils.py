@@ -157,7 +157,8 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
     if 'singletask' in env_name:
         # OGBench.
         if reward_free:
-            dataset_env_name = '-'.join([*env_name.split('-')[:2], 'noisy', env_name.split('-')[-1]])
+            dataset_env_name = '-'.join([*(env_name.split('-')[:3] if 'visual' in env_name else env_name.split('-')[:2]),
+                                         'noisy', env_name.split('-')[-1]])
         else:
             dataset_env_name = env_name
         _, train_dataset, val_dataset = ogbench.make_env_and_datasets(dataset_env_name)
