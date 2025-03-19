@@ -949,7 +949,7 @@ class GCFMValue(nn.Module):
         network_type: Type of MLP network. ('mlp' or 'simba')
         hidden_dims: Hidden layer dimensions.
         layer_norm: Whether to apply layer normalization.
-        ensemble: Whether to ensemble the value function.
+        num_ensembles: Number of value function ensembles.
         state_encoder: Optional state encoder.
         goal_encoder: Optional goal encoder.
     """

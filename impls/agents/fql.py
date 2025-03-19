@@ -5,12 +5,13 @@ from typing import Any
 import flax
 import jax
 import jax.numpy as jnp
+import numpy as np
 import ml_collections
 import optax
 
 from utils.encoders import encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCDiscreteActor, GCFMVectorField, GCFMValue, GCValue
+from utils.networks import GCFMVectorField, GCFMValue, GCValue
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
@@ -268,13 +269,15 @@ class FQLAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the actor."""
-        if len(observations.shape) == 1:
+        if observations.shape == self.config['obs_dims']:
             observations = jnp.expand_dims(observations, axis=0)
-        action_dim = self.network.model_def.modules['actor'].output_dim
 
         seed, noise_seed = jax.random.split(seed)
         noises = jax.random.normal(
-            noise_seed, shape=(observations.shape[0], action_dim), dtype=observations.dtype)
+            noise_seed,
+            shape=(observations.shape[0], self.config['action_dim']),
+            dtype=self.config['action_dtype']
+        )
         if self.config['distill_type'] == 'fwd_sample':
             actions = self.network.select('actor')(noises, observations)
         elif self.config['distill_type'] == 'fwd_int':
@@ -304,11 +307,10 @@ class FQLAgent(flax.struct.PyTreeNode):
         rng = jax.random.PRNGKey(seed)
         rng, init_rng = jax.random.split(rng, 2)
 
+        ex_times = ex_actions[..., 0]
+        obs_dims = ex_observations.shape[1:]
         action_dim = ex_actions.shape[-1]
-
-        rng, time_rng = jax.random.split(rng)
-        ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],))
-        # ex_noises = jax.random.normal(noise_rng, shape=ex_actions.shape, dtype=ex_actions.dtype)
+        action_dtype = ex_actions.dtype
 
         # Define encoders.
         encoders = dict()
@@ -363,6 +365,10 @@ class FQLAgent(flax.struct.PyTreeNode):
             scheduler=scheduler_class[config['scheduler_class']]()
         )
 
+        config['obs_dims'] = obs_dims
+        config['action_dim'] = action_dim
+        config['action_dtype'] = action_dtype
+
         return cls(rng, network=network, cond_prob_path=cond_prob_path, config=flax.core.FrozenDict(**config))
 
 
@@ -371,6 +377,9 @@ def get_config():
         dict(
             # Agent hyperparameters.
             agent_name='fql',  # Agent name.
+            obs_dims=ml_collections.config_dict.placeholder(tuple),  # Observation dimensions (will be set automatically).
+            action_dim=ml_collections.config_dict.placeholder(int),  # Action dimension (will be set automatically).
+            action_dtype=ml_collections.config_dict.placeholder(np.dtype),  # Action data type (will be set automatically).
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
