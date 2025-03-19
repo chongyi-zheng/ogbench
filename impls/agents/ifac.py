@@ -654,7 +654,7 @@ def get_config():
             alpha=10.0,  # BC coefficient (need to be tuned for each environment).
             num_flow_steps=10,  # Number of flow steps.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
-            use_target_reward=True,  # Whether to use the target reward network.
+            use_target_reward=False,  # Whether to use the target reward network.
             reward_type='state',  # Reward type. ('state', 'state_action')
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             encoder_actor_loss_grad=False,  # Whether to backpropagate gradients from the actor loss into the encoder.
