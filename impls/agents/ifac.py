@@ -471,7 +471,7 @@ class IFACAgent(flax.struct.PyTreeNode):
         elif self.config['distill_type'] == 'fwd_int':
             actions = noises + self.network.select('actor')(noises, observations)
         actions = jnp.clip(actions, -1, 1)
-        # actions = actions.squeeze()
+        actions = actions.squeeze()
 
         return actions
 
