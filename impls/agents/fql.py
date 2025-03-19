@@ -317,8 +317,8 @@ class FQLAgent(flax.struct.PyTreeNode):
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
             encoders['critic'] = encoder_module()
-            encoders['actor_vf'] = encoder_module()
             encoders['actor'] = encoder_module()
+            encoders['actor_vf'] = encoder_module()
 
         # Define value and actor networks.
         critic_def = GCValue(
