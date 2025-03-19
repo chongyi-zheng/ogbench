@@ -55,8 +55,8 @@ def main():
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
-            # "cheetah_run",
-            "walker_walk",
+            "cheetah_run",
+            # "walker_walk",
             # "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
