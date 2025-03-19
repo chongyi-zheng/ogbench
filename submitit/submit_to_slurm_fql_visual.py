@@ -53,7 +53,7 @@ def main():
         ]:
             for obs_norm_type in ['none']:
                 for discount in [0.99]:
-                    for alpha in [1000, 300, 100, 30, 10]:
+                    for alpha in [1000, 300, 100, 30]:
                         for distill_type in ['fwd_sample']:
                             for q_agg in ['min']:
                                 for normalize_q_loss in [True, False]:
