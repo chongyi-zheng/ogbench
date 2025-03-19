@@ -60,9 +60,6 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         """Compute the value loss."""
         observations = batch['observations']
         actions = batch['actions']
-        # rewards = batch['rewards']
-        # masks = batch['masks']
-        # goals = batch['value_goals']
 
         if self.config['encoder'] is not None:
             observations = self.network.select('actor_critic_encoder')(observations)
