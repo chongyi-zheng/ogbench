@@ -243,9 +243,7 @@ class FQLAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, full_update, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        if full_update:
-            # Update the target networks only when `full_update` is True.
-            self.target_update(new_network, 'critic')
+        self.target_update(new_network, 'critic')
 
         return self.replace(network=new_network, rng=new_rng), info
 

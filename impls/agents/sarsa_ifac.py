@@ -102,7 +102,7 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
             future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
 
         future_rewards = future_rewards.mean(axis=0)  # MC estimations
-        target_v = 1 / (1 - self.config['discount']) * future_rewards
+        target_v = 1.0 / (1 - self.config['discount']) * future_rewards
         v = self.network.select('value')(observations, params=grad_params)
         value_loss = self.expectile_loss(target_v - v, target_v - v, self.config['expectile']).mean()
 
@@ -155,7 +155,7 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
         actions = batch['actions']
         next_observations = batch['next_observations']
-        
+
         if self.config['encoder'] is not None:
             observations = self.network.select('value_vf_encoder')(
                 batch['observations'], params=grad_params)
@@ -579,10 +579,8 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, full_update, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        if full_update:
-            # Update the target networks only when `full_update` is True.
-            self.target_update(new_network, 'reward')
-            self.target_update(new_network, 'value_vf')
+        self.target_update(new_network, 'reward')
+        self.target_update(new_network, 'value_vf')
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -592,7 +590,7 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
         new_rng, rng = jax.random.split(self.rng)
 
         def loss_fn(grad_params):
-            return self.total_loss(batch, grad_params, rng=rng)
+            return self.total_loss(batch, grad_params, full_update=True, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
         self.target_update(new_network, 'reward')
@@ -762,6 +760,7 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
 
         params = network.params
         params['modules_target_reward'] = params['modules_reward']
+        params['modules_target_value_vf'] = params['modules_value_vf']
 
         cond_prob_path = cond_prob_path_class[config['prob_path_class']](
             scheduler=scheduler_class[config['scheduler_class']]()

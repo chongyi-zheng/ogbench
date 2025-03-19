@@ -105,7 +105,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
 
         future_rewards = future_rewards.mean(axis=0)  # MC estimations
-        target_q = 1 / (1 - self.config['discount']) * future_rewards
+        target_q = 1.0 / (1 - self.config['discount']) * future_rewards
         qs = self.network.select('critic')(observations, actions, params=grad_params)
         critic_loss = self.expectile_loss(target_q - qs, target_q - qs, self.config['expectile']).mean()
 
@@ -604,10 +604,8 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, full_update, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        if full_update:
-            # Update the target networks only when `full_update` is True.
-            self.target_update(new_network, 'reward')
-            self.target_update(new_network, 'critic_vf')
+        self.target_update(new_network, 'reward')
+        self.target_update(new_network, 'critic_vf')
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -617,7 +615,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         new_rng, rng = jax.random.split(self.rng)
 
         def loss_fn(grad_params):
-            return self.total_loss(batch, grad_params, rng=rng)
+            return self.total_loss(batch, grad_params, full_update=True, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
         self.target_update(new_network, 'reward')
@@ -780,6 +778,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
 
         params = network.params
         params['modules_target_reward'] = params['modules_reward']
+        params['modules_target_critic_vf'] = params['modules_critic_vf']
 
         cond_prob_path = cond_prob_path_class[config['prob_path_class']](
             scheduler=scheduler_class[config['scheduler_class']]()
