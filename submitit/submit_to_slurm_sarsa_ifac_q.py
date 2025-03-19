@@ -53,25 +53,25 @@ def main():
             # "door-human-v1",
             # "cube-single-play-singletask-task2-v0",
             "cube-double-play-singletask-task2-v0",
-            "cube-triple-play-singletask-task2-v0",
+            # "cube-triple-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
             # "walker_walk",
         ]:
-            for obs_norm_type in ['none', 'normal']:
+            for obs_norm_type in ['none']:
                 for lr in [3e-4]:
                     for batch_size in [256]:
                         for network_size in [512]:
-                            for alpha in [100.0, 10.0, 1.0, 0.1, 0.01]:
+                            for alpha in [10.0, 3.0, 1.0]:
                                 for num_flow_goals in [16]:
-                                    for expectile in [0.8, 0.85, 0.9, 0.95, 0.99]:
-                                        for q_agg in ['min']:
-                                            for normalize_q_loss in [True, False]:
-                                                for critic_noise_type in ['normal', 'marginal_state']:
+                                    for expectile in [0.85, 0.9, 0.95, 0.99]:
+                                        for q_agg in ['mean']:
+                                            for normalize_q_loss in [True]:
+                                                for critic_noise_type in ['normal']:
                                                     for critic_fm_loss_type in ['sarsa_squared']:
-                                                        for reward_type in ['state']:
-                                                            for use_terminal_masks in [False]:
+                                                        for reward_type in ['state_action']:
+                                                            for use_terminal_masks in [True, False]:
                                                                 for seed in [10]:
                                                                     exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_{env_name}_obs_norm={obs_norm_type}_lr={lr}_bs={batch_size}_ns={network_size}_alpha={alpha}_num_fg={num_flow_goals}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_noise_type={critic_noise_type}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_use_mask={use_terminal_masks}"
                                                                     log_dir = os.path.expanduser(
