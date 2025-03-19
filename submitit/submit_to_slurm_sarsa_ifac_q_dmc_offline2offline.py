@@ -56,7 +56,7 @@ def main():
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             "cheetah_run",
-            "walker_walk",
+            # "walker_walk",
             # "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
@@ -66,8 +66,8 @@ def main():
                         for network_size in [512]:
                             for alpha in [1.0, 0.1, 0.01, 10.0]:
                                 for num_flow_goals in [16]:
-                                    for actor_freq in [2, 4]:
-                                        for expectile in [0.65, 0.7, 0.75]:
+                                    for actor_freq in [1, 2, 4]:
+                                        for expectile in [0.75, 0.85, 0.95, 0.99]:
                                             for q_agg in ['min']:
                                                 for normalize_q_loss in [False]:
                                                     for critic_noise_type in ['normal']:
