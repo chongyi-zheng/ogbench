@@ -133,6 +133,7 @@ def main():
                                                                         --agent.use_target_reward=False \
                                                                         --agent.reward_type={reward_type} \
                                                                         --agent.use_terminal_masks={use_terminal_masks} \
+                                                                        --agent.encoder={encoder} \
                                                                         --seed={seed} \
                                                                         --save_dir={log_dir} \
                                                                     2>&1 | tee {log_dir}/stream.log;
