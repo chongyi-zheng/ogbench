@@ -60,14 +60,14 @@ def main():
             # "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
-            for obs_norm_type in ['normal']:
+            for obs_norm_type in ['normal', 'none']:
                 for lr in [3e-4]:
-                    for tau in [0.05, 0.001]:
+                    for tau in [0.1, 0.05, 0.005]:
                         for network_size in [512]:
-                            for alpha in [100.0, 10.0, 1.0]:
+                            for alpha in [3000.0, 300.0, 30.0]:
                                 for num_flow_goals in [16]:
                                     for actor_freq in [2, 4]:
-                                        for expectile in [0.75, 0.85, 0.95, 0.99]:
+                                        for expectile in [0.65, 0.75, 0.85, 0.95, 0.99]:
                                             for q_agg in ['mean']:
                                                 for normalize_q_loss in [False]:
                                                     for critic_noise_type in ['normal']:
