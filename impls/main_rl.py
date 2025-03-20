@@ -141,6 +141,9 @@ def main(_):
             train_dataset,
             normalizer_type=FLAGS.obs_norm_type
         )
+        if config['dataset_obs_min'] is not None:
+            config['dataset_obs_min'] = agent.normalize(config['dataset_obs_min'])
+            config['dataset_obs_max'] = agent.normalize(config['dataset_obs_max'])
 
     # Restore agent.
     if FLAGS.restore_path is not None:
