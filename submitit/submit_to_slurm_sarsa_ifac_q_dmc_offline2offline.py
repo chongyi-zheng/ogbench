@@ -65,7 +65,7 @@ def main():
             for obs_norm_type in ['none', 'normal']:
                 for lr in [3e-4]:
                     for tau in [0.995, 0.005]:
-                        for alpha in [3000.0, 300.0, 30.0, 3.0]:
+                        for alpha in [300.0, 30.0, 3.0, 0.3]:
                             for num_flow_goals in [16]:
                                 for actor_freq in [2, 4]:
                                     for expectile in [0.65, 0.75, 0.85, 0.95]:
