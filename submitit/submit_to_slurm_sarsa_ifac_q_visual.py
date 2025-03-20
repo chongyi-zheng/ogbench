@@ -52,12 +52,12 @@ def main():
         ]:
             for obs_norm_type in ['none']:
                 for network_size in [512]:
-                    for alpha in [100.0, 10.0, 1.0, 0.1]:
+                    for alpha in [3000, 300, 30, 3]:
                         for num_flow_goals in [16]:
                             for expectile in [0.85, 0.9, 0.95, 0.99]:
                                 for encoder in ['impala_small']:
-                                    for q_agg in ['mean']:
-                                        for normalize_q_loss in [True, False]:
+                                    for q_agg in ['min', 'mean']:
+                                        for normalize_q_loss in [False]:
                                             for critic_noise_type in ['normal']:
                                                 for critic_fm_loss_type in ['sarsa_squared']:
                                                     for reward_type in ['state']:

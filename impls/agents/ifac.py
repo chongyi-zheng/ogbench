@@ -5,6 +5,7 @@ from typing import Any
 import flax
 import jax
 import jax.numpy as jnp
+import numpy as np
 import ml_collections
 import optax
 from diffrax import (
@@ -42,7 +43,7 @@ class IFACAgent(flax.struct.PyTreeNode):
         rewards = batch['rewards']
         
         if self.config['encoder'] is not None:
-            observations = self.network.select('actor_critic_encoder')(observations)
+            observations = self.network.select('value_vf_encoder')(observations)
         reward_preds = self.network.select('reward')(
             observations, actions=actions,
             params=grad_params,
@@ -108,6 +109,8 @@ class IFACAgent(flax.struct.PyTreeNode):
 
         return value_loss, {
             'value_loss': value_loss,
+            'flow_goal_max': flow_goals.max(),
+            'flow_goal_min': flow_goals.min(),
             'v_mean': v.mean(),
             'v_max': v.max(),
             'v_min': v.min(),
@@ -123,11 +126,11 @@ class IFACAgent(flax.struct.PyTreeNode):
         next_observations = batch['next_observations']
 
         if self.config['encoder'] is not None:
-            observations = self.network.select('actor_critic_encoder')(
-                batch['observations'], params=grad_params)
+            next_observations = self.network.select('value_vf_encoder')(
+                next_observations)
 
         qs = self.network.select('critic')(
-            observations, actions,
+            observations, actions=actions,
             params=grad_params,
         )
 
@@ -160,7 +163,7 @@ class IFACAgent(flax.struct.PyTreeNode):
             observations = self.network.select('value_vf_encoder')(
                 batch['observations'], params=grad_params)
             goals = self.network.select('value_vf_encoder')(
-                batch['value_goals'], params=grad_params)
+                batch['value_goals'])  # no gradients for the encoder through goals
 
         # value flow matching
         rng, value_noise_rng, value_time_rng = jax.random.split(rng, 3)
@@ -179,12 +182,13 @@ class IFACAgent(flax.struct.PyTreeNode):
             observations,
             params=grad_params,
         )
-        value_flow_matching_loss = jnp.square(value_vf_pred - value_path_sample.dx_t).mean()
+        value_flow_matching_loss = jnp.square(
+            value_vf_pred - value_path_sample.dx_t).mean()
 
         # actor flow matching
-        if self.config['encoder'] is not None:
-            observations = self.network.select('actor_critic_encoder')(
-                batch['observations'])  # no gradients for the encoder
+        # if self.config['encoder'] is not None:
+        #     observations = self.network.select('actor_critic_encoder')(
+        #         batch['observations'])  # no gradients for the encoder
         
         rng, actor_noise_rng, actor_time_rng = jax.random.split(rng, 3)
         actor_noises = jax.random.normal(actor_noise_rng, shape=actions.shape, dtype=actions.dtype)
@@ -193,7 +197,7 @@ class IFACAgent(flax.struct.PyTreeNode):
         actor_vf_pred = self.network.select('actor_vf')(
             actor_path_sample.x_t,
             actor_times,
-            observations,
+            batch['observations'],
             params=grad_params,
         )
         actor_flow_matching_loss = jnp.square(actor_vf_pred - actor_path_sample.dx_t).mean()
@@ -212,11 +216,11 @@ class IFACAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
         actions = batch['actions']
 
-        if self.config['encoder'] is not None:
-            if self.config['encoder_actor_loss_grad']:
-                observations = self.network.select('actor_critic_encoder')(observations, params=grad_params)
-            else:
-                observations = self.network.select('actor_critic_encoder')(observations)
+        # if self.config['encoder'] is not None:
+        #     if self.config['encoder_actor_loss_grad']:
+        #         observations = self.network.select('actor_critic_encoder')(observations, params=grad_params)
+        #     else:
+        #         observations = self.network.select('actor_critic_encoder')(observations)
 
         rng, noise_rng = jax.random.split(rng)
         noises = jax.random.normal(
@@ -456,16 +460,18 @@ class IFACAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the actor."""
-        if len(observations.shape) == 1 or len(observations.shape) == 3:
-            batch_size = 1
-        else:
-            batch_size = observations.shape[0]
-        if self.config['encoder'] is not None:
-            observations = self.network.select('actor_critic_encoder')(observations)
-        action_dim = self.network.model_def.modules['actor'].output_dim
+        if observations.shape == self.config['obs_dims']:
+            observations = jnp.expand_dims(observations, axis=0)
+
+        # if self.config['encoder'] is not None:
+        #     observations = self.network.select('actor_critic_encoder')(observations)
 
         seed, noise_seed = jax.random.split(seed)
-        noises = jax.random.normal(noise_seed, shape=(batch_size, action_dim)).squeeze()
+        noises = jax.random.normal(
+            noise_seed,
+            shape=(observations.shape[0], self.config['action_dim']),
+            dtype=self.config['action_dtype']
+        )
         if self.config['distill_type'] == 'fwd_sample':
             actions = self.network.select('actor')(noises, observations)
         elif self.config['distill_type'] == 'fwd_int':
@@ -474,7 +480,6 @@ class IFACAgent(flax.struct.PyTreeNode):
         actions = actions.squeeze()
 
         return actions
-
 
     @classmethod
     def create(
@@ -498,30 +503,39 @@ class IFACAgent(flax.struct.PyTreeNode):
         assert config['dataset_obs_min'] is not None
         assert config['dataset_obs_max'] is not None
 
-        observation_dim = ex_observations.shape[-1]
-        action_dim = ex_actions.shape[-1]
-        ex_orig_observations = ex_observations
-        ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],), dtype=ex_actions.dtype)
+        # observation_dim = ex_observations.shape[-1]
+        # action_dim = ex_actions.shape[-1]
+        # ex_orig_observations = ex_observations
+        # ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],), dtype=ex_actions.dtype)
         # ex_noises = jax.random.normal(noise_rng, shape=ex_actions.shape, dtype=ex_actions.dtype)
+
+        ex_orig_observations = ex_observations
+
+        ex_times = ex_actions[..., 0]
+        obs_dims = ex_observations.shape[1:]
+        obs_dim = obs_dims[-1]
+        action_dim = ex_actions.shape[-1]
+        action_dtype = ex_actions.dtype
 
         # Define encoders.
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
             if 'mlp_hidden_dims' in encoder_module.keywords:
-                observation_dim = encoder_module.keywords['mlp_hidden_dims'][-1]
+                obs_dim = encoder_module.keywords['mlp_hidden_dims'][-1]
             else:
-                observation_dim = encoder_modules['impala'].mlp_hidden_dims[-1]
+                obs_dim = encoder_modules['impala'].mlp_hidden_dims[-1]
             rng, obs_rng = jax.random.split(rng, 2)
             ex_observations = jax.random.normal(
-                obs_rng, shape=(ex_observations.shape[0], observation_dim), dtype=ex_actions.dtype)
+                obs_rng, shape=(ex_observations.shape[0], obs_dim), dtype=ex_actions.dtype)
             
             encoders['value_vf'] = encoder_module()
-            # encoders['critic'] = encoder_module()
-            # encoders['actor_vf'] = encoder_module()
-            # encoders['actor'] = encoder_module()
+            # encoders['value'] = encoder_module()
+            encoders['critic'] = encoder_module()
+            encoders['actor_vf'] = encoder_module()
+            encoders['actor'] = encoder_module()
             # encoders['reward'] = encoder_module()
-            encoders['actor_critic'] = encoder_module()
+            # encoders['actor_critic'] = encoder_module()
 
         # Define value and actor networks.
         critic_def = Value(
@@ -530,12 +544,12 @@ class IFACAgent(flax.struct.PyTreeNode):
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
             num_ensembles=2,
-            # encoder=encoders.get('actor_critic'),
+            encoder=encoders.get('critic'),
         )
         value_vf_def = GCFMVectorField(
             network_type=config['network_type'],
             num_residual_blocks=config['num_residual_blocks'],
-            vector_dim=observation_dim,
+            vector_dim=obs_dim,
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
         )
@@ -544,6 +558,7 @@ class IFACAgent(flax.struct.PyTreeNode):
             num_residual_blocks=config['num_residual_blocks'],
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
+            # state_encoder=encoders.get('value'),
         )
 
         actor_vf_def = GCFMVectorField(
@@ -552,7 +567,7 @@ class IFACAgent(flax.struct.PyTreeNode):
             vector_dim=action_dim,
             hidden_dims=config['actor_hidden_dims'],
             layer_norm=config['actor_layer_norm'],
-            # state_encoder=encoders.get('actor_critic'),
+            state_encoder=encoders.get('actor_vf'),
         )
         actor_def = GCFMValue(
             network_type=config['network_type'],
@@ -560,7 +575,7 @@ class IFACAgent(flax.struct.PyTreeNode):
             hidden_dims=config['actor_hidden_dims'],
             output_dim=action_dim,
             layer_norm=config['actor_layer_norm'],
-            # state_encoder=encoders.get('actor_critic'),
+            state_encoder=encoders.get('actor'),
         )
 
         reward_def = Value(
@@ -572,12 +587,12 @@ class IFACAgent(flax.struct.PyTreeNode):
         )
 
         network_info = dict(
-            critic=(critic_def, (ex_observations, ex_actions)),
+            critic=(critic_def, (ex_orig_observations, ex_actions)),
             value_vf=(value_vf_def, (
                 ex_observations, ex_times, ex_observations)),
             value=(value_def, (ex_observations,)),
-            actor_vf=(actor_vf_def, (ex_actions, ex_times, ex_observations)),
-            actor=(actor_def, (ex_actions, ex_observations)),
+            actor_vf=(actor_vf_def, (ex_actions, ex_times, ex_orig_observations)),
+            actor=(actor_def, (ex_actions, ex_orig_observations)),
         )
         if config['reward_type'] == 'state':
             network_info.update(
@@ -592,11 +607,11 @@ class IFACAgent(flax.struct.PyTreeNode):
         # if encoders.get('actor_bc_flow') is not None:
         #     # Add actor_bc_flow_encoder to ModuleDict to make it separately callable.
         #     network_info['actor_bc_flow_encoder'] = (encoders.get('actor_bc_flow'), (ex_observations,))
-        # Add actor_bc_flow_encoder to ModuleDict to make it separately callable.
+        # Add value_vf_encoder to ModuleDict to make it separately callable.
         if encoders.get('value_vf') is not None:
             network_info['value_vf_encoder'] = (encoders.get('value_vf'), (ex_orig_observations,))
-        if encoders.get('actor_critic') is not None:
-            network_info['actor_critic_encoder'] = (encoders.get('actor_critic'), (ex_orig_observations,))
+        # if encoders.get('actor_critic') is not None:
+        #     network_info['actor_critic_encoder'] = (encoders.get('actor_critic'), (ex_orig_observations,))
 
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
@@ -620,6 +635,10 @@ class IFACAgent(flax.struct.PyTreeNode):
         else:
             raise TypeError("Unknown ode_solver_type: {}".format(config['ode_solver_type']))
 
+        config['obs_dims'] = obs_dims
+        config['action_dim'] = action_dim
+        config['action_dtype'] = action_dtype
+
         return cls(rng, network=network, cond_prob_path=cond_prob_path,
                    ode_solver=ode_solver, config=flax.core.FrozenDict(**config))
 
@@ -629,6 +648,10 @@ def get_config():
         dict(
             # Agent hyperparameters.
             agent_name='ifac',  # Agent name.
+            obs_dims=ml_collections.config_dict.placeholder(tuple),  # Observation dimensions (will be set automatically).
+            action_dim=ml_collections.config_dict.placeholder(int),  # Action dimension (will be set automatically).
+            action_dtype=ml_collections.config_dict.placeholder(np.dtype),
+            # Action data type (will be set automatically).
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
             network_type='mlp',  # Type of the network
