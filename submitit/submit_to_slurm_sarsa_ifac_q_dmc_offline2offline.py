@@ -77,7 +77,7 @@ def main():
                                                             for reward_type in ['state_action']:
                                                                 for use_terminal_masks in [False]:
                                                                     for seed in [10]:
-                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_ns={network_size}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_noise_type={critic_noise_type}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_use_mask={use_terminal_masks}"
+                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_noise_type={critic_noise_type}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_use_mask={use_terminal_masks}"
                                                                         log_dir = os.path.expanduser(
                                                                             f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifac_q_offline2offline/{exp_name}/{seed}")
 
@@ -121,9 +121,9 @@ def main():
                                                                                 --eval_episodes=50 \
                                                                                 --agent=impls/agents/sarsa_ifac_q.py \
                                                                                 --agent.batch_size=256 \
-                                                                                --agent.actor_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
-                                                                                --agent.value_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
-                                                                                --agent.reward_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
+                                                                                --agent.actor_hidden_dims="(512,512,512,512)" \
+                                                                                --agent.value_hidden_dims="(512,512,512,512)" \
+                                                                                --agent.reward_hidden_dims="(512,512,512,512)" \
                                                                                 --agent.lr={lr} \
                                                                                 --agent.tau={tau} \
                                                                                 --agent.network_type=mlp \
