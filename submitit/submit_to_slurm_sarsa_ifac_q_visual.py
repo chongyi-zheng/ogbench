@@ -8,23 +8,28 @@ import submitit
 
 def main():
     cluster_name = platform.node().split('-')[0]
+    cluster_name = platform.node().split('-')[0]
     if cluster_name == 'adroit':
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
+        nodelist = None
     elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
+        nodelist = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
+        nodelist = "node205,node206,node207"
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
+        nodelist = None
     else:
         raise NotImplementedError
 
@@ -39,6 +44,7 @@ def main():
         slurm_cpus_per_task=16,
         slurm_mem="64G",
         slurm_gpus_per_node=1,
+        slurm_nodelist=nodelist,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=20,
     )
