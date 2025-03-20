@@ -62,7 +62,7 @@ def main():
             # "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
-            for obs_norm_type in ['none']:
+            for obs_norm_type in ['none', 'normal']:
                 for lr in [3e-4]:
                     for tau in [0.995, 0.005]:
                         for alpha in [3000.0, 300.0, 30.0, 3.0]:

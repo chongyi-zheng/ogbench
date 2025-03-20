@@ -80,7 +80,9 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
             jnp.repeat(jnp.expand_dims(observations, axis=0), self.config['num_flow_goals'], axis=0)
         )
         if self.config['clip_flow_goals']:
-            flow_goals = jnp.clip(flow_goals, self.config['dataset_obs_min'], self.config['dataset_obs_max'])
+            flow_goals = jnp.clip(flow_goals,
+                                  batch['observation_min'] + 1e-5,
+                                  batch['observation_max'] - 1e-5)
 
         if self.config['reward_type'] == 'state_action':
             rng, noise_rng = jax.random.split(rng)
@@ -211,7 +213,9 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
                 use_target_network=True
             )
             if self.config['clip_flow_goals']:
-                future_flow_goals = jnp.clip(future_flow_goals, self.config['dataset_obs_min'], self.config['dataset_obs_max'])
+                future_flow_goals = jnp.clip(future_flow_goals,
+                                             batch['observation_min'] + 1e-5,
+                                             batch['observation_max'] - 1e-5)
             future_flow_goals = jax.lax.stop_gradient(future_flow_goals)
 
             rng, future_time_rng, future_noise_rng = jax.random.split(rng, 3)
@@ -247,7 +251,9 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
             flow_observations = self.compute_fwd_flow_goals(noises, next_observations, use_target_network=True)
             flow_observations = jax.lax.stop_gradient(flow_observations)
             if self.config['clip_flow_goals']:
-                flow_observations = jnp.clip(flow_observations, self.config['dataset_obs_min'], self.config['dataset_obs_max'])
+                flow_observations = jnp.clip(flow_observations,
+                                             batch['observation_min'] + 1e-5,
+                                             batch['observation_max'] - 1e-5)
 
             bern = jax.random.bernoulli(
                 bern_rng, p=self.config['discount'], shape=(batch_size, 1)).astype(observations.dtype)
@@ -298,7 +304,9 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
             flow_future_observations = self.compute_fwd_flow_goals(
                 future_noises, next_observations, use_target_network=True)
             if self.config['clip_flow_goals']:
-                flow_future_observations = jnp.clip(flow_future_observations, self.config['dataset_obs_min'], self.config['dataset_obs_max'])
+                flow_future_observations = jnp.clip(flow_future_observations,
+                                                    batch['observation_min'] + 1e-5,
+                                                    batch['observation_max'] - 1e-5)
             future_path_sample = self.cond_prob_path(
                 x_0=future_noises, x_1=flow_future_observations, t=times)
             future_vf_target = self.network.select('target_value_vf')(

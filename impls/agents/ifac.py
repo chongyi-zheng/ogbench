@@ -81,7 +81,9 @@ class IFACAgent(flax.struct.PyTreeNode):
             jnp.repeat(jnp.expand_dims(observations, axis=0), self.config['num_flow_goals'], axis=0)
         )
         if self.config['clip_flow_goals']:
-            flow_goals = jnp.clip(flow_goals, self.config['dataset_obs_min'], self.config['dataset_obs_max'])
+            flow_goals = jnp.clip(flow_goals,
+                                  batch['observation_min'] + 1e-5,
+                                  batch['observation_max'] - 1e-5)
 
         if self.config['reward_type'] == 'state_action':
             rng, noise_rng = jax.random.split(rng)

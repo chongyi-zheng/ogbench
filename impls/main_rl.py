@@ -114,13 +114,13 @@ def main(_):
     #     # Fill with the maximum action to let the agent know the action space size.
     #     example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)
 
-    if config['agent_name'] in ['mcfac', 'ifac', 'sarsa_ifac', 'sarsa_ifac_q']:
-        if hasattr(train_dataset, 'dataset'):
-            dataset_observations = train_dataset.dataset['observations']
-        else:
-            dataset_observations = train_dataset['observations']
-        config['dataset_obs_min'] = jnp.min(dataset_observations, axis=0)
-        config['dataset_obs_max'] = jnp.max(dataset_observations, axis=0)
+    # if config['agent_name'] in ['mcfac', 'ifac', 'sarsa_ifac', 'sarsa_ifac_q']:
+    #     if hasattr(train_dataset, 'dataset'):
+    #         dataset_observations = train_dataset.dataset['observations']
+    #     else:
+    #         dataset_observations = train_dataset['observations']
+    #     config['dataset_obs_min'] = jnp.min(dataset_observations, axis=0)
+    #     config['dataset_obs_max'] = jnp.max(dataset_observations, axis=0)
 
     agent_class = agents[config['agent_name']]
     agent = agent_class.create(
@@ -135,15 +135,20 @@ def main(_):
             agent,
             train_dataset
         )
-    if FLAGS.obs_norm_type in ['normal', 'bounded']:
-        agent = OfflineObservationNormalizer.create(
-            agent,
-            train_dataset,
-            normalizer_type=FLAGS.obs_norm_type
-        )
-        if config['dataset_obs_min'] is not None:
-            config['dataset_obs_min'] = agent.normalize(config['dataset_obs_min'])
-            config['dataset_obs_max'] = agent.normalize(config['dataset_obs_max'])
+    # if FLAGS.obs_norm_type in ['normal', 'bounded']:
+    #     agent = OfflineObservationNormalizer.create(
+    #         agent,
+    #         train_dataset,
+    #         normalizer_type=FLAGS.obs_norm_type
+    #     )
+    #     if config['dataset_obs_min'] is not None:
+    #         config['dataset_obs_min'] = agent.normalize(config['dataset_obs_min'])
+    #         config['dataset_obs_max'] = agent.normalize(config['dataset_obs_max'])
+    agent = OfflineObservationNormalizer.create(
+        agent,
+        train_dataset,
+        normalizer_type=FLAGS.obs_norm_type
+    )
 
     # Restore agent.
     if FLAGS.restore_path is not None:
