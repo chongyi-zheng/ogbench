@@ -618,7 +618,6 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
 
         return actions
 
-
     @classmethod
     def create(
         cls,
@@ -812,7 +811,7 @@ def get_config():
             use_target_reward=False,  # Whether to use the target reward network.
             reward_type='state',  # Reward type. ('state', 'state_action')
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
-            encoder_actor_loss_grad=False,  # Whether to backpropagate gradients from the actor loss into the encoder.
+            # encoder_actor_loss_grad=False,  # Whether to backpropagate gradients from the actor loss into the encoder.
             dataset_obs_min=ml_collections.config_dict.placeholder(jnp.ndarray),
             dataset_obs_max=ml_collections.config_dict.placeholder(jnp.ndarray),
         )

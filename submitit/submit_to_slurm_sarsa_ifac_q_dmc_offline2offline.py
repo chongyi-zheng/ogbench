@@ -55,8 +55,10 @@ def main():
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
-            "cheetah_run",
+            # "cheetah_run",
             # "walker_walk",
+            "cheetah_run_backward",
+            "walker_flip",
             # "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
@@ -64,7 +66,7 @@ def main():
                 for lr in [3e-4]:
                     for tau in [0.1, 0.05, 0.005]:
                         for network_size in [512]:
-                            for alpha in [3000.0, 300.0, 30.0]:
+                            for alpha in [3000.0, 300.0, 30.0, 3.0]:
                                 for num_flow_goals in [16]:
                                     for actor_freq in [2, 4]:
                                         for expectile in [0.65, 0.75, 0.85, 0.95, 0.99]:
