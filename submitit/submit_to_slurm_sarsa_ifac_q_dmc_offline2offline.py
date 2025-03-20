@@ -58,7 +58,7 @@ def main():
             # "cheetah_run",
             # "walker_walk",
             "cheetah_run_backward",
-            "walker_flip",
+            # "walker_flip",
             # "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
