@@ -165,6 +165,9 @@ def main(_):
 
             agent, update_info = agent.pretrain(batch)
         else:
+            if i == (FLAGS.pretraining_steps + 1):
+                agent = agent.update_dataset(finetuning_train_dataset)
+
             # Offline fine-tuning.
             batch = finetuning_train_dataset.sample(config['batch_size'])
             train_logger = finetuning_train_logger
