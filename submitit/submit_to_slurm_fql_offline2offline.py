@@ -59,7 +59,7 @@ def main():
                     for num_flow_steps in [10]:
                         for distill_type in ["fwd_sample"]:
                             for q_agg in ["mean", "min"]:
-                                for actor_freq in [2, 4]:
+                                for actor_freq in [1]:
                                     for normalize_q_loss in [False]:
                                         for seed in [10]:
                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_actor_freq={actor_freq}_normalize_q_loss={normalize_q_loss}"
