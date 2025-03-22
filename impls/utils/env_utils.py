@@ -3,8 +3,11 @@ import os
 import platform
 import re
 import time
+from functools import partial
 
 import gymnasium
+import jax
+import jax.numpy as jnp
 import numpy as np
 import ogbench
 from gymnasium.spaces import Box
@@ -137,6 +140,140 @@ def setup_egl():
         os.environ['MUJOCO_GL'] = 'egl'
         if 'SLURM_STEP_GPUS' in os.environ:
             os.environ['EGL_DEVICE_ID'] = os.environ['SLURM_STEP_GPUS']
+
+
+# @partial(jax.jit, static_argnames=('env_name', 'env'))
+# def compute_reward(env_name, env, observations):
+#     assert env.unwrapped._reward_task_id is not None, 'The environment is not in the single-task mode.'
+#     env.reset()  # Set the task.
+#
+#     if 'maze' in env_name or 'soccer' in env_name:
+#         raise NotImplementedError
+#     elif 'cube' in env_name or 'scene' in env_name or 'puzzle' in env_name:
+#         # Manipulation environments.
+#         obs_obj_start_idx = 19
+#         obs_cube_length = 9
+#
+#         if 'cube' in env_name:
+#             num_cubes = env.unwrapped._num_cubes
+#             target_cube_xyzs = jnp.array(env.unwrapped._data.mocap_pos.copy())
+#             xyz_center = jnp.array([0.425, 0.0, 0.0])
+#             xyz_scaler = 10.0
+#
+#             # Compute successes.
+#             cube_xyzs_list = []
+#             for i in range(num_cubes):
+#                 cube_xyzs_list.append(
+#                     # dataset['qpos'][
+#                     # :, qpos_obj_start_idx + i * qpos_cube_length: qpos_obj_start_idx + i * qpos_cube_length + 3
+#                     # ]
+#                     observations[
+#                     :, obs_obj_start_idx + i * obs_cube_length: obs_obj_start_idx + i * obs_cube_length + 3
+#                     ] / xyz_scaler + xyz_center
+#                 )
+#             cube_xyzs = jnp.stack(cube_xyzs_list, axis=1)
+#             successes = jnp.linalg.norm(target_cube_xyzs - cube_xyzs, axis=-1) <= 0.04
+#         elif 'scene' in env_name:
+#             raise NotImplementedError
+#             # num_cubes = env.unwrapped._num_cubes
+#             # num_buttons = env.unwrapped._num_buttons
+#             # qpos_drawer_idx = qpos_obj_start_idx + num_cubes * qpos_cube_length + num_buttons
+#             # qpos_window_idx = qpos_drawer_idx + 1
+#             # target_cube_xyzs = env.unwrapped._data.mocap_pos.copy()
+#             # target_button_states = env.unwrapped._target_button_states.copy()
+#             # target_drawer_pos = env.unwrapped._target_drawer_pos
+#             # target_window_pos = env.unwrapped._target_window_pos
+#             #
+#             # # Compute successes.
+#             # cube_xyzs_list = []
+#             # for i in range(num_cubes):
+#             #     cube_xyzs_list.append(
+#             #         dataset['qpos'][
+#             #         :, qpos_obj_start_idx + i * qpos_cube_length: qpos_obj_start_idx + i * qpos_cube_length + 3
+#             #         ]
+#             #     )
+#             # cube_xyzs = np.stack(cube_xyzs_list, axis=1)
+#             # cube_successes = np.linalg.norm(target_cube_xyzs - cube_xyzs, axis=-1) <= 0.04
+#             # button_successes = dataset['button_states'] == target_button_states
+#             # drawer_success = np.abs(dataset['qpos'][:, qpos_drawer_idx] - target_drawer_pos) <= 0.04
+#             # window_success = np.abs(dataset['qpos'][:, qpos_window_idx] - target_window_pos) <= 0.04
+#             # successes = np.concatenate(
+#             #     [cube_successes, button_successes, drawer_success[:, None], window_success[:, None]], axis=-1
+#             # )
+#         elif 'puzzle' in env_name:
+#             raise NotImplementedError
+#
+#         rewards = successes.sum(axis=-1) - successes.shape[-1]
+#     else:
+#         raise ValueError(f'Unsupported environment: {env_name}')
+#
+#     return rewards
+
+def get_reward_env_info(env_name, env):
+    info = dict(env_name=env_name,
+                reward_task_id=env.unwrapped._reward_task_id)
+
+    env.reset()  # Set the task.
+    if 'maze' in env_name or 'soccer' in env_name:
+        raise NotImplementedError
+    elif 'cube' in env_name or 'scene' in env_name or 'puzzle' in env_name:
+        if 'cube' in env_name:
+            mocap_pos = env.unwrapped._data.mocap_pos.copy()
+            info.update(
+                num_cubes=env.unwrapped._num_cubes,
+                mocap_pos=(mocap_pos.tobytes(), str(mocap_pos.dtype), mocap_pos.shape),
+            )
+        elif 'scene' in env_name:
+            raise NotImplementedError
+        elif 'puzzle' in env_name:
+            raise NotImplementedError
+    else:
+        raise ValueError(f'Unsupported environment: {env_name}')
+
+    return info
+
+
+@partial(jax.jit, static_argnames=('env_info', ))
+def compute_reward(env_info, observations):
+    env_name = env_info['env_name']
+    reward_task_id = env_info['reward_task_id']
+    assert reward_task_id is not None, 'The environment is not in the single-task mode.'
+
+    if 'maze' in env_name or 'soccer' in env_name:
+        raise NotImplementedError
+    elif 'cube' in env_name or 'scene' in env_name or 'puzzle' in env_name:
+        # Manipulation environments.
+        obs_obj_start_idx = 19
+        obs_cube_length = 9
+
+        if 'cube' in env_name:
+            num_cubes = env_info['num_cubes']
+            target_cube_xyzs = jnp.frombuffer(
+                env_info['mocap_pos'][0], dtype=env_info['mocap_pos'][1]
+            ).reshape(env_info['mocap_pos'][2])
+            xyz_center = jnp.array([0.425, 0.0, 0.0])
+            xyz_scaler = 10.0
+
+            # Compute successes.
+            cube_xyzs_list = []
+            for i in range(num_cubes):
+                cube_xyzs_list.append(
+                    observations[
+                    ..., obs_obj_start_idx + i * obs_cube_length: obs_obj_start_idx + i * obs_cube_length + 3
+                    ] / xyz_scaler + xyz_center
+                )
+            cube_xyzs = jnp.stack(cube_xyzs_list, axis=-2)
+            successes = jnp.linalg.norm(target_cube_xyzs - cube_xyzs, axis=-1) <= 0.04
+        elif 'scene' in env_name:
+            raise NotImplementedError
+        elif 'puzzle' in env_name:
+            raise NotImplementedError
+
+        rewards = successes.sum(axis=-1) - successes.shape[-1]
+    else:
+        raise ValueError(f'Unsupported environment: {env_name}')
+
+    return rewards
 
 
 def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,

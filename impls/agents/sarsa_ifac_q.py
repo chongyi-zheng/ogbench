@@ -14,6 +14,7 @@ from diffrax import (
     Euler, Dopri5,
 )
 
+from utils.env_utils import compute_reward
 from utils.encoders import encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import GCFMVectorField, GCFMValue, Value
@@ -100,10 +101,14 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             assert self.config['reward_type'] == 'state'
             goal_actions = None
 
-        if self.config['use_target_reward']:
-            future_rewards = self.network.select('target_reward')(flow_goals, actions=goal_actions)
+        if self.config['use_reward_func']:
+            assert self.config['reward_type'] == 'state'
+            future_rewards = compute_reward(self.config['reward_env_info'], flow_goals)
         else:
-            future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
+            if self.config['use_target_reward']:
+                future_rewards = self.network.select('target_reward')(flow_goals, actions=goal_actions)
+            else:
+                future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
 
         future_rewards = future_rewards.mean(axis=0)  # MC estimations
         target_q = 1.0 / (1 - self.config['discount']) * future_rewards
@@ -659,7 +664,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         # action_dim = ex_actions.shape[-1]
         # ex_orig_observations = ex_observations
         # ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],), dtype=ex_actions.dtype)
-
+        assert config['reward_env_info'] is not None
         ex_orig_observations = ex_observations
 
         ex_times = ex_actions[..., 0]
@@ -825,10 +830,12 @@ def get_config():
             alpha=10.0,  # BC coefficient (need to be tuned for each environment).
             num_flow_steps=10,  # Number of flow steps.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
-            use_target_reward=True,  # Whether to use the target reward network.
+            use_reward_func=False,  # Whether to use the ground truth reward function.
+            use_target_reward=False,  # Whether to use the target reward network.
             reward_type='state',  # Reward type. ('state', 'state_action')
-            encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             encoder_actor_loss_grad=False,  # Whether to backpropagate gradients from the actor loss into the encoder.
+            encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
+            reward_env_info=ml_collections.config_dict.placeholder(dict),  # Environment information for computing the ground truth reward.
         )
     )
     return config

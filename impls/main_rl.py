@@ -14,7 +14,7 @@ from absl import app, flags
 from ml_collections import config_flags
 
 from agents import agents
-from utils.env_utils import make_env_and_datasets
+from utils.env_utils import make_env_and_datasets, get_reward_env_info
 from utils.wrappers import PositiveRewardShaping, OfflineObservationNormalizer
 from utils.datasets import GCDataset, Dataset, ReplayBuffer
 from utils.evaluation import evaluate, flatten
@@ -123,6 +123,9 @@ def main(_):
     #     config['dataset_obs_max'] = jnp.max(dataset_observations, axis=0)
 
     agent_class = agents[config['agent_name']]
+    if config['agent_name'] in ['ifac', 'sarsa_ifac_q', 'sarsa_ifac']:
+        reward_env_info = get_reward_env_info(FLAGS.env_name, env)
+        config['reward_env_info'] = reward_env_info
     agent = agent_class.create(
         FLAGS.seed,
         example_batch['observations'],
