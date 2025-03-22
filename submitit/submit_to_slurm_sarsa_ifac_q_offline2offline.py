@@ -51,7 +51,7 @@ def main():
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
-            "cube-single-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task2-v0",
             "cube-double-play-singletask-task2-v0",
             # "cube-triple-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
@@ -60,10 +60,10 @@ def main():
             # "walker_walk",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [300.0, 30.0, 3.0, 0.3]:
+                for alpha in [3000.0, 1000.0, 300.0]:
                     for num_flow_goals in [16]:
                         for actor_freq in [2, 4]:
-                            for expectile in [0.75, 0.85, 0.9, 0.95, 0.99]:
+                            for expectile in [0.55, 0.65, 0.75, 0.85, 0.95]:
                                 for q_agg in ['mean']:
                                     for normalize_q_loss in [False]:
                                         for critic_fm_loss_type in ['sarsa_squared']:

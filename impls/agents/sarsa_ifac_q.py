@@ -664,7 +664,8 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         # action_dim = ex_actions.shape[-1]
         # ex_orig_observations = ex_observations
         # ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],), dtype=ex_actions.dtype)
-        assert config['reward_env_info'] is not None
+        if config['use_reward_func']:
+            assert config['reward_env_info'] is not None
         ex_orig_observations = ex_observations
 
         ex_times = ex_actions[..., 0]
