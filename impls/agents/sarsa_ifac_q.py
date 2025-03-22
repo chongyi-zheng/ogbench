@@ -105,14 +105,15 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             assert self.config['reward_type'] == 'state'
             future_rewards = compute_reward(self.config['reward_env_info'], flow_goals)
         else:
-            if self.config['use_target_reward']:
-                future_rewards = self.network.select('target_reward')(flow_goals, actions=goal_actions)
-            else:
-                future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
+            # if self.config['use_target_reward']:
+            #     future_rewards = self.network.select('target_reward')(flow_goals, actions=goal_actions)
+            # else:
+            #     future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
+            future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
 
         future_rewards = future_rewards.mean(axis=0)  # MC estimations
         target_q = 1.0 / (1 - self.config['discount']) * future_rewards
-        qs = self.network.select('critic')(observations, actions, params=grad_params)
+        qs = self.network.select('critic')(batch['observations'], actions, params=grad_params)
         critic_loss = self.expectile_loss(target_q - qs, target_q - qs, self.config['expectile']).mean()
 
         # For logging
@@ -141,7 +142,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         if self.config['encoder'] is not None:
             observations = self.network.select('critic_vf_encoder')(
                 batch['observations'], params=grad_params)
-            next_observations = self.network.select('critic_vf_encoder')(
+            next_observations = self.network.select('target_critic_vf_encoder')(
                 batch['next_observations'])
 
         # if self.config['critic_fm_loss_type'] == 'mc':
@@ -383,8 +384,8 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         flow_actions = jax.lax.stop_gradient(flow_actions)  # stop gradients for the encoder
 
         # Q loss
-        if self.config['encoder'] is not None:
-            observations = self.network.select('critic_vf_encoder')(observations)
+        # if self.config['encoder'] is not None:
+        #     observations = self.network.select('critic_vf_encoder')(observations)
         qs = self.network.select('critic')(observations, actions=q_actions)
         if self.config['q_agg'] == 'mean':
             q = jnp.mean(qs, axis=0)
@@ -593,7 +594,9 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, full_update, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        self.target_update(new_network, 'reward')
+        # self.target_update(new_network, 'reward')
+        if self.config['encoder'] is not None:
+            self.target_update(new_network, 'critic_vf_encoder')
         self.target_update(new_network, 'critic_vf')
 
         return self.replace(network=new_network, rng=new_rng), info
@@ -607,7 +610,9 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, full_update=True, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        self.target_update(new_network, 'reward')
+        # self.target_update(new_network, 'reward')
+        if self.config['encoder'] is not None:
+            self.target_update(new_network, 'critic_vf_encoder')
         self.target_update(new_network, 'critic_vf')
 
         return self.replace(network=new_network, rng=new_rng), info
@@ -686,7 +691,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             ex_observations = jax.random.normal(
                 obs_rng, shape=(ex_observations.shape[0], obs_dim), dtype=action_dtype)
 
-            # encoders['critic'] = encoder_module()
+            encoders['critic'] = encoder_module()
             encoders['critic_vf'] = encoder_module()
             encoders['actor'] = encoder_module()
             encoders['actor_vf'] = encoder_module()
@@ -698,7 +703,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
             num_ensembles=2,
-            # encoder=encoders.get('critic'),
+            encoder=encoders.get('critic'),
         )
         critic_vf_def = GCFMVectorField(
             network_type=config['network_type'],
@@ -735,7 +740,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         )
 
         network_info = dict(
-            critic=(critic_def, (ex_observations, ex_actions)),
+            critic=(critic_def, (ex_orig_observations, ex_actions)),
             critic_vf=(critic_vf_def, (
                 ex_observations, ex_times, ex_observations, ex_actions)),
             target_critic_vf=(copy.deepcopy(critic_vf_def), (
@@ -757,8 +762,11 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         #     # Add actor_bc_flow_encoder to ModuleDict to make it separately callable.
         #     network_info['actor_bc_flow_encoder'] = (encoders.get('actor_bc_flow'), (ex_observations,))
         # Add actor_bc_flow_encoder to ModuleDict to make it separately callable.
-        if encoders.get('critic_vf') is not None:
-            network_info['critic_vf_encoder'] = (encoders.get('critic_vf'), (ex_orig_observations,))
+        if config['encoder'] is not None:
+            network_info['critic_vf_encoder'] = (
+                encoders.get('critic_vf'), (ex_orig_observations,))
+            network_info['target_critic_vf_encoder'] = (
+                copy.deepcopy(encoders.get('critic_vf')), (ex_orig_observations,))
         # if encoders.get('actor_critic') is not None:
         #     network_info['actor_critic_encoder'] = (encoders.get('actor_critic'), (ex_orig_observations,))
 
@@ -771,7 +779,9 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         network = TrainState.create(network_def, network_params, tx=network_tx)
 
         params = network.params
-        params['modules_target_reward'] = params['modules_reward']
+        # params['modules_target_reward'] = params['modules_reward']
+        if config['encoder'] is not None:
+            params['modules_target_critic_vf_encoder'] = params['modules_critic_vf_encoder']
         params['modules_target_critic_vf'] = params['modules_critic_vf']
 
         cond_prob_path = cond_prob_path_class[config['prob_path_class']](

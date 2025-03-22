@@ -140,14 +140,17 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
         return self.agent.total_loss(batch, grad_params, rng)
 
     def update_dataset(self, dataset):
-        if hasattr(dataset, 'dataset'):
-            observations = dataset.dataset['observations']
+        if self.normalizer_type == 'none':
+            dataset_mean, dataset_var, dataset_max, dataset_min = None, None, None, None
         else:
-            observations = dataset['observations']
-        dataset_mean = np.mean(observations, axis=0)
-        dataset_var = np.var(observations, axis=0)
-        dataset_max = np.max(observations, axis=0)
-        dataset_min = np.min(observations, axis=0)
+            if hasattr(dataset, 'dataset'):
+                observations = dataset.dataset['observations']
+            else:
+                observations = dataset['observations']
+            dataset_mean = np.mean(observations, axis=0)
+            dataset_var = np.var(observations, axis=0)
+            dataset_max = np.max(observations, axis=0)
+            dataset_min = np.min(observations, axis=0)
 
         normalized_dataset_max = self.normalize(
             dataset_max, dataset_mean, dataset_var,
@@ -174,14 +177,17 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
         normalizer_type='normal',
         epsilon=1e-8,
     ):
-        if hasattr(dataset, 'dataset'):
-            observations = dataset.dataset['observations']
+        if normalizer_type == 'none':
+            dataset_mean, dataset_var, dataset_max, dataset_min = None, None, None, None
         else:
-            observations = dataset['observations']
-        dataset_mean = np.mean(observations, axis=0)
-        dataset_var = np.var(observations, axis=0)
-        dataset_max = np.max(observations, axis=0)
-        dataset_min = np.min(observations, axis=0)
+            if hasattr(dataset, 'dataset'):
+                observations = dataset.dataset['observations']
+            else:
+                observations = dataset['observations']
+            dataset_mean = np.mean(observations, axis=0)
+            dataset_var = np.var(observations, axis=0)
+            dataset_max = np.max(observations, axis=0)
+            dataset_min = np.min(observations, axis=0)
 
         normalized_dataset_max = cls.normalize(
             dataset_max, dataset_mean, dataset_var,

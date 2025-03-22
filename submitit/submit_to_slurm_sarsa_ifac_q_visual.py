@@ -8,7 +8,6 @@ import submitit
 
 def main():
     cluster_name = platform.node().split('-')[0]
-    cluster_name = platform.node().split('-')[0]
     if cluster_name == 'adroit':
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
@@ -57,19 +56,19 @@ def main():
             "visual-cube-single-play-singletask-task1-v0",
         ]:
             for obs_norm_type in ['none']:
-                for network_size in [512]:
-                    for alpha in [3000, 300, 30, 3]:
+                for tau in [0.995, 0.005]:
+                    for alpha in [3000, 1000, 300]:
                         for num_flow_goals in [16]:
-                            for expectile in [0.85, 0.9, 0.95, 0.99]:
+                            for expectile in [0.65, 0.75, 0.85, 0.95]:
                                 for encoder in ['impala_small']:
-                                    for q_agg in ['min', 'mean']:
+                                    for q_agg in ['mean']:
                                         for normalize_q_loss in [False]:
                                             for critic_noise_type in ['normal']:
                                                 for critic_fm_loss_type in ['sarsa_squared']:
                                                     for reward_type in ['state']:
                                                         for use_terminal_masks in [False]:
                                                             for seed in [20]:
-                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_{env_name}_obs_norm={obs_norm_type}_ns={network_size}_alpha={alpha}_num_fg={num_flow_goals}_expectile={expectile}_encoder={encoder}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_noise={critic_noise_type}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_use_mask={use_terminal_masks}"
+                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_{env_name}_obs_norm={obs_norm_type}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_expectile={expectile}_encoder={encoder}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_noise={critic_noise_type}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_use_mask={use_terminal_masks}"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifac_q/{exp_name}/{seed}")
 
@@ -116,11 +115,11 @@ def main():
                                                                         --offline_steps=500_000 \
                                                                         --agent=impls/agents/sarsa_ifac_q.py \
                                                                         --agent.batch_size=256 \
-                                                                        --agent.actor_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
-                                                                        --agent.value_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
-                                                                        --agent.reward_hidden_dims="({network_size},{network_size},{network_size},{network_size})" \
+                                                                        --agent.actor_hidden_dims="(512,512,512,512)" \
+                                                                        --agent.value_hidden_dims="(512,512,512,512)" \
+                                                                        --agent.reward_hidden_dims="(512,512,512,512)" \
                                                                         --agent.lr=3e-4 \
-                                                                        --agent.tau=0.005 \
+                                                                        --agent.tau={tau} \
                                                                         --agent.network_type=mlp \
                                                                         --agent.num_residual_blocks=1 \
                                                                         --agent.alpha={alpha} \
