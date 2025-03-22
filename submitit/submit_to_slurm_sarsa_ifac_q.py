@@ -139,7 +139,7 @@ def main():
                                                                             --agent.normalize_q_loss={normalize_q_loss} \
                                                                             --agent.use_target_reward=False \
                                                                             --agent.reward_type={reward_type} \
-                                                                            --agenr.use_reward_func={use_reward_func} \
+                                                                            --agent.use_reward_func={use_reward_func} \
                                                                             --agent.use_terminal_masks={use_terminal_masks} \
                                                                             --seed={seed} \
                                                                             --save_dir={log_dir} \
