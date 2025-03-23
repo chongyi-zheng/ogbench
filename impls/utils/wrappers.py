@@ -129,15 +129,29 @@ class OfflineObservationNormalizer(flax.struct.PyTreeNode):
 
         return self.replace(agent=agent), info
 
-    def total_loss(self, batch, grad_params, rng=None):
+    def pretraining_loss(self, batch, grad_params, rng=None):
         batch['observations'] = self.normalized_func(batch['observations'])
         batch['next_observations'] = self.normalized_func(batch['next_observations'])
+        batch['observation_min'] = self.normalized_min
+        batch['observation_max'] = self.normalized_max
         if 'value_goals' in batch:
             batch['value_goals'] = self.normalized_func(batch['value_goals'])
         if 'actor_goals' in batch:
             batch['actor_goals'] = self.normalized_func(batch['actor_goals'])
 
-        return self.agent.total_loss(batch, grad_params, rng)
+        return self.agent.pretraining_loss(batch, grad_params, rng=rng)
+
+    def total_loss(self, batch, grad_params, rng=None):
+        batch['observations'] = self.normalized_func(batch['observations'])
+        batch['next_observations'] = self.normalized_func(batch['next_observations'])
+        batch['observation_min'] = self.normalized_min
+        batch['observation_max'] = self.normalized_max
+        if 'value_goals' in batch:
+            batch['value_goals'] = self.normalized_func(batch['value_goals'])
+        if 'actor_goals' in batch:
+            batch['actor_goals'] = self.normalized_func(batch['actor_goals'])
+
+        return self.agent.total_loss(batch, grad_params, rng=rng)
 
     def update_dataset(self, dataset):
         if self.normalizer_type == 'none':
