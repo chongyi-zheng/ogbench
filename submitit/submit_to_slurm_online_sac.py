@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -52,7 +52,7 @@ def main():
             for train_steps in [1_000_000]:
                 for layer_norm in [True, False]:
                     for seed in [10, 20]:
-                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_sac_{env_name}_train_steps={train_steps}"
+                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_sac_{env_name}_train_steps={train_steps}_layer_norm={layer_norm}"
                         log_dir = os.path.expanduser(
                             f"{log_root_dir}/exp_logs/ogbench_logs/sac/{exp_name}/{seed}")
 
@@ -98,8 +98,8 @@ def main():
                                 --save_interval=500_000 \
                                 --agent=impls/agents/sac.py \
                                 --agent.lr=3e-4 \
-                                --agent.actor_hidden_dims=(256,256,256,256) \
-                                --agent.value_hidden_dims=(256,256,256,256) \
+                                --agent.actor_hidden_dims="(256,256,256,256)" \
+                                --agent.value_hidden_dims="(256,256,256,256)" \
                                 --agent.layer_norm={layer_norm} \
                                 --seed={seed} \
                                 --save_dir={log_dir} \
