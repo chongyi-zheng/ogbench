@@ -75,7 +75,7 @@ def main():
                         echo seed: {seed};
 
                         export PROJECT_DIR=$PWD;
-                        export PYTHONPATH=$HOME/research/ogbench/data_gen_scripts;
+                        export PYTHONPATH=$HOME/research/ogbench/impls;
                         export PATH="$PATH":"$CONDA_PREFIX"/bin;
                         export CUDA_VISIBLE_DEVICES=0;
                         export MUJOCO_GL=egl;
@@ -95,6 +95,7 @@ def main():
                             --train_steps={train_steps} \
                             --eval_episodes=50 \
                             --save_interval=500_000 \
+                            --agent=impls/agents/sac.py \
                             --seed={seed} \
                             --save_dir={log_dir} \
                         2>&1 | tee {log_dir}/stream.log;
