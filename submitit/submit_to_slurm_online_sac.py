@@ -75,7 +75,7 @@ def main():
                         echo seed: {seed};
 
                         export PROJECT_DIR=$PWD;
-                        export PYTHONPATH=$HOME/research/ogbench/impls;
+                        export PYTHONPATH=$HOME/research/ogbench/data_gen_scripts;
                         export PATH="$PATH":"$CONDA_PREFIX"/bin;
                         export CUDA_VISIBLE_DEVICES=0;
                         export MUJOCO_GL=egl;
