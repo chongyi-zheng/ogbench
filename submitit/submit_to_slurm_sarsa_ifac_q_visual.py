@@ -45,7 +45,7 @@ def main():
         slurm_gpus_per_node=1,
         slurm_nodelist=nodelist,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=25,
     )
 
     with executor.batch():  # job array
@@ -57,9 +57,9 @@ def main():
         ]:
             for obs_norm_type in ['none']:
                 for tau in [0.995, 0.005]:
-                    for alpha in [3000, 1000, 300]:
+                    for alpha in [30000, 10000, 3000, 1000, 300]:
                         for num_flow_goals in [16]:
-                            for expectile in [0.65, 0.75, 0.85, 0.95]:
+                            for expectile in [0.55, 0.65, 0.75, 0.85, 0.95]:
                                 for encoder in ['impala_small']:
                                     for q_agg in ['mean']:
                                         for normalize_q_loss in [False]:
