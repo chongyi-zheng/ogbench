@@ -243,7 +243,6 @@ def main(_):
 
                 if FLAGS.wandb_mode == 'offline':
                     trigger_sync()
-
             train_logger.log(train_metrics, step=i)
 
         # Evaluate agent.

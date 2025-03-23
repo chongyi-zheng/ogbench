@@ -3,6 +3,6 @@ jax[cuda12] >= 0.4.26
 flax >= 0.8.4
 distrax >= 0.1.5
 ml_collections
-matplotlib
+matplotlib==3.9.0
 moviepy==1.0.3
 wandb

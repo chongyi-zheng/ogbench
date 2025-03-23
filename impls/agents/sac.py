@@ -159,7 +159,7 @@ class SACAgent(flax.struct.PyTreeNode):
         critic_def = GCValue(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['layer_norm'],
-            ensemble=True,
+            num_ensembles=2,
         )
 
         actor_def = GCActor(

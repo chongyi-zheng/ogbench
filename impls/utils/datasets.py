@@ -170,6 +170,10 @@ class ReplayBuffer(Dataset):
         self.pointer = (self.pointer + 1) % self.max_size
         self.size = max(self.pointer, self.size)
 
+        # Update terminal and initial locations.
+        self.terminal_locs = np.nonzero(self['terminals'] > 0)[0]
+        self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
+
     def clear(self):
         """Clear the replay buffer."""
         self.size = self.pointer = 0
