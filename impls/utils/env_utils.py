@@ -18,10 +18,11 @@ from utils.datasets import Dataset
 class EpisodeMonitor(gymnasium.Wrapper):
     """Environment wrapper to monitor episode statistics."""
 
-    def __init__(self, env, filter_regexes=None):
+    def __init__(self, env, filter_regexes=None, terminate_at_goal=True):
         super().__init__(env)
         self._reset_stats()
         self.total_timesteps = 0
+        self.terminate_at_goal = terminate_at_goal
         self.filter_regexes = filter_regexes if filter_regexes is not None else []
 
     def _reset_stats(self):
@@ -31,6 +32,8 @@ class EpisodeMonitor(gymnasium.Wrapper):
 
     def step(self, action):
         observation, reward, terminated, truncated, info = self.env.step(action)
+        if self.terminate_at_goal and info.get('success', False) and (not terminated):
+            terminated = True
 
         # Remove keys that are not needed for logging.
         for filter_regex in self.filter_regexes:

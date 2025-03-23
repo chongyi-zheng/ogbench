@@ -391,7 +391,7 @@ class GCValue(nn.Module):
         num_residual_blocks: Number of residual blocks.
         hidden_dims: Hidden layer dimensions.
         layer_norm: Whether to apply layer normalization.
-        ensemble: Whether to ensemble the value function.
+        num_ensembles: Number of ensemble components.
         gc_encoder: Optional GCEncoder module to encode the inputs.
     """
 

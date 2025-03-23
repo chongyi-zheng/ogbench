@@ -1,4 +1,5 @@
 import gymnasium
+from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
 from utils.env_utils import EpisodeMonitor, setup_egl
 
 
@@ -15,31 +16,38 @@ def make_online_env(env_name):
 
     setup_egl()
 
-    # Manually recognize the '-xy' suffix, which indicates that the environment should be wrapped with a directional
-    # locomotion wrapper.
-    if '-xy' in env_name:
-        env_name = env_name.replace('-xy', '')
-        apply_xy_wrapper = True
-    else:
-        apply_xy_wrapper = False
-
-    # Set camera.
-    if 'humanoid' in env_name:
-        extra_kwargs = dict(camera_id=0)
-    else:
-        extra_kwargs = dict()
-
-    # Make environment.
-    env = gymnasium.make(env_name, render_mode='rgb_array', height=200, width=200, **extra_kwargs)
-
-    if apply_xy_wrapper:
-        # Apply the directional locomotion wrapper.
-        from ogbench.online_locomotion.wrappers import DMCHumanoidXYWrapper, GymXYWrapper
-
-        if 'humanoid' in env_name:
-            env = DMCHumanoidXYWrapper(env, resample_interval=200)
+    if env_name.startswith('online'):
+        # Manually recognize the '-xy' suffix, which indicates that the environment should be wrapped with a directional
+        # locomotion wrapper.
+        if '-xy' in env_name:
+            env_name = env_name.replace('-xy', '')
+            apply_xy_wrapper = True
         else:
-            env = GymXYWrapper(env, resample_interval=100)
+            apply_xy_wrapper = False
+
+        # Set camera.
+        if 'humanoid' in env_name:
+            extra_kwargs = dict(camera_id=0)
+        else:
+            extra_kwargs = dict()
+
+        # Make environment.
+        env = gymnasium.make(env_name, render_mode='rgb_array', height=200, width=200, **extra_kwargs)
+
+        if apply_xy_wrapper:
+            # Apply the directional locomotion wrapper.
+            from ogbench.online_locomotion.wrappers import DMCHumanoidXYWrapper, GymXYWrapper
+
+            if 'humanoid' in env_name:
+                env = DMCHumanoidXYWrapper(env, resample_interval=200)
+            else:
+                env = GymXYWrapper(env, resample_interval=100)
+    else:
+        env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[env_name + '-goal-observable']
+        env = env_cls(render_mode='rgb_array')
+        # set the rendering resolution
+        env.width, env.height = 200, 200
+        env.model.vis.global_.offwidth, env.model.vis.global_.offheight = 200, 200
 
     env = EpisodeMonitor(env)
 
