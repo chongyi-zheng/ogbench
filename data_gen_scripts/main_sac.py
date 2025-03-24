@@ -36,6 +36,7 @@ flags.DEFINE_integer('log_interval', 5000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 100000, 'Evaluation interval.')
 flags.DEFINE_integer('save_interval', 1000000, 'Saving interval.')
 flags.DEFINE_integer('reset_interval', 0, 'Full parameter reset interval.')
+flags.DEFINE_integer('save_final_replay_buffer', 0, 'Whether to save the final replay buffer.')
 flags.DEFINE_integer('terminate_at_end', 1, 'Whether to set terminated=True when truncated=True.')
 
 flags.DEFINE_integer('eval_episodes', 50, 'Number of episodes for each task.')
@@ -203,6 +204,19 @@ def main(_):
                 network=agent.network.replace(params=new_agent.network.params, opt_state=new_agent.network.opt_state)
             )
             del new_agent
+
+    if FLAGS.save_final_replay_buffer > 0:
+        # for path, dataset in [(train_path, train_dataset), (val_path, val_dataset)]:
+        #     np.savez_compressed(path, **dataset)
+        save_path = os.path.join(FLAGS.save_dir, 'final_replay_buffer.npz')
+        rb_dataset = replay_buffer._dict
+        for k, v in rb_dataset.items():
+            rb_dataset[k] = v[:replay_buffer.size]
+        del rb_dataset['masks']
+        del rb_dataset['rewards']
+        np.savez_compressed(save_path, rb_dataset)
+        print(f'Saved replay buffer to {save_path}')
+
     train_logger.close()
     eval_logger.close()
 

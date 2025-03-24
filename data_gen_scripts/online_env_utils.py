@@ -45,6 +45,7 @@ def make_online_env(env_name):
     else:
         env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[env_name + '-goal-observable']
         env = env_cls(render_mode='rgb_array')
+        env._freeze_rand_vec = False  # randomize goal location everytime we call env.reset()
         # set the rendering resolution
         env.width, env.height = 200, 200
         env.model.vis.global_.offwidth, env.model.vis.global_.offheight = 200, 200
