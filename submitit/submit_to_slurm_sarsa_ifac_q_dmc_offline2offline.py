@@ -58,9 +58,9 @@ def main():
             # "cheetah_run",
             # "walker_walk",
             # "cheetah_run_backward",
-            "walker_flip",
-            # "quadruped_jump",
-            # "jaco_reach_top_left",
+            # "walker_flip",
+            "quadruped_jump",
+            "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
