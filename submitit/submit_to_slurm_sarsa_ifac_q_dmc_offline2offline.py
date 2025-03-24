@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=40,
+        slurm_array_parallelism=25,
     )
 
     with executor.batch():  # job array
@@ -55,12 +55,12 @@ def main():
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
-            "cheetah_run",
-            "walker_walk",
+            # "cheetah_run",
+            # "walker_walk",
             # "cheetah_run_backward",
             "walker_flip",
-            "quadruped_jump",
-            "jaco_reach_top_left",
+            # "quadruped_jump",
+            # "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
