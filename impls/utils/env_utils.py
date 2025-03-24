@@ -18,22 +18,23 @@ from utils.datasets import Dataset
 class EpisodeMonitor(gymnasium.Wrapper):
     """Environment wrapper to monitor episode statistics."""
 
-    def __init__(self, env, filter_regexes=None, terminate_at_goal=True):
+    def __init__(self, env, filter_regexes=None):
         super().__init__(env)
         self._reset_stats()
         self.total_timesteps = 0
-        self.terminate_at_goal = terminate_at_goal
+        # self.terminate_at_goal = terminate_at_goal
         self.filter_regexes = filter_regexes if filter_regexes is not None else []
 
     def _reset_stats(self):
         self.reward_sum = 0.0
         self.episode_length = 0
+        self.episode_success = 0.0
         self.start_time = time.time()
 
     def step(self, action):
         observation, reward, terminated, truncated, info = self.env.step(action)
-        if self.terminate_at_goal and info.get('success', False) and (not terminated):
-            terminated = True
+        # if self.terminate_at_goal and info.get('success', False) and (not terminated):
+        #     terminated = True
 
         # Remove keys that are not needed for logging.
         for filter_regex in self.filter_regexes:
@@ -44,6 +45,7 @@ class EpisodeMonitor(gymnasium.Wrapper):
         self.reward_sum += reward
         self.episode_length += 1
         self.total_timesteps += 1
+        self.episode_success += info.get('success', 0.0)
         info['total'] = {'timesteps': self.total_timesteps}
 
         if terminated or truncated:
@@ -51,6 +53,7 @@ class EpisodeMonitor(gymnasium.Wrapper):
             info['episode']['final_reward'] = reward
             info['episode']['return'] = self.reward_sum
             info['episode']['length'] = self.episode_length
+            info['episode']['success'] = float(self.episode_success > 0.0)
             info['episode']['duration'] = time.time() - self.start_time
 
             if hasattr(self.unwrapped, 'get_normalized_score'):

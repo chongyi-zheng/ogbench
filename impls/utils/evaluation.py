@@ -48,7 +48,6 @@ def evaluate(
     Args:
         agent: Agent.
         env: Environment.
-        config: Configuration dictionary.
         num_eval_episodes: Number of episodes to evaluate the agent.
         num_video_episodes: Number of episodes to render. These episodes are not included in the statistics.
         video_frame_skip: Number of frames to skip between renders.

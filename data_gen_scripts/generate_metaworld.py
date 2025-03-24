@@ -1,3 +1,4 @@
+import os
 import glob
 import json
 from collections import defaultdict
@@ -7,6 +8,7 @@ from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
 import numpy as np
 from absl import app, flags
 from agents import SACAgent
+import imageio
 from tqdm import trange
 from utils.evaluation import supply_rng
 from utils.flax_utils import restore_agent
@@ -23,7 +25,9 @@ flags.DEFINE_integer('restore_epoch', 400000, 'Expert agent restore epoch.')
 flags.DEFINE_string('save_path', None, 'Save path.')
 flags.DEFINE_float('noise', 0.2, 'Gaussian action noise level.')
 flags.DEFINE_integer('num_episodes', 1000, 'Number of episodes.')
-flags.DEFINE_integer('max_episode_steps', 1001, 'Maximum number of steps in an episode.')
+flags.DEFINE_integer('num_video_episodes', 0, 'Number of video episodes for each task.')
+flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
+flags.DEFINE_integer('max_episode_steps', 501, 'Maximum number of steps in an episode.')
 
 
 def main(_):
@@ -40,21 +44,25 @@ def main(_):
     #     max_episode_steps=FLAGS.max_episode_steps,
     # )
 
-    env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[FLAGS.env_name + '-goal-observable']
-    env = env_cls(render_mode='rgb_array')
-    env._freeze_rand_vec = False  # randomize goal location everytime we call env.reset()
-    # set the rendering resolution
-    env.width, env.height = 200, 200
-    env.model.vis.global_.offwidth, env.model.vis.global_.offheight = 200, 200
-    ob_dim = env.observation_space.shape[0]
-
-    # Initialize oracle agent.
+    # Restore agent config.
     restore_path = FLAGS.restore_path
     candidates = glob.glob(restore_path)
     assert len(candidates) == 1, f'Found {len(candidates)} candidates: {candidates}'
 
     with open(candidates[0] + '/flags.json', 'r') as f:
-        agent_config = json.load(f)['agent']
+        config = json.load(f)
+        training_seed = config['seed']
+        agent_config = config['agent']
+
+    # Create environment.
+    env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[FLAGS.env_name + '-goal-observable']
+    # Must use the same seed during training.
+    env = env_cls(seed=training_seed, render_mode='rgb_array')
+    env.max_episode_steps = FLAGS.max_episode_steps
+    # set the rendering resolution
+    env.width, env.height = 200, 200
+    env.model.vis.global_.offwidth, env.model.vis.global_.offheight = 200, 200
+    ob_dim = env.observation_space.shape[0]
 
     # Load agent.
     agent = SACAgent.create(
@@ -95,11 +103,14 @@ def main(_):
 
     # Collect data.
     dataset = defaultdict(list)
+    stats = defaultdict(list)
+    renders = []
     total_steps = 0
     total_train_steps = 0
     num_train_episodes = FLAGS.num_episodes
     num_val_episodes = FLAGS.num_episodes // 10
-    for ep_idx in trange(num_train_episodes + num_val_episodes):
+    num_video_episodes = FLAGS.num_video_episodes
+    for ep_idx in trange(num_train_episodes + num_val_episodes + num_video_episodes):
         # if FLAGS.dataset_type in ['path', 'navigate', 'explore']:
         #     # Sample an initial state from all cells.
         #     init_ij = all_cells[np.random.randint(len(all_cells))]
@@ -138,31 +149,34 @@ def main(_):
         # else:
         #     raise ValueError(f'Unsupported dataset_type: {FLAGS.dataset_type}')
 
+        should_render = ep_idx >= (num_train_episodes + num_val_episodes)
+
         # ob, _ = env.reset(options=dict(task_info=dict(init_ij=init_ij, goal_ij=goal_ij)))
         ob, _ = env.reset()
 
         done = False
         step = 0
-
-        cur_subgoal_dir = None  # Current subgoal direction (only for 'explore').
+        success = []
+        render = []
+        # cur_subgoal_dir = None  # Current subgoal direction (only for 'explore').
 
         while not done:
-            if FLAGS.dataset_type == 'explore':
-                # Sample a random direction every 10 steps.
-                if step % 10 == 0:
-                    cur_subgoal_dir = np.random.randn(2)
-                    cur_subgoal_dir = cur_subgoal_dir / (np.linalg.norm(cur_subgoal_dir) + 1e-6)
-                subgoal_dir = cur_subgoal_dir
-            else:
-                # Get the oracle subgoal and compute the direction.
-                subgoal_xy, _ = env.unwrapped.get_oracle_subgoal(env.unwrapped.get_xy(), env.unwrapped.cur_goal_xy)
-                subgoal_dir = subgoal_xy - env.unwrapped.get_xy()
-                subgoal_dir = subgoal_dir / (np.linalg.norm(subgoal_dir) + 1e-6)
+            # if FLAGS.dataset_type == 'explore':
+            #     # Sample a random direction every 10 steps.
+            #     if step % 10 == 0:
+            #         cur_subgoal_dir = np.random.randn(2)
+            #         cur_subgoal_dir = cur_subgoal_dir / (np.linalg.norm(cur_subgoal_dir) + 1e-6)
+            #     subgoal_dir = cur_subgoal_dir
+            # else:
+            #     # Get the oracle subgoal and compute the direction.
+            #     subgoal_xy, _ = env.unwrapped.get_oracle_subgoal(env.unwrapped.get_xy(), env.unwrapped.cur_goal_xy)
+            #     subgoal_dir = subgoal_xy - env.unwrapped.get_xy()
+            #     subgoal_dir = subgoal_dir / (np.linalg.norm(subgoal_dir) + 1e-6)
 
-            agent_ob = env.unwrapped.get_ob(ob_type='states')
+            # agent_ob = env.unwrapped.get_ob(ob_type='states')
             # Exclude the agent's position and add the subgoal direction.
-            agent_ob = np.concatenate([agent_ob[2:], subgoal_dir])
-            action = actor_fn(agent_ob, temperature=0)
+            # agent_ob = np.concatenate([agent_ob[2:], subgoal_dir])
+            action = actor_fn(ob, temperature=0)
             # Add Gaussian noise to the action.
             action = action + np.random.normal(0, FLAGS.noise, action.shape)
             action = np.clip(action, -1, 1)
@@ -170,6 +184,10 @@ def main(_):
             next_ob, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             # success = info['success']
+
+            if should_render and (step % FLAGS.video_frame_skip == 0 or done):
+                frame = env.render().copy()
+                render.append(frame)
 
             # Sample a new goal state when the current goal is reached.
             # if success and FLAGS.dataset_type == 'navigate':
@@ -179,17 +197,34 @@ def main(_):
             dataset['observations'].append(ob)
             dataset['actions'].append(action)
             dataset['terminals'].append(done)
-            dataset['qpos'].append(info['prev_qpos'])
-            dataset['qvel'].append(info['prev_qvel'])
+            # dataset['qpos'].append(info['prev_qpos'])
+            # dataset['qvel'].append(info['prev_qvel'])
+
+            success.append(info['success'])
 
             ob = next_ob
             step += 1
 
+        stats['success'].append(success)
         total_steps += step
         if ep_idx < num_train_episodes:
             total_train_steps += step
+        elif ep_idx >= (num_train_episodes + num_val_episodes):
+            renders.append(np.array(render))
 
+    success_rate = np.mean(np.any(np.array(stats['success']) > 0, axis=-1))
+
+    print('Success rate:', success_rate)
     print('Total steps:', total_steps)
+
+    if num_video_episodes > 0:
+        video_dir = os.path.abspath(FLAGS.save_path)
+        os.makedirs(video_dir, exist_ok=True)
+        video_path = FLAGS.save_path.replace('.npz', '.mp4')
+        renders = np.asarray(renders)
+        renders = renders.reshape([-1, *renders.shape[2:]])
+        imageio.mimsave(video_path, renders, fps=15)
+        print("Save video to {}".format(video_path))
 
     train_path = FLAGS.save_path
     val_path = FLAGS.save_path.replace('.npz', '-val.npz')
