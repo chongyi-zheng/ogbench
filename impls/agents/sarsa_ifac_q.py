@@ -279,7 +279,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             #     current_noises = jax.random.permutation(
             #         current_noise_rng, goals, axis=0)
             current_path_sample = self.cond_prob_path(
-                x_0=current_noises, x_1=observations, t=times)
+                x_0=current_noises, x_1=jax.lax.stop_gradient(observations), t=times)
             current_vf_pred = self.network.select('critic_vf')(
                 current_path_sample.x_t,
                 times,
@@ -288,7 +288,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             )
             # no gradient through the target for the encoder
             current_flow_matching_loss = jnp.square(
-                jax.lax.stop_gradient(current_path_sample.dx_t) - current_vf_pred).mean(axis=-1)
+                current_path_sample.dx_t - current_vf_pred).mean(axis=-1)
 
             if self.config['critic_noise_type'] == 'normal':
                 future_noises = jax.random.normal(
