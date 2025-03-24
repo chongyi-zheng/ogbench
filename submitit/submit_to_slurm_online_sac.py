@@ -107,9 +107,9 @@ def main():
                                     --save_interval=500_000 \
                                     --save_final_replay_buffer={save_final_rb} \
                                     --agent=impls/agents/sac.py \
-                                    --agent.lr=3e-4 \
-                                    --agent.actor_hidden_dims="(512,512)" \
-                                    --agent.value_hidden_dims="(512,512)" \
+                                    --agent.lr=1e-4 \
+                                    --agent.actor_hidden_dims="(256,256)" \
+                                    --agent.value_hidden_dims="(256,256)" \
                                     --agent.layer_norm={layer_norm} \
                                     --seed={seed} \
                                     --save_dir={log_dir} \

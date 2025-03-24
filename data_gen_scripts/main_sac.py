@@ -66,8 +66,8 @@ def main(_):
     config = FLAGS.agent
 
     # Set up environments and replay buffer.
-    env = make_online_env(FLAGS.env_name)
-    eval_env = make_online_env(FLAGS.env_name)
+    env = make_online_env(FLAGS.env_name, FLAGS.seed)
+    eval_env = make_online_env(FLAGS.env_name, FLAGS.seed)
 
     example_transition = dict(
         observations=env.observation_space.sample(),

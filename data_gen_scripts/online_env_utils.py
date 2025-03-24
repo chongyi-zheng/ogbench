@@ -3,7 +3,7 @@ from metaworld.envs import ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE
 from utils.env_utils import EpisodeMonitor, setup_egl
 
 
-def make_online_env(env_name):
+def make_online_env(env_name, seed):
     """Make online environment.
 
     If the environment name contains the '-xy' suffix, the environment will be wrapped with a directional locomotion
@@ -11,6 +11,7 @@ def make_online_env(env_name):
 
     Args:
         env_name: Name of the environment.
+        seed: Random seed. (only used for metaworld envs.)
     """
     import ogbench.online_locomotion  # noqa
 
@@ -44,8 +45,7 @@ def make_online_env(env_name):
                 env = GymXYWrapper(env, resample_interval=100)
     else:
         env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[env_name + '-goal-observable']
-        env = env_cls(render_mode='rgb_array')
-        env._freeze_rand_vec = False  # randomize goal location everytime we call env.reset()
+        env = env_cls(seed=seed, render_mode='rgb_array')
         # set the rendering resolution
         env.width, env.height = 200, 200
         env.model.vis.global_.offwidth, env.model.vis.global_.offheight = 200, 200

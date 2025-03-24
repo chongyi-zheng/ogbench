@@ -242,9 +242,10 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
             for k, v in val_dataset.items():
                 val_dataset[k] = v[:max_size]
 
-        if 'mask' not in train_dataset:
-            train_dataset['masks'] = 1.0 - train_dataset['terminals']
-            val_dataset['masks'] = 1.0 - val_dataset['terminals']
+        # DELETEME (chongyiz)
+        # if 'mask' not in train_dataset:
+        #     train_dataset['masks'] = 1.0 - train_dataset['terminals']
+        #     val_dataset['masks'] = 1.0 - val_dataset['terminals']
 
         env = ogbench.make_env_and_datasets(env_name, env_only=True)
         eval_env = ogbench.make_env_and_datasets(env_name, env_only=True)
