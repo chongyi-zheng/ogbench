@@ -19,7 +19,6 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_integer('seed', 0, 'Random seed.')
 flags.DEFINE_string('env_name', 'antmaze-large-v0', 'Environment name.')
-# flags.DEFINE_string('dataset_type', 'navigate', 'Dataset type.')
 flags.DEFINE_string('restore_path', 'experts/ant', 'Expert agent restore path.')
 flags.DEFINE_integer('restore_epoch', 400000, 'Expert agent restore epoch.')
 flags.DEFINE_string('save_path', None, 'Save path.')
@@ -31,19 +30,6 @@ flags.DEFINE_integer('max_episode_steps', 501, 'Maximum number of steps in an ep
 
 
 def main(_):
-    # assert FLAGS.dataset_type in ['path', 'navigate', 'stitch', 'explore']
-    # 'path': Reach a single goal and stay there.
-    # 'navigate': Repeatedly reach randomly sampled goals in a single episode.
-    # 'stitch': Reach a nearby goal that is 4 cells away and stay there.
-    # 'explore': Repeatedly follow random directions sampled every 10 steps.
-
-    # Initialize environment.
-    # env = gymnasium.make(
-    #     FLAGS.env_name,
-    #     terminate_at_goal=False,
-    #     max_episode_steps=FLAGS.max_episode_steps,
-    # )
-
     # Restore agent config.
     restore_path = FLAGS.restore_path
     candidates = glob.glob(restore_path)
@@ -74,108 +60,27 @@ def main(_):
     agent = restore_agent(agent, FLAGS.restore_path, FLAGS.restore_epoch)
     actor_fn = supply_rng(agent.sample_actions, rng=agent.rng)
 
-    # Store all empty cells and vertex cells.
-    # all_cells = []
-    # vertex_cells = []
-    # maze_map = env.unwrapped.maze_map
-    # for i in range(maze_map.shape[0]):
-    #     for j in range(maze_map.shape[1]):
-    #         if maze_map[i, j] == 0:
-    #             all_cells.append((i, j))
-    #
-    #             # Exclude hallway cells.
-    #             if (
-    #                 maze_map[i - 1, j] == 0
-    #                 and maze_map[i + 1, j] == 0
-    #                 and maze_map[i, j - 1] == 1
-    #                 and maze_map[i, j + 1] == 1
-    #             ):
-    #                 continue
-    #             if (
-    #                 maze_map[i, j - 1] == 0
-    #                 and maze_map[i, j + 1] == 0
-    #                 and maze_map[i - 1, j] == 1
-    #                 and maze_map[i + 1, j] == 1
-    #             ):
-    #                 continue
-    #
-    #             vertex_cells.append((i, j))
-
     # Collect data.
     dataset = defaultdict(list)
     stats = defaultdict(list)
     renders = []
     total_steps = 0
     total_train_steps = 0
+    total_val_steps = 0
     num_train_episodes = FLAGS.num_episodes
     num_val_episodes = FLAGS.num_episodes // 10
     num_video_episodes = FLAGS.num_video_episodes
     for ep_idx in trange(num_train_episodes + num_val_episodes + num_video_episodes):
-        # if FLAGS.dataset_type in ['path', 'navigate', 'explore']:
-        #     # Sample an initial state from all cells.
-        #     init_ij = all_cells[np.random.randint(len(all_cells))]
-        #     # Sample a goal state from vertex cells.
-        #     goal_ij = vertex_cells[np.random.randint(len(vertex_cells))]
-        # elif FLAGS.dataset_type == 'stitch':
-        #     # Sample an initial state from all cells.
-        #     init_ij = all_cells[np.random.randint(len(all_cells))]
-        #
-        #     # Perform BFS to find adjacent cells.
-        #     adj_cells = []
-        #     adj_steps = 4  # Target distance from the initial cell.
-        #     bfs_map = maze_map.copy()
-        #     for i in range(bfs_map.shape[0]):
-        #         for j in range(bfs_map.shape[1]):
-        #             bfs_map[i][j] = -1
-        #     bfs_map[init_ij[0], init_ij[1]] = 0
-        #     queue = [init_ij]
-        #     while len(queue) > 0:
-        #         i, j = queue.pop(0)
-        #         for di, dj in [(-1, 0), (0, -1), (1, 0), (0, 1)]:
-        #             ni, nj = i + di, j + dj
-        #             if (
-        #                 0 <= ni < bfs_map.shape[0]
-        #                 and 0 <= nj < bfs_map.shape[1]
-        #                 and maze_map[ni, nj] == 0
-        #                 and bfs_map[ni, nj] == -1
-        #             ):
-        #                 bfs_map[ni][nj] = bfs_map[i][j] + 1
-        #                 queue.append((ni, nj))
-        #                 if bfs_map[ni][nj] == adj_steps:
-        #                     adj_cells.append((ni, nj))
-        #
-        #     # Sample a goal state from adjacent cells.
-        #     goal_ij = adj_cells[np.random.randint(len(adj_cells))] if len(adj_cells) > 0 else init_ij
-        # else:
-        #     raise ValueError(f'Unsupported dataset_type: {FLAGS.dataset_type}')
-
         should_render = ep_idx >= (num_train_episodes + num_val_episodes)
 
-        # ob, _ = env.reset(options=dict(task_info=dict(init_ij=init_ij, goal_ij=goal_ij)))
         ob, _ = env.reset()
 
         done = False
         step = 0
         success = []
         render = []
-        # cur_subgoal_dir = None  # Current subgoal direction (only for 'explore').
 
         while not done:
-            # if FLAGS.dataset_type == 'explore':
-            #     # Sample a random direction every 10 steps.
-            #     if step % 10 == 0:
-            #         cur_subgoal_dir = np.random.randn(2)
-            #         cur_subgoal_dir = cur_subgoal_dir / (np.linalg.norm(cur_subgoal_dir) + 1e-6)
-            #     subgoal_dir = cur_subgoal_dir
-            # else:
-            #     # Get the oracle subgoal and compute the direction.
-            #     subgoal_xy, _ = env.unwrapped.get_oracle_subgoal(env.unwrapped.get_xy(), env.unwrapped.cur_goal_xy)
-            #     subgoal_dir = subgoal_xy - env.unwrapped.get_xy()
-            #     subgoal_dir = subgoal_dir / (np.linalg.norm(subgoal_dir) + 1e-6)
-
-            # agent_ob = env.unwrapped.get_ob(ob_type='states')
-            # Exclude the agent's position and add the subgoal direction.
-            # agent_ob = np.concatenate([agent_ob[2:], subgoal_dir])
             action = actor_fn(ob, temperature=0)
             # Add Gaussian noise to the action.
             action = action + np.random.normal(0, FLAGS.noise, action.shape)
@@ -183,20 +88,17 @@ def main(_):
 
             next_ob, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
-            # success = info['success']
 
             if should_render and (step % FLAGS.video_frame_skip == 0 or done):
                 frame = env.render().copy()
                 render.append(frame)
 
-            # Sample a new goal state when the current goal is reached.
-            # if success and FLAGS.dataset_type == 'navigate':
-            #     goal_ij = vertex_cells[np.random.randint(len(vertex_cells))]
-            #     env.unwrapped.set_goal(goal_ij)
-
+            # masks denotes whether the agent should get a Bellman backup from the next observation. It is 0 only when the task is complete (and 1 otherwise). In this case, the agent should set the target Q-value to 0, instead of using the next observation's target Q-value.
+            # terminals simply denotes whether the dataset trajectory is over, regardless of task completion.
             dataset['observations'].append(ob)
             dataset['actions'].append(action)
-            dataset['terminals'].append(done)
+            dataset['terminals'].append(truncated)
+            dataset['masks'].append(info['success'])
             # dataset['qpos'].append(info['prev_qpos'])
             # dataset['qvel'].append(info['prev_qvel'])
 
@@ -209,7 +111,9 @@ def main(_):
         total_steps += step
         if ep_idx < num_train_episodes:
             total_train_steps += step
-        elif ep_idx >= (num_train_episodes + num_val_episodes):
+        elif num_train_episodes <= ep_idx < (num_train_episodes + num_val_episodes):
+            total_val_steps += step
+        else:
             renders.append(np.array(render))
 
     success_rate = np.mean(np.any(np.array(stats['success']) > 0, axis=-1))
@@ -217,8 +121,9 @@ def main(_):
     print('Success rate:', success_rate)
     print('Total steps:', total_steps)
 
+    FLAGS.save_path = os.path.expanduser(FLAGS.save_path)
     if num_video_episodes > 0:
-        video_dir = os.path.abspath(FLAGS.save_path)
+        video_dir = os.path.dirname(FLAGS.save_path)
         os.makedirs(video_dir, exist_ok=True)
         video_path = FLAGS.save_path.replace('.npz', '.mp4')
         renders = np.asarray(renders)
@@ -235,12 +140,12 @@ def main(_):
     for k, v in dataset.items():
         if 'observations' in k and v[0].dtype == np.uint8:
             dtype = np.uint8
-        elif k == 'terminals':
+        elif k in ['terminals', 'masks']:
             dtype = bool
         else:
             dtype = np.float32
         train_dataset[k] = np.array(v[:total_train_steps], dtype=dtype)
-        val_dataset[k] = np.array(v[total_train_steps:], dtype=dtype)
+        val_dataset[k] = np.array(v[total_train_steps:total_train_steps + total_val_steps], dtype=dtype)
 
     for path, dataset in [(train_path, train_dataset), (val_path, val_dataset)]:
         np.savez_compressed(path, **dataset)
