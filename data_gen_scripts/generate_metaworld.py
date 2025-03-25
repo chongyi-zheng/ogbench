@@ -97,6 +97,7 @@ def main(_):
             # terminals simply denotes whether the dataset trajectory is over, regardless of task completion.
             dataset['observations'].append(ob)
             dataset['actions'].append(action)
+            dataset['rewards'].append(reward)
             dataset['terminals'].append(truncated)
             dataset['masks'].append(info['success'])
             # dataset['qpos'].append(info['prev_qpos'])

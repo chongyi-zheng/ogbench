@@ -45,7 +45,8 @@ def make_online_env(env_name, seed):
                 env = GymXYWrapper(env, resample_interval=100)
     else:
         env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[env_name + '-goal-observable']
-        env = env_cls(seed=seed, render_mode='rgb_array')
+        env = env_cls(render_mode='rgb_array')
+        env._freeze_rand_vec = False
         # set the rendering resolution
         env.width, env.height = 200, 200
         env.model.vis.global_.offwidth, env.model.vis.global_.offheight = 200, 200

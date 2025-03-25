@@ -27,10 +27,10 @@ def main(_):
         train_file = np.load(train_path)
         val_file = np.load(val_path)
 
-        for k in ['observations', 'actions', 'terminals', 'masks']:
+        for k in ['observations', 'actions', 'rewards', 'terminals', 'masks']:
             train_dataset[k].append(train_file[k][...])
 
-        for k in ['observations', 'actions', 'terminals', 'masks']:
+        for k in ['observations', 'actions', 'rewards', 'terminals', 'masks']:
             val_dataset[k].append(val_file[k][...])
 
     for k, v in train_dataset.items():

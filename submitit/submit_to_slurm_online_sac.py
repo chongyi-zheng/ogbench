@@ -61,7 +61,7 @@ def main():
                 for layer_norm in [True, False]:
                     for save_final_rb in [1]:
                         for seed in [10, 20]:
-                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sac_{env_name}_train_steps={train_steps}_layer_norm={layer_norm}_save_final_rb={save_final_rb}"
+                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sac_{env_name}_train_steps={train_steps}_layer_norm={layer_norm}_save_final_rb={save_final_rb}_randomize_init_state"
                             log_dir = os.path.expanduser(
                                 f"{log_root_dir}/exp_logs/ogbench_logs/sac/{exp_name}/{seed}")
 
@@ -107,9 +107,9 @@ def main():
                                     --save_interval=500_000 \
                                     --save_final_replay_buffer={save_final_rb} \
                                     --agent=impls/agents/sac.py \
-                                    --agent.lr=1e-4 \
-                                    --agent.actor_hidden_dims="(256,256)" \
-                                    --agent.value_hidden_dims="(256,256)" \
+                                    --agent.lr=3e-4 \
+                                    --agent.actor_hidden_dims="(256,256,256,256)" \
+                                    --agent.value_hidden_dims="(256,256,256,256)" \
                                     --agent.layer_norm={layer_norm} \
                                     --seed={seed} \
                                     --save_dir={log_dir} \
