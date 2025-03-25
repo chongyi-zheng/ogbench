@@ -113,7 +113,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
 
         future_rewards = future_rewards.mean(axis=0)  # MC estimations
         target_q = 1.0 / (1 - self.config['discount']) * future_rewards
-        qs = self.network.select('critic')(observations, actions, params=grad_params)
+        qs = self.network.select('critic')(batch['observations'], actions, params=grad_params)
         critic_loss = self.expectile_loss(target_q - qs, target_q - qs, self.config['expectile']).mean()
 
         # For logging
@@ -279,16 +279,16 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             #     current_noises = jax.random.permutation(
             #         current_noise_rng, goals, axis=0)
             current_path_sample = self.cond_prob_path(
-                x_0=current_noises, x_1=jax.lax.stop_gradient(observations), t=times)
+                x_0=current_noises, x_1=observations, t=times)
             current_vf_pred = self.network.select('critic_vf')(
                 current_path_sample.x_t,
                 times,
                 observations, actions,
                 params=grad_params,
             )
-            # no gradient through the target for the encoder
+            # stop gradient for the image encoder
             current_flow_matching_loss = jnp.square(
-                current_path_sample.dx_t - current_vf_pred).mean(axis=-1)
+                jax.lax.stop_gradient(current_path_sample.dx_t) - current_vf_pred).mean(axis=-1)
 
             if self.config['critic_noise_type'] == 'normal':
                 future_noises = jax.random.normal(
@@ -306,7 +306,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
                                                     batch['observation_min'] + 1e-5,
                                                     batch['observation_max'] - 1e-5)
             future_path_sample = self.cond_prob_path(
-                x_0=future_noises, x_1=flow_future_observations, t=times)
+                x_0=future_noises, x_1=jax.lax.stop_gradient(flow_future_observations), t=times)
             future_vf_target = self.network.select('target_critic_vf')(
                 future_path_sample.x_t,
                 times,
@@ -348,7 +348,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         actor_vf_pred = self.network.select('actor_vf')(
             actor_path_sample.x_t,
             actor_times,
-            jax.lax.stop_gradient(observations),  # no gradients for the encoder
+            batch['observations'],
             params=grad_params,
         )
         actor_flow_matching_loss = jnp.square(actor_vf_pred - actor_path_sample.dx_t).mean()
@@ -368,9 +368,6 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
 
         observations = batch['observations']
         actions = batch['actions']
-
-        if self.config['encoder'] is not None:
-            observations = self.network.select('critic_vf_encoder')(observations)
 
         rng, noise_rng = jax.random.split(rng)
         noises = jax.random.normal(
@@ -415,9 +412,9 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         noises = jax.random.normal(
             noise_rng, shape=actions.shape, dtype=actions.dtype)
         if self.config['distill_type'] == 'fwd_sample':
-            actions = self.network.select('actor')(noises, observations)
+            actions = self.network.select('actor')(noises, batch['observations'])
         elif self.config['distill_type'] == 'fwd_int':
-            action_vfs = self.network.select('actor')(noises, observations)
+            action_vfs = self.network.select('actor')(noises, batch['observations'])
             actions = noises + action_vfs
         actions = jnp.clip(actions, -1, 1)
         mse = jnp.mean((actions - batch['actions']) ** 2)
@@ -631,8 +628,8 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         if observations.shape == self.config['obs_dims']:
             observations = jnp.expand_dims(observations, axis=0)
 
-        if self.config['encoder'] is not None:
-            observations = self.network.select('critic_vf_encoder')(observations)
+        # if self.config['encoder'] is not None:
+        #     observations = self.network.select('actor_critic_encoder')(observations)
 
         seed, noise_seed = jax.random.split(seed)
         noises = jax.random.normal(
@@ -694,10 +691,10 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             ex_observations = jax.random.normal(
                 obs_rng, shape=(ex_observations.shape[0], obs_dim), dtype=action_dtype)
 
-            # encoders['critic'] = encoder_module()
+            encoders['critic'] = encoder_module()
             encoders['critic_vf'] = encoder_module()
-            # encoders['actor'] = encoder_module()
-            # encoders['actor_vf'] = encoder_module()
+            encoders['actor'] = encoder_module()
+            encoders['actor_vf'] = encoder_module()
 
         # Define value and actor networks.
         critic_def = Value(
@@ -706,7 +703,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
             num_ensembles=2,
-            # encoder=encoders.get('critic'),
+            encoder=encoders.get('critic'),
         )
         critic_vf_def = GCFMVectorField(
             network_type=config['network_type'],
@@ -723,7 +720,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             vector_dim=action_dim,
             hidden_dims=config['actor_hidden_dims'],
             layer_norm=config['actor_layer_norm'],
-            # state_encoder=encoders.get('actor_vf'),
+            state_encoder=encoders.get('actor_vf'),
         )
         actor_def = GCFMValue(
             network_type=config['network_type'],
@@ -731,7 +728,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             hidden_dims=config['actor_hidden_dims'],
             output_dim=action_dim,
             layer_norm=config['actor_layer_norm'],
-            # state_encoder=encoders.get('actor'),
+            state_encoder=encoders.get('actor'),
         )
 
         reward_def = Value(
@@ -743,13 +740,13 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         )
 
         network_info = dict(
-            critic=(critic_def, (ex_observations, ex_actions)),
+            critic=(critic_def, (ex_orig_observations, ex_actions)),
             critic_vf=(critic_vf_def, (
                 ex_observations, ex_times, ex_observations, ex_actions)),
             target_critic_vf=(copy.deepcopy(critic_vf_def), (
                 ex_observations, ex_times, ex_observations, ex_actions)),
-            actor_vf=(actor_vf_def, (ex_actions, ex_times, ex_observations)),
-            actor=(actor_def, (ex_actions, ex_observations)),
+            actor_vf=(actor_vf_def, (ex_actions, ex_times, ex_orig_observations)),
+            actor=(actor_def, (ex_actions, ex_orig_observations)),
         )
         if config['reward_type'] == 'state':
             network_info.update(

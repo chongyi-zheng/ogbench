@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -31,38 +31,34 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="fql_offline2offline",
-        slurm_time=int(8 * 60),  # minute
+        slurm_time=int(12 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
-        slurm_cpus_per_task=8,
-        slurm_mem="8G",
+        slurm_cpus_per_task=16,
+        slurm_mem="64G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=30,
+        slurm_array_parallelism=20,
     )
 
-    # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
     with executor.batch():  # job array
         for env_name in [
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
-            # "antsoccer-arena-navigate-singletask-v0",
-            # "cube-single-play-singletask-task2-v0",
-            "cube-double-play-singletask-task2-v0",
-            # "cheetah_run",
-            # "walker_walk",
+            # "antsoccer-arena-navigate-singletask-v0"
+            "visual-cube-single-play-singletask-task1-v0",
         ]:
             for obs_norm_type in ['none']:
                 for alpha in [300.0, 100.0]:
-                    for num_flow_steps in [10]:
-                        for distill_type in ["fwd_sample"]:
-                            for q_agg in ["mean", "min"]:
-                                for actor_freq in [1]:
-                                    for normalize_q_loss in [False]:
-                                        for seed in [10]:
-                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_actor_freq={actor_freq}_normalize_q_loss={normalize_q_loss}"
+                    for distill_type in ["fwd_sample"]:
+                        for q_agg in ["mean", "min"]:
+                            for actor_freq in [1, 2, 4]:
+                                for normalize_q_loss in [False]:
+                                    for encoder in ['impala_small']:
+                                        for seed in [20]:
+                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_distill_type={distill_type}_q_agg={q_agg}_normalize_q_loss={normalize_q_loss}_actor_freq={actor_freq}_encoder={encoder}"
                                             log_dir = os.path.expanduser(
                                                 f"{log_root_dir}/exp_logs/ogbench_logs/fql_offline2offline/{exp_name}/{seed}")
 
@@ -83,7 +79,7 @@ def main():
                                                 echo task_id: $SLURM_ARRAY_TASK_ID;
                                                 squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
                                                 echo seed: {seed};
-                                                
+        
                                                 export PROJECT_DIR=$PWD;
                                                 export PYTHONPATH=$HOME/research/ogbench/impls;
                                                 export PATH="$PATH":"$CONDA_PREFIX"/bin;
@@ -103,16 +99,20 @@ def main():
                                                     --env_name={env_name} \
                                                     --obs_norm_type={obs_norm_type} \
                                                     --eval_episodes=50 \
+                                                    --p_aug=0.5 \
+                                                    --frame_stack=3 \
+                                                    --offline_steps=500_000 \
                                                     --agent=impls/agents/fql.py \
                                                     --agent.discount=0.99 \
                                                     --agent.alpha={alpha} \
-                                                    --agent.num_flow_steps={num_flow_steps} \
+                                                    --agent.num_flow_steps=10 \
                                                     --agent.distill_type={distill_type} \
                                                     --agent.q_agg={q_agg} \
                                                     --agent.actor_layer_norm=False \
                                                     --agent.vf_q_loss=False \
                                                     --agent.actor_freq={actor_freq} \
                                                     --agent.normalize_q_loss={normalize_q_loss} \
+                                                    --agent.encoder={encoder} \
                                                     --seed={seed} \
                                                     --save_dir={log_dir} \
                                                 2>&1 | tee {log_dir}/stream.log;
