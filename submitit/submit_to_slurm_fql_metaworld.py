@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=30,
+        slurm_array_parallelism=40,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -50,7 +50,7 @@ def main():
             "button-press-topdown-v2_ml5-2.5M",
             "peg-insert-side-v2_ml5-2.5M"
         ]:
-            for obs_norm_type in ['none']:
+            for obs_norm_type in ['normal']:
                 for discount in [0.99]:
                     for alpha in [100, 10, 1.0, 0.1, 0.01]:
                         for num_flow_steps in [10]:

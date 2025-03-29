@@ -59,8 +59,8 @@ def main():
             # "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
-            "cheetah_run",
-            "walker_walk",
+            # "cheetah_run",
+            # "walker_walk",
             "cheetah_run_backward",
             "walker_flip",
         ]:
