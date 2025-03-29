@@ -279,7 +279,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             #     current_noises = jax.random.permutation(
             #         current_noise_rng, goals, axis=0)
             current_path_sample = self.cond_prob_path(
-                x_0=current_noises, x_1=observations, t=times)
+                x_0=current_noises, x_1=jax.lax.stop_gradient(observations), t=times)
             current_vf_pred = self.network.select('critic_vf')(
                 current_path_sample.x_t,
                 times,
@@ -288,7 +288,7 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             )
             # stop gradient for the image encoder
             current_flow_matching_loss = jnp.square(
-                jax.lax.stop_gradient(current_path_sample.dx_t) - current_vf_pred).mean(axis=-1)
+                current_path_sample.dx_t - current_vf_pred).mean(axis=-1)
 
             if self.config['critic_noise_type'] == 'normal':
                 future_noises = jax.random.normal(
@@ -330,6 +330,73 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             info.update(
                 flow_future_obs_max=flow_future_observations.max(),
                 flow_future_obs_min=flow_future_observations.min(),
+                current_flow_matching_loss=current_flow_matching_loss.mean(),
+                future_flow_matching_loss=future_flow_matching_loss.mean(),
+            )
+        elif self.config['critic_fm_loss_type'] == 'sarsa_squared_stepwise':
+            # SARSA^2 value flow matching
+            rng, time_rng, current_noise_rng, future_noise_rng = jax.random.split(rng, 4)
+            times = jax.random.uniform(time_rng, shape=(batch_size,), dtype=observations.dtype)
+            if self.config['critic_noise_type'] == 'normal':
+                current_noises = jax.random.normal(
+                    current_noise_rng, shape=observations.shape, dtype=observations.dtype)
+            elif self.config['critic_noise_type'] == 'marginal_state':
+                current_noises = jax.random.permutation(
+                    current_noise_rng, observations, axis=0)
+            # elif self.config['critic_noise_type'] == 'marginal_goal':
+            #     current_noises = jax.random.permutation(
+            #         current_noise_rng, goals, axis=0)
+            current_path_sample = self.cond_prob_path(
+                x_0=current_noises, x_1=jax.lax.stop_gradient(observations), t=times)
+            current_vf_pred = self.network.select('critic_vf')(
+                current_path_sample.x_t,
+                times,
+                observations, actions,
+                params=grad_params,
+            )
+            # stop gradient for the image encoder
+            current_flow_matching_loss = jnp.square(
+                current_path_sample.dx_t - current_vf_pred).mean(axis=-1)
+
+            if self.config['critic_noise_type'] == 'normal':
+                future_noises = jax.random.normal(
+                    future_noise_rng, shape=observations.shape, dtype=observations.dtype)
+            elif self.config['critic_noise_type'] == 'marginal_state':
+                future_noises = jax.random.permutation(
+                    future_noise_rng, observations, axis=0)
+            # elif self.config['critic_noise_type'] == 'marginal_goal':
+            #     future_noises = jax.random.permutation(
+            #         future_noise_rng, goals, axis=0)
+            flow_future_noisy_observations = self.compute_fwd_flow_goals(
+                future_noises, next_observations, next_actions,
+                end_times=times, use_target_network=True)
+            # if self.config['clip_flow_goals']:
+            #     flow_future_observations = jnp.clip(flow_future_observations,
+            #                                         batch['observation_min'] + 1e-5,
+            #                                         batch['observation_max'] - 1e-5)
+            # future_path_sample = self.cond_prob_path(
+            #     x_0=future_noises, x_1=jax.lax.stop_gradient(flow_future_observations), t=times)
+            future_vf_target = self.network.select('target_critic_vf')(
+                flow_future_noisy_observations,
+                times,
+                next_observations, next_actions,
+            )
+            future_vf_pred = self.network.select('critic_vf')(
+                flow_future_noisy_observations,
+                times,
+                observations, actions,
+                params=grad_params,
+            )
+            future_flow_matching_loss = jnp.square(future_vf_target - future_vf_pred).mean(axis=-1)
+
+            if self.config['use_terminal_masks']:
+                critic_flow_matching_loss = ((1 - self.config['discount']) * current_flow_matching_loss
+                                             + self.config['discount'] * masks * future_flow_matching_loss).mean()
+            else:
+                critic_flow_matching_loss = ((1 - self.config['discount']) * current_flow_matching_loss
+                                             + self.config['discount'] * future_flow_matching_loss).mean()
+
+            info.update(
                 current_flow_matching_loss=current_flow_matching_loss.mean(),
                 future_flow_matching_loss=future_flow_matching_loss.mean(),
             )
@@ -456,33 +523,38 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
 
         return noisy_actions
 
-    def compute_fwd_flow_goals(self, noises, observations, actions, use_target_network=False):
+    def compute_fwd_flow_goals(self, noises, observations, actions,
+                               init_times=None, end_times=None,
+                               use_target_network=False):
         if use_target_network:
             module_name = 'target_critic_vf'
         else:
             module_name = 'critic_vf'
 
         noisy_goals = noises
-        num_flow_steps = self.config['num_flow_steps']
-        step_size = 1.0 / num_flow_steps
+        if init_times is None:
+            init_times = jnp.zeros(noisy_goals.shape[:-1], dtype=noisy_goals.dtype)
+        if end_times is None:
+            end_times = jnp.ones(noisy_goals.shape[:-1], dtype=noisy_goals.dtype)
+        step_size = (end_times - init_times) / self.config['num_flow_steps']
 
         def body_fn(carry, i):
             """
             carry: (noisy_goals, )
             i: current step index
             """
-            (noisy_goals,) = carry
+            (noisy_goals, ) = carry
 
-            times = jnp.full(noisy_goals.shape[:-1], i * step_size)
+            times = i * step_size + init_times
             vf = self.network.select(module_name)(
                 noisy_goals, times, observations, actions)
-            new_noisy_goals = noisy_goals + vf * step_size
+            new_noisy_goals = noisy_goals + vf * jnp.expand_dims(step_size, axis=-1)
 
             return (new_noisy_goals,), None
 
         # Use lax.scan to iterate over num_flow_steps
         (noisy_goals,), _ = jax.lax.scan(
-            body_fn, (noisy_goals,), jnp.arange(num_flow_steps))
+            body_fn, (noisy_goals,), jnp.arange(self.config['num_flow_steps']))
 
         return noisy_goals
 
