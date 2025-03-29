@@ -303,12 +303,19 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
         dataset = dmc_utils.get_dataset(env_name, reward_free=reward_free, max_size=max_size)
         train_dataset, val_dataset = dataset, None
     elif ('basketball' in env_name or 'button-press-topdown' in env_name
-          or 'peg-insert-side' in env_name or 'sweep-v2' in env_name
-          or 'window-open-v2' in env_name):
+          or 'peg-insert-side' in env_name or 'sweep' in env_name
+          or 'window-open' in env_name):
         from utils import metaworld_utils
 
-        _, train_dataset, val_dataset = metaworld_utils.make_env_and_datasets(
-            env_name)
+        _, train_dataset, val_dataset = metaworld_utils.make_env_and_datasets(env_name)
+
+        env = metaworld_utils.make_env_and_datasets(env_name, env_only=True)
+        eval_env = metaworld_utils.make_env_and_datasets(env_name, env_only=True)
+        env = EpisodeMonitor(env)
+        eval_env = EpisodeMonitor(eval_env)
+
+        train_dataset = Dataset.create(**train_dataset)
+        val_dataset = Dataset.create(**val_dataset)
     else:
         env, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)
         eval_env = ogbench.make_env_and_datasets(env_name, env_only=True)

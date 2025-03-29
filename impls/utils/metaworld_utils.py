@@ -24,7 +24,7 @@ def load_dataset(dataset_path, ob_dtype=np.float32, action_dtype=np.float32):
     file = np.load(dataset_path)
 
     dataset = dict()
-    for k in ['observations', 'actions', 'terminals', 'masks']:
+    for k in ['observations', 'actions', 'rewards', 'terminals', 'masks']:
         if k == 'observations':
             dtype = ob_dtype
         elif k == 'actions':
@@ -69,10 +69,10 @@ def make_env_and_datasets(
     env_only=False,
     randomize_init_state=True,
 ):
-    splits = dataset_name.split('-')
+    dataset_dir = os.path.expanduser(dataset_dir)
+    splits = dataset_name.split('_')
     env_name, dataset_name = splits[0], splits[1]
 
-    """Make D4RL environment."""
     env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[env_name + '-goal-observable']
     env = env_cls(render_mode='rgb_array')
     env._freeze_rand_vec = not randomize_init_state

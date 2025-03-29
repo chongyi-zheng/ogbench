@@ -22,6 +22,7 @@ flags.DEFINE_string('env_name', 'antmaze-large-v0', 'Environment name.')
 flags.DEFINE_string('restore_path', 'experts/ant', 'Expert agent restore path.')
 flags.DEFINE_integer('restore_epoch', 400000, 'Expert agent restore epoch.')
 flags.DEFINE_string('save_path', None, 'Save path.')
+flags.DEFINE_integer('randomize_init_state', 1, 'Whether to randomize initial state.')
 flags.DEFINE_float('noise', 0.2, 'Gaussian action noise level.')
 flags.DEFINE_integer('num_episodes', 1000, 'Number of episodes.')
 flags.DEFINE_integer('num_video_episodes', 0, 'Number of video episodes for each task.')
@@ -44,7 +45,8 @@ def main(_):
     env_cls = ALL_V2_ENVIRONMENTS_GOAL_OBSERVABLE[FLAGS.env_name + '-goal-observable']
     # Must use the same seed during training.
     env = env_cls(seed=training_seed, render_mode='rgb_array')
-    env.max_episode_steps = FLAGS.max_episode_steps
+    env.max_path_length = FLAGS.max_episode_steps
+    env._freeze_rand_vec = not FLAGS.randomize_init_state
     # set the rendering resolution
     env.width, env.height = 200, 200
     env.model.vis.global_.offwidth, env.model.vis.global_.offheight = 200, 200
@@ -93,15 +95,16 @@ def main(_):
                 frame = env.render().copy()
                 render.append(frame)
 
-            # masks denotes whether the agent should get a Bellman backup from the next observation. It is 0 only when the task is complete (and 1 otherwise). In this case, the agent should set the target Q-value to 0, instead of using the next observation's target Q-value.
-            # terminals simply denotes whether the dataset trajectory is over, regardless of task completion.
-            dataset['observations'].append(ob)
-            dataset['actions'].append(action)
-            dataset['rewards'].append(reward)
-            dataset['terminals'].append(truncated)
-            dataset['masks'].append(info['success'])
-            # dataset['qpos'].append(info['prev_qpos'])
-            # dataset['qvel'].append(info['prev_qvel'])
+            if not should_render:
+                # masks denotes whether the agent should get a Bellman backup from the next observation. It is 0 only when the task is complete (and 1 otherwise). In this case, the agent should set the target Q-value to 0, instead of using the next observation's target Q-value.
+                # terminals simply denotes whether the dataset trajectory is over, regardless of task completion.
+                dataset['observations'].append(ob)
+                dataset['actions'].append(action)
+                dataset['rewards'].append(reward)
+                dataset['terminals'].append(truncated)
+                dataset['masks'].append(info['success'])
+                # dataset['qpos'].append(info['prev_qpos'])
+                # dataset['qvel'].append(info['prev_qvel'])
 
             success.append(info['success'])
 

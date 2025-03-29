@@ -39,7 +39,7 @@ def main(_):
         val_dataset[k] = np.concatenate(v, axis=0)
 
     train_save_path = FLAGS.save_path
-    val_save_path = FLAGS.save_path.replace('.npz', '_val.npz')
+    val_save_path = FLAGS.save_path.replace('.npz', '-val.npz')
 
     for path, dataset in [(train_save_path, train_dataset), (val_save_path, val_dataset)]:
         np.savez_compressed(path, **dataset)
