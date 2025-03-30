@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -64,13 +64,13 @@ def main():
             "cheetah_run_backward",
             "walker_flip",
         ]:
-            for obs_norm_type in ['normal', 'none']:
+            for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [1.0]:
                         for alpha in [3.0, 0.3, 0.03]:
-                            for num_flow_goals in [1, 8, 16]:
-                                for actor_freq in [2, 4]:
-                                    for expectile in [0.65, 0.75, 0.85, 0.95, 0.99]:
+                            for num_flow_goals in [1, 16]:
+                                for actor_freq in [2]:
+                                    for expectile in [0.55, 0.65, 0.75, 0.85, 0.95]:
                                         for q_agg in ['mean']:
                                             for normalize_q_loss in [False]:
                                                 for critic_fm_loss_type in ['sarsa_squared_stepwise']:
