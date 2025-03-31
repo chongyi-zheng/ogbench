@@ -112,6 +112,7 @@ def main():
                                                                         --eval_episodes=50 \
                                                                         --p_aug=0.5 \
                                                                         --frame_stack=3 \
+                                                                        --offline_steps=500_000 \
                                                                         --agent=impls/agents/sarsa_ifac_q.py \
                                                                         --agent.batch_size=256 \
                                                                         --agent.actor_hidden_dims="(512,512,512,512)" \
