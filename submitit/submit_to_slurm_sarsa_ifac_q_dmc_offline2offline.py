@@ -60,9 +60,9 @@ def main():
             # "cheetah_run_backward",
             # "walker_flip",
             # "cheetah_run",
-            "walker_walk",
+            # "walker_walk",
             # "cheetah_run_backward",
-            # "walker_flip",
+            "walker_flip",
         ]:
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
