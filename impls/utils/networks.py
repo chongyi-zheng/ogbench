@@ -702,7 +702,7 @@ class GCFMVectorField(nn.Module):
         network_type: Type of MLP network. ('mlp')
         hidden_dims: Hidden layer dimensions.
         layer_norm: Whether to apply layer normalization.
-        ensemble: Whether to ensemble the value function.
+        num_ensembles: Number of ensemble components.
         state_encoder: Optional state encoder.
         goal_encoder: Optional goal encoder.
     """
@@ -731,35 +731,8 @@ class GCFMVectorField(nn.Module):
         if self.num_ensembles > 1:
             network_module = ensemblize(network_module, self.num_ensembles)
 
-        # if self.network_type == 'mlp':
-        #     # time_net = MLP(
-        #     #     (self.hidden_dims[0],),
-        #     #     activate_final=False,
-        #     #     layer_norm=self.layer_norm
-        #     # )
-        #     # cond_net = MLP(
-        #     #     (self.hidden_dims[0],),
-        #     #     activate_final=False,
-        #     #     layer_norm=self.layer_norm
-        #     # )
-        #     # proj_net = MLP(
-        #     #     (self.hidden_dims[0],),
-        #     #     activate_final=False,
-        #     #     layer_norm=self.layer_norm
-        #     # )
-        #     velocity_field_net = network_module(
-        #         (*self.hidden_dims, self.vector_dim),
-        #         activate_final=False,
-        #         layer_norm=self.layer_norm
-        #     )
-        # else:
-        #     raise NotImplementedError
         self.velocity_field_net = network_module(**kwargs)
         self.time_embedding = SinusoidalPosEmb(emb_dim=self.time_dim)
-        # self.time_net = time_net
-        # self.cond_net = cond_net
-        # self.proj_net = proj_net
-        # self.velocity_field_net = velocity_field_net
 
     def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None):
         """Return the value/critic velocity field.
@@ -784,15 +757,7 @@ class GCFMVectorField(nn.Module):
             # This will be all nans if both observations and actions are all nan
             conds = jnp.concatenate([conds, actions], axis=-1)
 
-        # if len(times.shape) == 1:
-        #     times = jnp.expand_dims(times, axis=-1)
         times = self.time_embedding(times)
-        # h = self.proj_net(noisy_goals) + self.time_net(times)
-        # h = jax.lax.select(
-        #     jnp.logical_not(jnp.all(jnp.isnan(conds))),
-        #     h + self.cond_net(conds),
-        #     h
-        # )
         inputs = jnp.concatenate([noisy_goals, times, conds], axis=-1)
 
         # vf = self.velocity_field_net(h)
@@ -805,8 +770,10 @@ class GCFMBilinearVectorField(nn.Module):
     vector_dim: int
     latent_dim: int
     hidden_dims: Sequence[int]
+    time_dim: int = 64
     network_type: str = 'mlp'
     layer_norm: bool = True
+    num_residual_blocks: int = 1
     num_ensembles: int = 1
     state_encoder: nn.Module = None
     goal_encoder: nn.Module = None
@@ -834,18 +801,9 @@ class GCFMBilinearVectorField(nn.Module):
         else:
             raise NotImplementedError
 
-    def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None):
-        """Return the value/critic velocity field.
+        self.time_embedding = SinusoidalPosEmb(emb_dim=self.time_dim)
 
-        Args:
-            noisy_goals: Noisy goals.
-            times: Times.
-            observations: Observations.
-            actions: Actions (Optional).
-        """
-        if self.goal_encoder is not None:
-            noisy_goals = self.goal_encoder(noisy_goals)
-
+    def sa_reprs(self, observations, actions=None, commanded_goals=None):
         if self.state_encoder is not None:
             # This will be all nans if observations are all nan
             observations = self.state_encoder(observations)
@@ -856,11 +814,47 @@ class GCFMBilinearVectorField(nn.Module):
         if actions is not None:
             conds = jnp.concatenate([conds, actions], axis=-1)
 
-        if len(times.shape) == 1:
-            times = jnp.expand_dims(times, axis=-1)
-
         phi = self.phi(conds)
+
+        return phi
+
+    def ngt_reprs(self, noisy_goals, times):
+        if self.goal_encoder is not None:
+            noisy_goals = self.goal_encoder(noisy_goals)
+
+        times = self.time_embedding(times)
         psi = self.psi(jnp.concatenate([noisy_goals, times], axis=-1))
+
+        return psi
+
+    def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None):
+        """Return the value/critic velocity field.
+
+        Args:
+            noisy_goals: Noisy goals.
+            times: Times.
+            observations: Observations.
+            actions: Actions (Optional).
+        """
+        # if self.goal_encoder is not None:
+        #     noisy_goals = self.goal_encoder(noisy_goals)
+        #
+        # if self.state_encoder is not None:
+        #     # This will be all nans if observations are all nan
+        #     observations = self.state_encoder(observations)
+        #
+        # conds = observations
+        # if commanded_goals is not None:
+        #     conds = jnp.concatenate([conds, commanded_goals], axis=-1)
+        # if actions is not None:
+        #     conds = jnp.concatenate([conds, actions], axis=-1)
+        # times = self.time_embedding(times)
+        #
+        # phi = self.phi(conds)
+        # psi = self.psi(jnp.concatenate([noisy_goals, times], axis=-1))
+
+        phi = self.sa_reprs(observations, actions, commanded_goals)
+        psi = self.ngt_reprs(noisy_goals, times)
 
         if self.num_ensembles > 1:
             psi = psi.reshape([self.num_ensembles, -1, self.latent_dim, self.vector_dim])

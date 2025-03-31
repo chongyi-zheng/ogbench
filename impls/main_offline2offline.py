@@ -98,7 +98,7 @@ def main(_):
         if dataset is not None:
             dataset.p_aug = FLAGS.p_aug
             dataset.frame_stack = FLAGS.frame_stack
-            if config['agent_name'] in ['rebrac', 'sarsa_ifac_q']:
+            if config['agent_name'] in ['rebrac', 'sarsa_ifac_q', 'sarsa_ifql']:
                 dataset.return_next_actions = True
     if FLAGS.dataset_class == 'GCDataset':
         config['p_aug'] = FLAGS.p_aug

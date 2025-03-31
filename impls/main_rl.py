@@ -98,7 +98,7 @@ def main(_):
         if dataset is not None:
             dataset.p_aug = FLAGS.p_aug
             dataset.frame_stack = FLAGS.frame_stack
-            if config['agent_name'] in ['rebrac', 'sarsa_ifac_q']:
+            if config['agent_name'] in ['rebrac', 'sarsa_ifac_q', 'sarsa_ifql']:
                 dataset.return_next_actions = True
     if FLAGS.dataset_class == 'GCDataset':
         config['p_aug'] = FLAGS.p_aug
@@ -123,7 +123,7 @@ def main(_):
     #     config['dataset_obs_max'] = jnp.max(dataset_observations, axis=0)
 
     agent_class = agents[config['agent_name']]
-    if config.get('use_reward_func', False) and config['agent_name'] in ['ifac', 'sarsa_ifac_q', 'sarsa_ifac']:
+    if config.get('use_reward_func', False) and config['agent_name'] in ['ifac', 'sarsa_ifac', 'sarsa_ifac_q', 'sarsa_ifql']:
         reward_env_info = get_reward_env_info(FLAGS.env_name, env)
         config['reward_env_info'] = reward_env_info
     agent = agent_class.create(
