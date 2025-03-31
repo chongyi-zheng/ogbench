@@ -123,7 +123,7 @@ def main(_):
     #     config['dataset_obs_max'] = jnp.max(dataset_observations, axis=0)
 
     agent_class = agents[config['agent_name']]
-    if config['use_reward_func'] and config['agent_name'] in ['ifac', 'sarsa_ifac_q', 'sarsa_ifac']:
+    if config.get('use_reward_func', False) and config['agent_name'] in ['ifac', 'sarsa_ifac_q', 'sarsa_ifac']:
         reward_env_info = get_reward_env_info(FLAGS.env_name, env)
         config['reward_env_info'] = reward_env_info
     agent = agent_class.create(
