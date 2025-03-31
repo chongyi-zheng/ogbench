@@ -49,17 +49,19 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            # "cheetah_run",
-            # "walker_walk",
-            "quadruped_jump",
-            "jaco_reach_top_left",
+            "cheetah_run",
+            "walker_walk",
+            "cheetah_run_backward",
+            "walker_flip",
+            # "quadruped_jump",
+            # "jaco_reach_top_left",
         ]:
-            for obs_norm_type in ['none']:
-                for alpha in [10.0, 1.0, 0.1, 0.01, 0.001]:
+            for obs_norm_type in ['normal', 'none']:
+                for alpha in [10.0, 1.0, 0.1]:
                     for num_flow_steps in [10]:
                         for distill_type in ["fwd_sample"]:
-                            for q_agg in ["mean", "min"]:
-                                for actor_freq in [2, 4]:
+                            for q_agg in ['mean']:
+                                for actor_freq in [1, 2, 4]:
                                     for normalize_q_loss in [False]:
                                         for seed in [10]:
                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_actor_freq={actor_freq}_normalize_q_loss={normalize_q_loss}"
