@@ -46,16 +46,16 @@ def main():
     with executor.batch():  # job array
         for env_name in [
             # ML10 training tasks
-            # "reach-v2",
-            # "push-v2",
-            # "pick-place-v2",
-            # "door-open-v2",
-            # "drawer-close-v2",
-            "button-press-topdown-v2",
-            "peg-insert-side-v2",
-            "window-open-v2",
-            "sweep-v2",
-            "basketball-v2",
+            "reach-v2",
+            "push-v2",
+            "pick-place-v2",
+            "door-open-v2",
+            "drawer-close-v2",
+            # "button-press-topdown-v2",
+            # "peg-insert-side-v2",
+            # "window-open-v2",
+            # "sweep-v2",
+            # "basketball-v2",
         ]:
             for train_steps in [1_000_000]:
                 for layer_norm in [True, False]:
