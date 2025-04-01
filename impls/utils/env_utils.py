@@ -320,9 +320,6 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
 
         train_dataset = Dataset.create(**train_dataset)
         val_dataset = Dataset.create(**val_dataset)
-    elif 'google-robot':
-        import simpler_env
-
     else:
         env, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)
         eval_env = ogbench.make_env_and_datasets(env_name, env_only=True)
