@@ -40,8 +40,8 @@ def main():
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
-        slurm_cpus_per_task=8,
-        slurm_mem="80G",
+        slurm_cpus_per_task=16,
+        slurm_mem="72G",
         slurm_gpus_per_node=1,
         slurm_nodelist=nodelist,
         slurm_stderr_to_stdout=True,
@@ -112,6 +112,10 @@ def main():
                                                                         --eval_episodes=50 \
                                                                         --p_aug={p_aug} \
                                                                         --frame_stack=3 \
+                                                                        --pretraining_steps=500_000 \
+                                                                        --finetuning_steps=250_000 \
+                                                                        --eval_interval=25_000 \
+                                                                        --save_interval=750_000 \
                                                                         --agent=impls/agents/sarsa_ifac_q.py \
                                                                         --agent.batch_size=256 \
                                                                         --agent.actor_hidden_dims="(512,512,512,512)" \
