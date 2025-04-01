@@ -58,77 +58,78 @@ def main():
             # "basketball-v2",
         ]:
             for train_steps in [1_000_000]:
-                for layer_norm in [True, False]:
-                    for save_final_rb in [1]:
-                        for seed in [10, 20]:
-                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sac_{env_name}_train_steps={train_steps}_layer_norm={layer_norm}_save_final_rb={save_final_rb}_randomize_init_state"
-                            log_dir = os.path.expanduser(
-                                f"{log_root_dir}/exp_logs/ogbench_logs/sac/{exp_name}/{seed}")
+                for lr in [1e-4, 3e-4]:
+                    for layer_norm in [True, False]:
+                        for save_final_rb in [1]:
+                            for seed in [10, 20]:
+                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sac_{env_name}_train_steps={train_steps}_lr={lr}_layer_norm={layer_norm}_save_final_rb={save_final_rb}_randomize_init_state"
+                                log_dir = os.path.expanduser(
+                                    f"{log_root_dir}/exp_logs/ogbench_logs/sac/{exp_name}/{seed}")
 
-                            # change the log folder of slurm executor
-                            submitit_log_dir = os.path.join(
-                                os.path.dirname(log_dir),
-                                'submitit')
-                            executor._executor.folder = Path(
-                                submitit_log_dir).expanduser().absolute()
+                                # change the log folder of slurm executor
+                                submitit_log_dir = os.path.join(
+                                    os.path.dirname(log_dir),
+                                    'submitit')
+                                executor._executor.folder = Path(
+                                    submitit_log_dir).expanduser().absolute()
 
-                            cmds = f"""
-                                unset PYTHONPATH;
-                                source $HOME/.zshrc;
-                                conda activate ogbench;
-                                which python;
-                                echo $CONDA_PREFIX;
-        
-                                echo job_id: $SLURM_ARRAY_JOB_ID;
-                                echo task_id: $SLURM_ARRAY_TASK_ID;
-                                squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
-                                echo seed: {seed};
-        
-                                export PROJECT_DIR=$PWD;
-                                export PYTHONPATH=$HOME/research/ogbench/impls;
-                                export PATH="$PATH":"$CONDA_PREFIX"/bin;
-                                export CUDA_VISIBLE_DEVICES=0;
-                                export MUJOCO_GL=egl;
-                                export PYOPENGL_PLATFORM=egl;
-                                export EGL_DEVICE_ID=0;
-                                export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
-                                export D4RL_SUPPRESS_IMPORT_ERROR=1;
-                                export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
-                                export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-        
-                                rm -rf {log_dir};
-                                mkdir -p {log_dir};
-                                python $PROJECT_DIR/data_gen_scripts/main_sac.py \
-                                    --enable_wandb=1 \
-                                    --env_name={env_name} \
-                                    --seed_steps=10_000 \
-                                    --train_steps={train_steps} \
-                                    --eval_episodes=50 \
-                                    --save_interval=500_000 \
-                                    --save_final_replay_buffer={save_final_rb} \
-                                    --agent=impls/agents/sac.py \
-                                    --agent.lr=3e-4 \
-                                    --agent.actor_hidden_dims="(256,256,256,256)" \
-                                    --agent.value_hidden_dims="(256,256,256,256)" \
-                                    --agent.layer_norm={layer_norm} \
-                                    --seed={seed} \
-                                    --save_dir={log_dir} \
-                                2>&1 | tee {log_dir}/stream.log;
-        
-                                export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
-                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
-                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
-                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                            """
+                                cmds = f"""
+                                    unset PYTHONPATH;
+                                    source $HOME/.zshrc;
+                                    conda activate ogbench;
+                                    which python;
+                                    echo $CONDA_PREFIX;
+            
+                                    echo job_id: $SLURM_ARRAY_JOB_ID;
+                                    echo task_id: $SLURM_ARRAY_TASK_ID;
+                                    squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
+                                    echo seed: {seed};
+            
+                                    export PROJECT_DIR=$PWD;
+                                    export PYTHONPATH=$HOME/research/ogbench/impls;
+                                    export PATH="$PATH":"$CONDA_PREFIX"/bin;
+                                    export CUDA_VISIBLE_DEVICES=0;
+                                    export MUJOCO_GL=egl;
+                                    export PYOPENGL_PLATFORM=egl;
+                                    export EGL_DEVICE_ID=0;
+                                    export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
+                                    export D4RL_SUPPRESS_IMPORT_ERROR=1;
+                                    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
+                                    export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
+            
+                                    rm -rf {log_dir};
+                                    mkdir -p {log_dir};
+                                    python $PROJECT_DIR/data_gen_scripts/main_sac.py \
+                                        --enable_wandb=1 \
+                                        --env_name={env_name} \
+                                        --seed_steps=10_000 \
+                                        --train_steps={train_steps} \
+                                        --eval_episodes=50 \
+                                        --save_interval=500_000 \
+                                        --save_final_replay_buffer={save_final_rb} \
+                                        --agent=impls/agents/sac.py \
+                                        --agent.lr={lr} \
+                                        --agent.actor_hidden_dims="(256,256,256,256)" \
+                                        --agent.value_hidden_dims="(256,256,256,256)" \
+                                        --agent.layer_norm={layer_norm} \
+                                        --seed={seed} \
+                                        --save_dir={log_dir} \
+                                    2>&1 | tee {log_dir}/stream.log;
+            
+                                    export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
+                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
+                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
+                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                """
 
-                            cmd_func = submitit.helpers.CommandFunction(
-                                [
-                                    "/bin/zsh", "-c",
-                                    cmds,
-                                ], verbose=True)
+                                cmd_func = submitit.helpers.CommandFunction(
+                                    [
+                                        "/bin/zsh", "-c",
+                                        cmds,
+                                    ], verbose=True)
 
-                            executor.submit(cmd_func)
+                                executor.submit(cmd_func)
 
 
 if __name__ == "__main__":
