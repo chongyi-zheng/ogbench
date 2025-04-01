@@ -165,6 +165,7 @@ def main(_):
             eval_info, trajs, cur_renders = evaluate(
                 agent=agent,
                 env=eval_env,
+                dataset=replay_buffer,
                 num_eval_episodes=FLAGS.eval_episodes,
                 num_video_episodes=FLAGS.video_episodes,
                 video_frame_skip=FLAGS.video_frame_skip,
