@@ -53,13 +53,82 @@ class Dataset(FrozenDict):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.size = get_size(self._dict)
+        self.obs_norm_type = 'none'  # Observation normalization type.
         self.frame_stack = None  # Number of frames to stack; set outside the class.
         self.p_aug = None  # Image augmentation probability; set outside the class.
         self.return_next_actions = False  # Whether to additionally return next actions; set outside the class.
 
+        # observation statistics
+        self.obs_mean = None
+        self.obs_var = None
+        self.obs_max = None
+        self.obs_min = None
+        self.normalized_obs_max = None
+        self.normalized_obs_min = None
+        self.epsilon = 1e-8  # for normalization
+
         # Compute terminal and initial locations.
         self.terminal_locs = np.nonzero(self['terminals'] > 0)[0]
         self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
+
+    @staticmethod
+    def normalize(observations, obs_mean, obs_var, obs_max, obs_min,
+                  normalizer_type='none', epsilon=1e-8):
+        if normalizer_type == 'normal':
+            return (observations - obs_mean) / np.sqrt(
+                obs_var + epsilon
+            )
+        elif normalizer_type == 'bounded':
+            return 2 * (observations - obs_min) / (
+                obs_max - obs_min
+            ) - 1.0
+        elif normalizer_type == 'none':
+            return observations
+        else:
+            raise TypeError("Unsupported normalizer type: {}".format(
+                normalizer_type))
+
+    def normalize_observations(self, observations=None):
+        if observations is None:
+            self.obs_mean = np.mean(self['observations'], axis=0)
+            self.obs_var = np.var(self['observations'], axis=0)
+            self.obs_max = np.max(self['observations'], axis=0)
+            self.obs_min = np.min(self['observations'], axis=0)
+
+            self.normalized_obs_max = self.normalize(
+                self.obs_max, self.obs_mean, self.obs_var,
+                self.obs_max, self.obs_min,
+                self.obs_norm_type, self.epsilon
+            )
+            self.normalized_obs_min = self.normalize(
+                self.obs_min, self.obs_mean, self.obs_var,
+                self.obs_max, self.obs_min,
+                self.obs_norm_type, self.epsilon
+            )
+
+            assert 'observations' in self
+            assert 'next_observations' in self
+
+            observations = self['observations']
+
+            self._dict['observations'] = self.normalize(
+                self['observations'], self.obs_mean, self.obs_var,
+                self.obs_max, self.obs_min,
+                self.obs_norm_type, self.epsilon
+            )
+            self._dict['next_observations'] = self.normalize(
+                self['next_observations'], self.obs_mean, self.obs_var,
+                self.obs_max, self.obs_min,
+                self.obs_norm_type, self.epsilon
+            )
+
+        observations = self.normalize(
+            observations, self.obs_mean, self.obs_var,
+            self.obs_max, self.obs_min,
+            self.obs_norm_type, self.epsilon
+        )
+
+        return observations
 
     def get_random_idxs(self, num_idxs):
         """Return `num_idxs` random indices."""
@@ -70,6 +139,8 @@ class Dataset(FrozenDict):
         if idxs is None:
             idxs = self.get_random_idxs(batch_size)
         batch = self.get_subset(idxs)
+        batch['observation_min'] = self.normalized_obs_min
+        batch['observation_max'] = self.normalized_obs_max
         if self.frame_stack is not None:
             # Stack frames.
             initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
@@ -96,7 +167,7 @@ class Dataset(FrozenDict):
         result = jax.tree_util.tree_map(lambda arr: arr[idxs], self._dict)
         if self.return_next_actions:
             # WARNING: This is incorrect at the end of the trajectory. Use with caution.
-            result['next_actions'] = self._dict['actions'][np.minimum(idxs + 1, self.size - 1)]
+            result['next_actions'] = self['actions'][np.minimum(idxs + 1, self.size - 1)]
         return result
 
     def augment(self, batch, keys):

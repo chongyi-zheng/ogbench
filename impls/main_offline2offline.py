@@ -96,10 +96,12 @@ def main(_):
     for dataset in [pretraining_train_dataset, pretraining_val_dataset,
                     finetuning_train_dataset, finetuning_val_dataset]:
         if dataset is not None:
+            dataset.obs_norm_type = FLAGS.obs_norm_type
             dataset.p_aug = FLAGS.p_aug
             dataset.frame_stack = FLAGS.frame_stack
             if config['agent_name'] in ['rebrac', 'sarsa_ifac_q', 'sarsa_ifql']:
                 dataset.return_next_actions = True
+            dataset.normalize_observations()
     if FLAGS.dataset_class == 'GCDataset':
         config['p_aug'] = FLAGS.p_aug
         config['frame_stack'] = FLAGS.frame_stack
@@ -137,11 +139,11 @@ def main(_):
     #         pretraining_train_dataset,
     #         normalizer_type=FLAGS.obs_norm_type
     #     )
-    agent = OfflineObservationNormalizer.create(
-        agent,
-        pretraining_train_dataset,
-        normalizer_type=FLAGS.obs_norm_type
-    )
+    # agent = OfflineObservationNormalizer.create(
+    #     agent,
+    #     pretraining_train_dataset,
+    #     normalizer_type=FLAGS.obs_norm_type
+    # )
 
     # Restore agent.
     if FLAGS.restore_path is not None:
@@ -165,8 +167,9 @@ def main(_):
 
             agent, update_info = agent.pretrain(batch)
         else:
-            if i == (FLAGS.pretraining_steps + 1):
-                agent = agent.update_dataset(finetuning_train_dataset)
+            # for OfflineObservationNormalizer
+            # if i == (FLAGS.pretraining_steps + 1):
+            #     agent = agent.update_dataset(finetuning_train_dataset)
 
             # Offline fine-tuning.
             batch = finetuning_train_dataset.sample(config['batch_size'])
@@ -209,6 +212,7 @@ def main(_):
             eval_info, trajs, cur_renders = evaluate(
                 agent=agent,
                 env=eval_env,
+                dataset=finetuning_train_dataset,
                 num_eval_episodes=FLAGS.eval_episodes,
                 num_video_episodes=FLAGS.video_episodes,
                 video_frame_skip=FLAGS.video_frame_skip,

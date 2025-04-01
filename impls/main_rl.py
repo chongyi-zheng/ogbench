@@ -96,10 +96,12 @@ def main(_):
     # Set p_aug and frame_stack.
     for dataset in [train_dataset, val_dataset, replay_buffer]:
         if dataset is not None:
+            dataset.obs_norm_type = FLAGS.obs_norm_type
             dataset.p_aug = FLAGS.p_aug
             dataset.frame_stack = FLAGS.frame_stack
             if config['agent_name'] in ['rebrac', 'sarsa_ifac_q', 'sarsa_ifql']:
                 dataset.return_next_actions = True
+            dataset.normalize_observations()
     if FLAGS.dataset_class == 'GCDataset':
         config['p_aug'] = FLAGS.p_aug
         config['frame_stack'] = FLAGS.frame_stack
@@ -147,11 +149,11 @@ def main(_):
     #     if config['dataset_obs_min'] is not None:
     #         config['dataset_obs_min'] = agent.normalize(config['dataset_obs_min'])
     #         config['dataset_obs_max'] = agent.normalize(config['dataset_obs_max'])
-    agent = OfflineObservationNormalizer.create(
-        agent,
-        train_dataset,
-        normalizer_type=FLAGS.obs_norm_type
-    )
+    # agent = OfflineObservationNormalizer.create(
+    #     agent,
+    #     train_dataset,
+    #     normalizer_type=FLAGS.obs_norm_type
+    # )
 
     # Restore agent.
     if FLAGS.restore_path is not None:
@@ -183,11 +185,13 @@ def main(_):
             if done:
                 step = 0
                 ob, _ = env.reset()
+                ob = replay_buffer.normalize_observations(ob)
 
             action = agent.sample_actions(observations=ob, temperature=1, seed=key)
             action = np.array(action)
 
             next_ob, reward, terminated, truncated, info = env.step(action.copy())
+            next_ob = replay_buffer.normalize_observations(next_ob)
             done = terminated or truncated
 
             if 'antmaze' in FLAGS.env_name and (
@@ -252,6 +256,7 @@ def main(_):
             eval_info, trajs, cur_renders = evaluate(
                 agent=agent,
                 env=eval_env,
+                dataset=train_dataset,
                 num_eval_episodes=FLAGS.eval_episodes,
                 num_video_episodes=FLAGS.video_episodes,
                 video_frame_skip=FLAGS.video_frame_skip,
