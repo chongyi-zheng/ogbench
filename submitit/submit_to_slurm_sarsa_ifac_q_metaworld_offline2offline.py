@@ -45,33 +45,25 @@ def main():
 
     with executor.batch():  # job array
         for env_name in [
-            # "antmaze-large-navigate-singletask-v0",
-            # "humanoidmaze-medium-navigate-singletask-v0",
-            # "antsoccer-arena-navigate-singletask-v0"
-            # "antmaze-medium-play-v2",
-            # "pen-human-v1",
-            # "door-human-v1",
-            "cube-single-play-singletask-task2-v0",
-            "cube-double-play-singletask-task2-v0",
-            # "cube-triple-play-singletask-task2-v0",
-            # "scene-play-singletask-task2-v0",
-            # "puzzle-3x3-play-singletask-task4-v0"
-            # "cheetah_run",
-            # "walker_walk",
+            "basketball-v2_ml5-2.5M",
+            "button-press-topdown-v2_ml5-2.5M",
+            "peg-insert-side-v2_ml5-2.5M",
+            "sweep-v2_ml5-2.5M",
+            "window-open-v2_ml5-2.5M",
         ]:
             for obs_norm_type in ['normal']:
                 for tau in [1.0]:
-                    for alpha in [1000.0, 300.0, 100.0]:
-                        for num_flow_goals in [1, 8, 16]:
+                    for alpha in [300.0, 30.0, 3.0, 0.3]:
+                        for num_flow_goals in [1, 16]:
                             for actor_freq in [2, 4]:
-                                for expectile in [0.85, 0.95, 0.99]:
+                                for expectile in [0.65, 0.75, 0.85, 0.95, 0.99]:
                                     for q_agg in ['mean']:
                                         for normalize_q_loss in [False]:
                                             for critic_fm_loss_type in ['sarsa_squared']:
-                                                for clip_flow_goals in [True, False]:
+                                                for clip_flow_goals in [False]:
                                                     for reward_type in ['state_action']:
                                                         for use_terminal_masks in [False]:
-                                                            for seed in [10]:
+                                                            for seed in [20]:
                                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_offline2offline_{env_name}_obs_norm={obs_norm_type}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_fm_loss={critic_fm_loss_type}_clip_fg={clip_flow_goals}_reward={reward_type}_use_mask={use_terminal_masks}"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifac_q_offline2offline/{exp_name}/{seed}")

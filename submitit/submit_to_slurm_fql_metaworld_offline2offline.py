@@ -46,9 +46,11 @@ def main():
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
     with executor.batch():  # job array
         for env_name in [
-            "basketball-v2_ml5-2.5M",
-            "button-press-topdown-v2_ml5-2.5M",
-            "peg-insert-side-v2_ml5-2.5M"
+            # "basketball-v2_ml5-2.5M",
+            # "button-press-topdown-v2_ml5-2.5M",
+            # "peg-insert-side-v2_ml5-2.5M",
+            "sweep-v2_ml5-2.5M",
+            "window-open-v2_ml5-2.5M",
         ]:
             for obs_norm_type in ['none', 'normal']:
                 for alpha in [100, 10, 1.0, 0.1]:
