@@ -653,9 +653,6 @@ class SARSAIFACAgent(flax.struct.PyTreeNode):
         rng = jax.random.PRNGKey(seed)
         rng, init_rng, time_rng = jax.random.split(rng, 3)
 
-        assert config['dataset_obs_min'] is not None
-        assert config['dataset_obs_max'] is not None
-
         observation_dim = ex_observations.shape[-1]
         action_dim = ex_actions.shape[-1]
         ex_orig_observations = ex_observations

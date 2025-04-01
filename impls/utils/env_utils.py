@@ -279,7 +279,10 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
         eval_env = d4rl_utils.make_env(env_name)
         dataset = d4rl_utils.get_dataset(env, env_name)
         train_dataset, val_dataset = dataset, None
-    elif 'pen' in env_name or 'hammer' in env_name or 'relocate' in env_name or 'door' in env_name:
+    elif env_name in ['pen-human-v1', 'pen-cloned-v1', 'pen-expert-v1', 
+                      'door-human-v1', 'door-cloned-v1', 'door-expert-v1',
+                      'hammer-human-v1', 'hammer-cloned-v1', 'hammer-expert-v1',
+                      'relocate-human-v1', 'relocate-cloned-v1', 'relocate-expert-v1']:
         # D4RL Adroit.
         import d4rl.hand_manipulation_suite  # noqa
         from utils import d4rl_utils
