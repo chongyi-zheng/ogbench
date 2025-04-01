@@ -243,13 +243,13 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
         _, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)
         # _, train_dataset, val_dataset = ogbench.make_env_and_datasets(
         #     dataset_env_name, add_info=add_info)
-        # if train_dataset['observations'].shape[0] > max_size:
-        #     for k, v in train_dataset.items():
-        #         train_dataset[k] = v[:max_size]
-        # if val_dataset['observations'].shape[0] > max_size:
-        #     for k, v in val_dataset.items():
-        #         val_dataset[k] = v[:max_size]
-        #
+        if train_dataset['observations'].shape[0] > max_size:
+            for k, v in train_dataset.items():
+                train_dataset[k] = v[:max_size]
+        if val_dataset['observations'].shape[0] > max_size:
+            for k, v in val_dataset.items():
+                val_dataset[k] = v[:max_size]
+
         # if 'masks' not in train_dataset:
         #     # train_dataset['masks'] = np.logical_not(train_dataset['rewards'] == 0.0).astype(
         #     #     train_dataset['terminals'].dtype)
@@ -295,7 +295,6 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
         dataset = d4rl_utils.get_dataset(env, env_name)
         train_dataset, val_dataset = dataset, None
     elif 'walker' in env_name or 'cheetah' in env_name or 'quadruped' in env_name or 'jaco' in env_name:
-        # DMC
         from utils import dmc_utils
 
         env = dmc_utils.make_env(env_name)
@@ -320,6 +319,10 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
 
         train_dataset = Dataset.create(**train_dataset)
         val_dataset = Dataset.create(**val_dataset)
+    elif 'google-robot' in env_name:
+        from utils import simpler_env_utils
+        env_name = env_name.replace('-', '_')
+        _, train_dataset, val_dataset = simpler_env_utils.make_env_and_datasets(env_name)
     else:
         env, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)
         eval_env = ogbench.make_env_and_datasets(env_name, env_only=True)
