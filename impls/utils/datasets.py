@@ -33,6 +33,19 @@ def batched_random_crop(imgs, crop_froms, padding):
     return jax.vmap(random_crop, (0, 0, None))(imgs, crop_froms, padding)
 
 
+def augment(batch, keys, new_key_prefix=''):
+    """Apply image augmentation to the given keys."""
+    padding = 3
+    batch_size = len(batch[keys[0]])
+    crop_froms = np.random.randint(0, 2 * padding + 1, (batch_size, 2))
+    crop_froms = np.concatenate([crop_froms, np.zeros((batch_size, 1), dtype=np.int64)], axis=1)
+    for key in keys:
+        batch[new_key_prefix + key] = jax.tree_util.tree_map(
+            lambda arr: np.array(batched_random_crop(arr, crop_froms, padding)) if len(arr.shape) == 4 else arr,
+            batch[key],
+        )
+
+
 class Dataset(FrozenDict):
     """Dataset class."""
 
@@ -159,7 +172,7 @@ class Dataset(FrozenDict):
         if self.p_aug is not None:
             # Apply random-crop image augmentation.
             if np.random.rand() < self.p_aug:
-                self.augment(batch, ['observations', 'next_observations'])
+                augment(batch, ['observations', 'next_observations'])
         return batch
 
     def get_subset(self, idxs):
@@ -169,18 +182,6 @@ class Dataset(FrozenDict):
             # WARNING: This is incorrect at the end of the trajectory. Use with caution.
             result['next_actions'] = self['actions'][np.minimum(idxs + 1, self.size - 1)]
         return result
-
-    def augment(self, batch, keys):
-        """Apply image augmentation to the given keys."""
-        padding = 3
-        batch_size = len(batch[keys[0]])
-        crop_froms = np.random.randint(0, 2 * padding + 1, (batch_size, 2))
-        crop_froms = np.concatenate([crop_froms, np.zeros((batch_size, 1), dtype=np.int64)], axis=1)
-        for key in keys:
-            batch[key] = jax.tree_util.tree_map(
-                lambda arr: np.array(batched_random_crop(arr, crop_froms, padding)) if len(arr.shape) == 4 else arr,
-                batch[key],
-            )
 
 
 class ReplayBuffer(Dataset):

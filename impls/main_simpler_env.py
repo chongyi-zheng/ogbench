@@ -14,8 +14,8 @@ from absl import app, flags
 from ml_collections import config_flags
 
 from agents import agents
-from utils.env_utils import make_env_and_datasets, get_reward_env_info
-from utils.datasets import GCDataset, Dataset, ReplayBuffer
+from utils.env_utils import make_env_and_datasets
+from utils.datasets import augment
 from utils.evaluation import evaluate
 from utils.flax_utils import restore_agent, save_agent
 from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb
@@ -101,7 +101,7 @@ def main(_):
     assert config['agent_name'] not in ['mcfac']
 
     # Create agent.
-    example_batch = next(train_dataset_iter)
+    example_batch = next(val_dataset_iter)
     # if config['discrete']:
     #     # Fill with the maximum action to let the agent know the action space size.
     #     example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)
@@ -147,22 +147,23 @@ def main(_):
     first_time = time.time()
     last_time = time.time()
 
+    # Offline RL.
     expl_metrics = dict()
     for i in tqdm.tqdm(range(1, FLAGS.offline_steps + 1), smoothing=0.1, dynamic_ncols=True):
-        if i <= FLAGS.offline_steps:
-            # Offline RL.
-            batch = train_dataset.sample(config['batch_size'])
-
-            if config['agent_name'] == 'rebrac':
-                agent, update_info = agent.update(batch, full_update=(i % config['actor_freq'] == 0))
-            else:
-                agent, update_info = agent.update(batch)
+        batch = next(train_dataset_iter)
+        # data augmentation
+        if np.random.rand() < FLAGS.p_aug:
+            augment(batch, ['observations', 'next_observations'])
+        agent, update_info = agent.update(batch)
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
             if val_dataset is not None:
-                val_batch = val_dataset.sample(config['batch_size'])
+                val_batch = next(val_dataset_iter)
+                # data augmentation
+                if np.random.rand() < FLAGS.p_aug:
+                    augment(val_batch, ['observations', 'next_observations'])
                 _, val_info = agent.total_loss(val_batch, grad_params=None)
                 train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval
