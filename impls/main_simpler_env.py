@@ -69,6 +69,11 @@ def main(_):
     env, eval_env, train_dataset, val_dataset = make_env_and_datasets(
         FLAGS.env_name, frame_stack=FLAGS.frame_stack)
 
+    # Initialize agent.
+    random.seed(FLAGS.seed)
+    np.random.seed(FLAGS.seed)
+
+    # Set up datasets.
     train_dataset = train_dataset.shuffle(config['batch_size'] * 4)  # set shuffle buffer size
     train_dataset = train_dataset.repeat()  # ensure that data never runs out
     train_dataset_iter = train_dataset.batch(config['batch_size']).as_numpy_iterator()
@@ -77,42 +82,10 @@ def main(_):
     val_dataset = val_dataset.repeat()
     val_dataset_iter = val_dataset.batch(config['batch_size']).as_numpy_iterator()
 
-    # Initialize agent.
-    random.seed(FLAGS.seed)
-    np.random.seed(FLAGS.seed)
-
-    # Set up datasets.
-    # Set p_aug and frame_stack.
-    # for dataset in [train_dataset, val_dataset]:
-    #     if dataset is not None:
-    #         dataset.obs_norm_type = FLAGS.obs_norm_type
-    #         dataset.p_aug = FLAGS.p_aug
-    #         dataset.frame_stack = FLAGS.frame_stack
-    #         if config['agent_name'] in ['rebrac', 'sarsa_ifac_q', 'sarsa_ifql']:
-    #             dataset.return_next_actions = True
-    #         dataset.normalize_observations()
-    # if FLAGS.dataset_class == 'GCDataset':
-    #     config['p_aug'] = FLAGS.p_aug
-    #     config['frame_stack'] = FLAGS.frame_stack
-    #     train_dataset = GCDataset(train_dataset, config)
-    #     if val_dataset is not None:
-    #         val_dataset = GCDataset(val_dataset, config)
-
     assert config['agent_name'] not in ['mcfac']
 
     # Create agent.
     example_batch = next(val_dataset_iter)
-    # if config['discrete']:
-    #     # Fill with the maximum action to let the agent know the action space size.
-    #     example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)
-
-    # if config['agent_name'] in ['mcfac', 'ifac', 'sarsa_ifac', 'sarsa_ifac_q']:
-    #     if hasattr(train_dataset, 'dataset'):
-    #         dataset_observations = train_dataset.dataset['observations']
-    #     else:
-    #         dataset_observations = train_dataset['observations']
-    #     config['dataset_obs_min'] = jnp.min(dataset_observations, axis=0)
-    #     config['dataset_obs_max'] = jnp.max(dataset_observations, axis=0)
 
     agent_class = agents[config['agent_name']]
     agent = agent_class.create(
@@ -121,21 +94,6 @@ def main(_):
         example_batch['actions'],
         config,
     )
-
-    # if FLAGS.obs_norm_type in ['normal', 'bounded']:
-    #     agent = OfflineObservationNormalizer.create(
-    #         agent,
-    #         train_dataset,
-    #         normalizer_type=FLAGS.obs_norm_type
-    #     )
-    #     if config['dataset_obs_min'] is not None:
-    #         config['dataset_obs_min'] = agent.normalize(config['dataset_obs_min'])
-    #         config['dataset_obs_max'] = agent.normalize(config['dataset_obs_max'])
-    # agent = OfflineObservationNormalizer.create(
-    #     agent,
-    #     train_dataset,
-    #     normalizer_type=FLAGS.obs_norm_type
-    # )
 
     # Restore agent.
     if FLAGS.restore_path is not None:
@@ -184,7 +142,6 @@ def main(_):
             eval_info, trajs, cur_renders = evaluate(
                 agent=agent,
                 env=eval_env,
-                dataset=train_dataset,
                 num_eval_episodes=FLAGS.eval_episodes,
                 num_video_episodes=FLAGS.video_episodes,
                 video_frame_skip=FLAGS.video_frame_skip,

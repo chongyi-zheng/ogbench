@@ -38,7 +38,7 @@ def add_to(dict_of_lists, single_dict):
 def evaluate(
     agent,
     env,
-    dataset,
+    dataset=None,
     num_eval_episodes=50,
     num_video_episodes=0,
     video_frame_skip=3,
@@ -68,7 +68,8 @@ def evaluate(
         should_render = i >= num_eval_episodes
 
         observation, info = env.reset()
-        observation = dataset.normalize_observations(observation)
+        if dataset is not None:
+            observation = dataset.normalize_observations(observation)
         done = False
         step = 0
         render = []
@@ -78,7 +79,8 @@ def evaluate(
             action = np.clip(action, -1, 1)
 
             next_observation, reward, terminated, truncated, info = env.step(action)
-            next_observation = dataset.normalize_observations(next_observation)
+            if dataset is not None:
+                next_observation = dataset.normalize_observations(next_observation)
             done = terminated or truncated
             step += 1
 
