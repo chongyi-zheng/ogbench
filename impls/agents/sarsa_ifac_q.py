@@ -266,59 +266,135 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             )
             critic_flow_matching_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
         elif self.config['critic_fm_loss_type'] == 'sarsa_squared':
-            # SARSA^2 value flow matching
-            rng, time_rng, current_noise_rng, future_noise_rng = jax.random.split(rng, 4)
-            times = jax.random.uniform(time_rng, shape=(batch_size,), dtype=observations.dtype)
-            if self.config['critic_noise_type'] == 'normal':
-                current_noises = jax.random.normal(
-                    current_noise_rng, shape=observations.shape, dtype=observations.dtype)
-            elif self.config['critic_noise_type'] == 'marginal_state':
-                current_noises = jax.random.permutation(
-                    current_noise_rng, observations, axis=0)
-            # elif self.config['critic_noise_type'] == 'marginal_goal':
-            #     current_noises = jax.random.permutation(
-            #         current_noise_rng, goals, axis=0)
-            current_path_sample = self.cond_prob_path(
-                x_0=current_noises, x_1=jax.lax.stop_gradient(observations), t=times)
-            current_vf_pred = self.network.select('critic_vf')(
-                current_path_sample.x_t,
-                times,
-                observations, actions,
-                params=grad_params,
-            )
-            # stop gradient for the image encoder
-            current_flow_matching_loss = jnp.square(
-                current_path_sample.dx_t - current_vf_pred).mean(axis=-1)
+            if self.config['encoder'] is not None:
+                # debugging for image observations
+                del observations
+                del next_observations
 
-            if self.config['critic_noise_type'] == 'normal':
-                future_noises = jax.random.normal(
-                    future_noise_rng, shape=observations.shape, dtype=observations.dtype)
-            elif self.config['critic_noise_type'] == 'marginal_state':
-                future_noises = jax.random.permutation(
-                    future_noise_rng, observations, axis=0)
-            # elif self.config['critic_noise_type'] == 'marginal_goal':
-            #     future_noises = jax.random.permutation(
-            #         future_noise_rng, goals, axis=0)
-            flow_future_observations = self.compute_fwd_flow_goals(
-                future_noises, next_observations, next_actions, use_target_network=True)
-            if self.config['clip_flow_goals']:
-                flow_future_observations = jnp.clip(flow_future_observations,
-                                                    batch['observation_min'] + 1e-5,
-                                                    batch['observation_max'] - 1e-5)
-            future_path_sample = self.cond_prob_path(
-                x_0=future_noises, x_1=jax.lax.stop_gradient(flow_future_observations), t=times)
-            future_vf_target = self.network.select('target_critic_vf')(
-                future_path_sample.x_t,
-                times,
-                next_observations, next_actions,
-            )
-            future_vf_pred = self.network.select('critic_vf')(
-                future_path_sample.x_t,
-                times,
-                observations, actions,
-                params=grad_params,
-            )
-            future_flow_matching_loss = jnp.square(future_vf_target - future_vf_pred).mean(axis=-1)
+                observations = self.network.select('critic_vf_encoder')(
+                    batch['observations'])
+                next_observations = self.network.select('target_critic_vf_encoder')(
+                    batch['next_observations'])
+                observations1 = self.network.select('critic_vf_encoder')(
+                    batch['aug1_observations'], params=grad_params)
+                observations2 = self.network.select('critic_vf_encoder')(
+                    batch['aug2_observations'], params=grad_params)
+                target_observations1 = self.network.select('target_critic_vf_encoder')(
+                    batch['aug1_observations'])
+                target_observations2 = self.network.select('target_critic_vf_encoder')(
+                    batch['aug2_observations'])
+
+                # SARSA^2 value flow matching
+                rng, time_rng, current_noise_rng, future_noise_rng = jax.random.split(rng, 4)
+                times = jax.random.uniform(time_rng, shape=(batch_size,), dtype=observations.dtype)
+                if self.config['critic_noise_type'] == 'normal':
+                    current_noises = jax.random.normal(
+                        current_noise_rng, shape=observations.shape, dtype=observations.dtype)
+                else:
+                    raise NotImplementedError
+                current_path1 = self.cond_prob_path(
+                    x_0=current_noises, x_1=observations1, t=times)
+                target_current_path1 = self.cond_prob_path(
+                    x_0=current_noises, x_1=target_observations1, t=times)
+                current_path2 = self.cond_prob_path(
+                    x_0=current_noises, x_1=observations2, t=times)
+                target_current_path2 = self.cond_prob_path(
+                    x_0=current_noises, x_1=target_observations2, t=times)
+                current_vf_pred1 = self.network.select('critic_vf')(
+                    current_path1.x_t,
+                    times,
+                    observations, actions,
+                    params=grad_params,
+                )
+                current_vf_pred2 = self.network.select('critic_vf')(
+                    current_path2.x_t,
+                    times,
+                    observations, actions,
+                    params=grad_params,
+                )
+                # stop gradient for the image encoder
+                current_flow_matching_loss1 = jnp.square(
+                    target_current_path2.x_t - current_vf_pred1)
+                current_flow_matching_loss2 = jnp.square(
+                    target_current_path1.x_t - current_vf_pred2)
+                current_flow_matching_loss = (
+                    current_flow_matching_loss1 + current_flow_matching_loss2).mean(axis=-1)
+
+                if self.config['critic_noise_type'] == 'normal':
+                    future_noises = jax.random.normal(
+                        future_noise_rng, shape=observations.shape, dtype=observations.dtype)
+                else:
+                    raise NotImplementedError
+                target_flow_future_observations = self.compute_fwd_flow_goals(
+                    future_noises, next_observations, next_actions, use_target_network=True)
+                target_future_path = self.cond_prob_path(
+                    x_0=future_noises, x_1=target_flow_future_observations, t=times)
+                future_vf_target = self.network.select('target_critic_vf')(
+                    target_future_path.x_t,
+                    times,
+                    next_observations, next_actions,
+                )
+                future_vf_pred = self.network.select('critic_vf')(
+                    target_future_path.x_t,
+                    times,
+                    observations, actions,
+                    params=grad_params,
+                )
+                future_flow_matching_loss = jnp.square(future_vf_target - future_vf_pred).mean(axis=-1)
+            else:
+                # SARSA^2 value flow matching
+                rng, time_rng, current_noise_rng, future_noise_rng = jax.random.split(rng, 4)
+                times = jax.random.uniform(time_rng, shape=(batch_size,), dtype=observations.dtype)
+                if self.config['critic_noise_type'] == 'normal':
+                    current_noises = jax.random.normal(
+                        current_noise_rng, shape=observations.shape, dtype=observations.dtype)
+                elif self.config['critic_noise_type'] == 'marginal_state':
+                    current_noises = jax.random.permutation(
+                        current_noise_rng, observations, axis=0)
+                # elif self.config['critic_noise_type'] == 'marginal_goal':
+                #     current_noises = jax.random.permutation(
+                #         current_noise_rng, goals, axis=0)
+                current_path_sample = self.cond_prob_path(
+                    x_0=current_noises, x_1=jax.lax.stop_gradient(observations), t=times)
+                current_vf_pred = self.network.select('critic_vf')(
+                    current_path_sample.x_t,
+                    times,
+                    observations, actions,
+                    params=grad_params,
+                )
+                # stop gradient for the image encoder
+                current_flow_matching_loss = jnp.square(
+                    current_path_sample.dx_t - current_vf_pred).mean(axis=-1)
+
+                if self.config['critic_noise_type'] == 'normal':
+                    future_noises = jax.random.normal(
+                        future_noise_rng, shape=observations.shape, dtype=observations.dtype)
+                elif self.config['critic_noise_type'] == 'marginal_state':
+                    future_noises = jax.random.permutation(
+                        future_noise_rng, observations, axis=0)
+                # elif self.config['critic_noise_type'] == 'marginal_goal':
+                #     future_noises = jax.random.permutation(
+                #         future_noise_rng, goals, axis=0)
+                flow_future_observations = self.compute_fwd_flow_goals(
+                    future_noises, next_observations, next_actions, use_target_network=True)
+                if self.config['clip_flow_goals']:
+                    flow_future_observations = jnp.clip(flow_future_observations,
+                                                        batch['observation_min'] + 1e-5,
+                                                        batch['observation_max'] - 1e-5)
+                future_path_sample = self.cond_prob_path(
+                    x_0=future_noises, x_1=jax.lax.stop_gradient(flow_future_observations), t=times)
+                future_vf_target = self.network.select('target_critic_vf')(
+                    future_path_sample.x_t,
+                    times,
+                    next_observations, next_actions,
+                )
+                future_vf_pred = self.network.select('critic_vf')(
+                    future_path_sample.x_t,
+                    times,
+                    observations, actions,
+                    params=grad_params,
+                )
+                future_flow_matching_loss = jnp.square(future_vf_target - future_vf_pred).mean(axis=-1)
 
             if self.config['use_terminal_masks']:
                 critic_flow_matching_loss = ((1 - self.config['discount']) * current_flow_matching_loss

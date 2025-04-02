@@ -48,6 +48,8 @@ flags.DEFINE_integer('pos_reward', 0, 'Whether to shape reward to positive numbe
 flags.DEFINE_string('obs_norm_type', 'none',
                     'Type of observation normalization. (none, normal, bounded)')
 flags.DEFINE_float('p_aug', None, 'Probability of applying image augmentation.')
+flags.DEFINE_integer('num_aug', 1, 'Number of image augmentations.')
+flags.DEFINE_integer('inplace_aug', 1, 'Whether to replace the original image after applying augmentations.')
 flags.DEFINE_integer('frame_stack', None, 'Number of frames to stack.')
 flags.DEFINE_integer('balanced_sampling', 0, 'Whether to use balanced sampling for online fine-tuning.')
 
@@ -98,6 +100,8 @@ def main(_):
         if dataset is not None:
             dataset.obs_norm_type = FLAGS.obs_norm_type
             dataset.p_aug = FLAGS.p_aug
+            dataset.num_aug = FLAGS.num_aug
+            dataset.inplace_aug = FLAGS.inplace_aug
             dataset.frame_stack = FLAGS.frame_stack
             if config['agent_name'] in ['rebrac', 'sarsa_ifac_q', 'sarsa_ifql']:
                 dataset.return_next_actions = True

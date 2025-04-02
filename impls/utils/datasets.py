@@ -69,6 +69,8 @@ class Dataset(FrozenDict):
         self.obs_norm_type = 'none'  # Observation normalization type.
         self.frame_stack = None  # Number of frames to stack; set outside the class.
         self.p_aug = None  # Image augmentation probability; set outside the class.
+        self.num_aug = 1  # Number of image augmentations; set outsize the class.
+        self.inplace_aug = False  # Whether to replace the original image after applying augmentations.
         self.return_next_actions = False  # Whether to additionally return next actions; set outside the class.
 
         # observation statistics
@@ -172,7 +174,12 @@ class Dataset(FrozenDict):
         if self.p_aug is not None:
             # Apply random-crop image augmentation.
             if np.random.rand() < self.p_aug:
-                augment(batch, ['observations', 'next_observations'])
+                if self.inplace_aug:
+                    augment(batch, ['observations', 'next_observations'])
+                else:
+                    for i in range(self.num_aug):
+                        augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(i + 1))
+
         return batch
 
     def get_subset(self, idxs):
@@ -380,7 +387,7 @@ class GCDataset:
         if self.config['p_aug'] is not None:
             # Apply random-crop image augmentation.
             if np.random.rand() < self.config['p_aug']:
-                self.augment(batch, ['value_goals', 'actor_goals'])
+                augment(batch, ['value_goals', 'actor_goals'])
 
         return batch
 
@@ -441,18 +448,6 @@ class GCDataset:
             goal_idxs = np.where(np.random.rand(*size) < p_curgoal, idxs, goal_idxs)
 
         return goal_idxs
-
-    def augment(self, batch, keys):
-        """Apply image augmentation to the given keys."""
-        padding = 3
-        batch_size = len(batch[keys[0]])
-        crop_froms = np.random.randint(0, 2 * padding + 1, (batch_size, 2))
-        crop_froms = np.concatenate([crop_froms, np.zeros((batch_size, 1), dtype=np.int64)], axis=1)
-        for key in keys:
-            batch[key] = jax.tree_util.tree_map(
-                lambda arr: np.array(batched_random_crop(arr, crop_froms, padding)) if len(arr.shape) == 4 else arr,
-                batch[key],
-            )
 
     def get_observations(self, idxs):
         """Return the observations for the given indices."""
@@ -547,7 +542,7 @@ class HGCDataset(GCDataset):
 
         if self.config['p_aug'] is not None and not evaluation:
             if np.random.rand() < self.config['p_aug']:
-                self.augment(
+                augment(
                     batch,
                     [
                         'observations',
