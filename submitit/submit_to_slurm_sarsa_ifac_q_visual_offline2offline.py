@@ -40,7 +40,7 @@ def main():
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
-        slurm_cpus_per_task=16,
+        slurm_cpus_per_task=8,
         slurm_mem="72G",
         slurm_gpus_per_node=1,
         slurm_nodelist=nodelist,
