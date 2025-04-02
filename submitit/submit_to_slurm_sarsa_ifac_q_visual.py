@@ -56,10 +56,10 @@ def main():
             "visual-cube-single-play-singletask-task1-v0",
         ]:
             for obs_norm_type in ['none']:
-                for tau in [0.995, 0.005]:
-                    for alpha in [30000, 10000, 3000, 1000, 300]:
-                        for num_flow_goals in [16]:
-                            for expectile in [0.55, 0.65, 0.75, 0.85, 0.95]:
+                for tau in [1.0, 0.005]:
+                    for alpha in [3000, 1000, 300]:
+                        for num_flow_goals in [1, 16]:
+                            for expectile in [0.90, 0.95, 0.99]:
                                 for encoder in ['impala_small']:
                                     for q_agg in ['mean']:
                                         for normalize_q_loss in [False]:
@@ -110,7 +110,9 @@ def main():
                                                                         --env_name={env_name} \
                                                                         --obs_norm_type={obs_norm_type} \
                                                                         --eval_episodes=50 \
-                                                                        --p_aug=0.5 \
+                                                                        --p_aug=1.0 \
+                                                                        --num_aug=2 \
+                                                                        --inplace_aug=0 \
                                                                         --frame_stack=3 \
                                                                         --offline_steps=500_000 \
                                                                         --agent=impls/agents/sarsa_ifac_q.py \
