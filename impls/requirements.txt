@@ -7,7 +7,8 @@ matplotlib==3.9.0
 moviepy==1.0.3
 wandb
 tensorflow-datasets==4.9.8
+gsutil==5.33
 gcsfs==2025.3.2
-tensorflow==2.19.0
+tensorflow==2.15.1
 rlds==0.1.8
 dm-reverb==0.14.0

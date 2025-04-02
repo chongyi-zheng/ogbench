@@ -1,11 +1,11 @@
 import abc
 import dataclasses
 import os
-from collections import defaultdict
 from typing import Any, Union
 from typing import Dict, Optional
 
-import numpy as np
+import gymnasium
+import cv2 as cv
 import reverb
 import simpler_env
 import tensorflow as tf
@@ -16,11 +16,11 @@ from rlds import transformations
 
 DEFAULT_DATASET_DIR = '~/tensorflow_datasets/fractal20220817_data/0.1.0'
 
-
 """
 The following dataset construction code is adapted from: 
     https://colab.research.google.com/github/google-deepmind/open_x_embodiment/blob/main/colabs/Open_X_Embodiment_Datasets.ipynb
 """
+
 
 def _features_to_tensor_spec(
         feature: tfds.features.FeatureConnector
@@ -397,78 +397,64 @@ def n_step_pattern_builder(n: int) -> Any:
     return transform_fn
 
 
-def load_dataset(dataset_path, ob_dtype=np.float32, action_dtype=np.float32):
-    """Load metaworld dataset.
+class SimplerEnvWrapper(gymnasium.Wrapper):
+    """Environment wrapper for simpler environments."""
 
-    Args:
-        dataset_path: Path to the dataset file.
-        ob_dtype: dtype for observations.
-        action_dtype: dtype for actions.
+    def __init__(self, env, width=64, height=64):
+        super().__init__(env)
+        #
+        # self.num_stack = num_stack
+        # self.frames = collections.deque(maxlen=num_stack)
+        #
+        self.width = width
+        self.height = height
 
-    Returns:
-        Dictionary containing the dataset. The dictionary contains the following keys: 'observations', 'actions',
-        'terminals', and 'next_observations' (if `compact_dataset` is False) or 'valids' (if `compact_dataset` is True).
-        If `add_info` is True, the dictionary may also contain additional keys for observation information.
-    """
-    file = np.load(dataset_path)
+        assert 'google_robot' in self.robot_uid
 
-    dataset = dict()
-    for k in ['observations', 'actions', 'rewards', 'terminals', 'masks']:
-        if k == 'observations':
-            dtype = ob_dtype
-        elif k == 'actions':
-            dtype = action_dtype
-        else:
-            dtype = np.float32
-        dataset[k] = file[k][...].astype(dtype, copy=False)
+        image_obs_space = self.observation_space['image']['overhead_camera']['rgb']
+        self.observation_space = gymnasium.spaces.Box(
+            low=image_obs_space.low[0, 0, 0], high=image_obs_space.high[0, 0, 0],
+            shape=(self.width, self.height, 3),
+            dtype=image_obs_space.dtype,
+        )
 
-    # Regular dataset: Generate `next_observations` by shifting `observations`.
-    # Our goal is to have the following structure:
-    #                       |<- traj 1 ->|  |<- traj 2 ->|  ...
-    # ----------------------------------------------------------
-    # 'observations'     : [s0, s1, s2, s3, s0, s1, s2, s3, ...]
-    # 'actions'          : [a0, a1, a2, a3, a0, a1, a2, a3, ...]
-    # 'rewards'          : [r0, r1, r2, r3, r0, r1, r2, r3, ...]
-    # 'next_observations': [s1, s2, s3, s4, s1, s2, s3, s4, ...]
-    # 'terminals'        : [ 0,  0,  0,  1,  0,  0,  0,  1, ...]
-    # 'masks'            : [ 0,  0,  1,  0,  0,  1,  0,  0, ...]
-    # masks denotes whether the agent should get a Bellman backup from the next observation.
-    # It is 0 only when the task is complete (and 1 otherwise).
-    # In this case, the agent should set the target Q-value to 0,
-    # instead of using the next observation's target Q-value.
-    #
-    # terminals simply denotes whether the dataset trajectory is over, regardless of task completion.
+    # def get_observation(self):
+    #     assert len(self.frames) == self.num_stack
+    #     return np.concatenate(list(self.frames), axis=-1)
 
-    ob_mask = (1.0 - dataset['terminals']).astype(bool)
-    next_ob_mask = np.concatenate([[False], ob_mask[:-1]])
-    dataset['next_observations'] = dataset['observations'][next_ob_mask]
-    dataset['observations'] = dataset['observations'][ob_mask]
-    dataset['actions'] = dataset['actions'][ob_mask]
-    dataset['rewards'] = dataset['rewards'][ob_mask]
-    dataset['masks'] = dataset['masks'][ob_mask]
-    new_terminals = np.concatenate([dataset['terminals'][1:], [1.0]])
-    dataset['terminals'] = new_terminals[ob_mask].astype(np.float32)
+    def reset(self, **kwargs):
+        observation, info = self.env.reset(**kwargs)
+        observation = observation['image']['overhead_camera']['rgb']
+        observation = cv.resize(observation, (self.width, self.height))
 
-    return dataset
+        return observation, info
+
+    def step(self, action):
+        observation, reward, terminated, truncated, info = self.env.step(action)
+        observation = observation['image']['overhead_camera']['rgb']
+        observation = cv.resize(observation, (self.width, self.height))
+
+        return observation, reward, terminated, truncated, info
 
 
 def make_env_and_datasets(
-    dataset_name,
-    frame_stack=None,
-    dataset_dir=DEFAULT_DATASET_DIR,
-    env_only=False,
+        dataset_name,
+        frame_stack=None,
+        dataset_dir=DEFAULT_DATASET_DIR,
+        env_only=False,
 ):
     dataset_dir = os.path.expanduser(dataset_dir)
     env = simpler_env.make(dataset_name)
+    env = SimplerEnvWrapper(env)
 
     if env_only:
         return env
 
     ds_builder = tfds.builder_from_directory(builder_dir=dataset_dir)
-    # train_ds, val_ds = ds_builder.as_dataset(
-    #     split=['train[:90%]', 'train[90%:]'])  # 78491 and 8721 episodes
     train_ds, val_ds = ds_builder.as_dataset(
-        split=['train[:10]', 'train[10:14]'])  # 10 and 4 episodes
+        split=['train[:90%]', 'train[90%:]'])  # 78491 and 8721 episodes
+    # train_ds, val_ds = ds_builder.as_dataset(
+    #     split=['train[:10]', 'train[10:14]'])  # 10 and 4 episodes
 
     # The RLDSSpec for the dataset.
     rlds_spec = RLDSSpec(
@@ -496,13 +482,17 @@ def make_env_and_datasets(
 
     def stacked_step_map_fn(step):
         return {
-            'observations': tf.squeeze(step['observation'][:frame_stack]),
-            'next_observation': tf.squeeze(step['observation'][1:frame_stack + 1]),
-            'action': step['action'][frame_stack - 1],
+            'observations': tf.concat([
+                step['observation'][idx] for idx in range(frame_stack)
+            ], axis=-1),
+            'next_observations': tf.concat([
+                step['observation'][idx] for idx in range(1, frame_stack + 1)
+            ], axis=-1),
+            'actions': step['action'][frame_stack - 1],
             'next_actions': step['action'][frame_stack],
             'rewards': step['reward'][frame_stack - 1],
-            'terminals': step['is_last'][frame_stack - 1],
-            'masks': tf.cast(1.0 - step['reward'][frame_stack - 1], tf.bool),
+            'terminals': tf.cast(step['is_last'][frame_stack - 1], tf.float32),
+            'masks': 1.0 - step['reward'][frame_stack - 1],
         }
 
     # The following will create a trajectories of length 2.
@@ -516,10 +506,12 @@ def make_env_and_datasets(
         train_ds)
     train_dataset = train_dataset.map(
         stacked_step_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
+    # train_dataset = tfds.as_numpy(train_dataset)
     val_dataset = trajectory_transform.transform_episodic_rlds_dataset(
         val_ds)
     val_dataset = val_dataset.map(
         stacked_step_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
+    # val_dataset = tfds.as_numpy(val_dataset)
 
     # train_ds = train_ds.batch(len(train_ds))
     # train_ds = train_ds.unbatch()
@@ -594,7 +586,7 @@ def make_env_and_datasets(
     # for k, v in elems.items():
     #     elems[k] = np.concatenate(v, axis=0)
 
-    print()
+    # print()
 
     # train_ds = train_ds.prefetch(3).batch(256).as_numpy_iterator()
 

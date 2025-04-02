@@ -5,12 +5,12 @@ import re
 import time
 from functools import partial
 
+import tensorflow as tf
 import gymnasium
 import jax
 import jax.numpy as jnp
 import numpy as np
 import ogbench
-from ogbench.relabel_utils import relabel_dataset
 from gymnasium.spaces import Box
 
 from utils.datasets import Dataset
@@ -319,11 +319,17 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
 
         train_dataset = Dataset.create(**train_dataset)
         val_dataset = Dataset.create(**val_dataset)
-    elif 'google-robot' in env_name:
+    elif 'google_robot' in env_name:
         from utils import simpler_env_utils
-        env_name = env_name.replace('-', '_')
         _, train_dataset, val_dataset = simpler_env_utils.make_env_and_datasets(
             env_name, frame_stack=frame_stack)
+
+        env = simpler_env_utils.make_env_and_datasets(
+            env_name, frame_stack=frame_stack, env_only=True)
+        eval_env = simpler_env_utils.make_env_and_datasets(
+            env_name, frame_stack=frame_stack, env_only=True)
+        env = EpisodeMonitor(env)
+        eval_env = EpisodeMonitor(eval_env)
     else:
         env, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)
         eval_env = ogbench.make_env_and_datasets(env_name, env_only=True)
@@ -339,12 +345,31 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
 
     # Clip dataset actions.
     if action_clip_eps is not None:
-        train_dataset = train_dataset.copy(
-            add_or_replace=dict(actions=np.clip(train_dataset['actions'], -1 + action_clip_eps, 1 - action_clip_eps))
-        )
-        if val_dataset is not None:
-            val_dataset = val_dataset.copy(
-                add_or_replace=dict(actions=np.clip(val_dataset['actions'], -1 + action_clip_eps, 1 - action_clip_eps))
+        if isinstance(train_dataset, Dataset):
+            train_dataset = train_dataset.copy(
+                add_or_replace=dict(actions=np.clip(train_dataset['actions'], -1 + action_clip_eps, 1 - action_clip_eps))
             )
+            if val_dataset is not None:
+                val_dataset = val_dataset.copy(
+                    add_or_replace=dict(actions=np.clip(val_dataset['actions'], -1 + action_clip_eps, 1 - action_clip_eps))
+                )
+        elif isinstance(val_dataset, tf.data.Dataset):
+            def action_clipping_map_fn(step):
+                step['actions'] = tf.clip_by_value(
+                    step['actions'], -1 + action_clip_eps, 1 - action_clip_eps)
+                step['next_actions'] = tf.clip_by_value(
+                    step['next_actions'], -1 + action_clip_eps, 1 - action_clip_eps)
+
+                return step
+
+            train_dataset = train_dataset.map(
+                action_clipping_map_fn,
+                num_parallel_calls=tf.data.AUTOTUNE
+            )
+            if val_dataset is not None:
+                val_dataset = val_dataset.map(
+                    action_clipping_map_fn,
+                    num_parallel_calls=tf.data.AUTOTUNE
+                )
 
     return env, eval_env, train_dataset, val_dataset
