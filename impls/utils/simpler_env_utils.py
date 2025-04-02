@@ -10,7 +10,6 @@ import reverb
 import simpler_env
 import tensorflow as tf
 import tensorflow_datasets as tfds
-import tqdm
 import tree
 from rlds import rlds_types
 from rlds import transformations
@@ -490,19 +489,20 @@ def make_env_and_datasets(
                 step['action']['gripper_closedness_action'],
             ], axis=-1), tf.float32),
             'reward': tf.cast(step['reward'], tf.float32),
-            'terminal': tf.cast(step['is_last'], tf.bool),
-            'mask': tf.cast(1.0 - step['reward'], tf.bool),
+            'is_first': tf.cast(step['is_first'], tf.bool),
+            'is_last': tf.cast(step['is_last'], tf.bool),
+            'is_terminal': tf.cast(step['is_terminal'], tf.bool), 
         }
 
     def stacked_step_map_fn(step):
         return {
-            'observations': step['observation'][:frame_stack],
-            'next_observation': step['observation'][1:frame_stack + 1],
-            'action': step['action'][frame_stack],
-            'next_actions': step['action'][frame_stack + 1],
-            'rewards': step['reward'][frame_stack],
-            'terminals': step['terminal'][frame_stack],
-            'masks': step['mask'][frame_stack],
+            'observations': tf.squeeze(step['observation'][:frame_stack]),
+            'next_observation': tf.squeeze(step['observation'][1:frame_stack + 1]),
+            'action': step['action'][frame_stack - 1],
+            'next_actions': step['action'][frame_stack],
+            'rewards': step['reward'][frame_stack - 1],
+            'terminals': step['is_last'][frame_stack - 1],
+            'masks': tf.cast(1.0 - step['reward'][frame_stack - 1], tf.bool),
         }
 
     # The following will create a trajectories of length 2.
