@@ -44,6 +44,8 @@ flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
 
 flags.DEFINE_string('obs_norm_type', 'none', 'Type of observation normalization. (none, normal, bounded)')
 flags.DEFINE_float('p_aug', None, 'Probability of applying image augmentation.')
+flags.DEFINE_integer('num_aug', 1, 'Number of image augmentations.')
+flags.DEFINE_integer('inplace_aug', 1, 'Whether to replace the original image after applying augmentations.')
 flags.DEFINE_integer('frame_stack', None, 'Number of frames to stack.')
 
 config_flags.DEFINE_config_file('agent', 'agents/fql.py', lock_config=False)
@@ -66,7 +68,7 @@ def main(_):
 
     # Make environment and datasets.
     config = FLAGS.agent
-    env, eval_env, train_dataset, val_dataset = make_env_and_datasets(
+    _, eval_env, train_dataset, val_dataset = make_env_and_datasets(
         FLAGS.env_name, frame_stack=FLAGS.frame_stack)
 
     # Initialize agent.
@@ -111,7 +113,11 @@ def main(_):
         batch = next(train_dataset_iter)
         # data augmentation
         if np.random.rand() < FLAGS.p_aug:
-            augment(batch, ['observations', 'next_observations'])
+            if FLAGS.inplace_aug:
+                augment(batch, ['observations', 'next_observations'])
+            else:
+                for aux_idx in range(FLAGS.num_aug):
+                    augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
         agent, update_info = agent.update(batch)
 
         # Log metrics.
@@ -121,7 +127,11 @@ def main(_):
                 val_batch = next(val_dataset_iter)
                 # data augmentation
                 if np.random.rand() < FLAGS.p_aug:
-                    augment(val_batch, ['observations', 'next_observations'])
+                    if FLAGS.inplace_aug:
+                        augment(val_batch, ['observations', 'next_observations'])
+                    else:
+                        for aux_idx in range(FLAGS.num_aug):
+                            augment(val_batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
                 _, val_info = agent.total_loss(val_batch, grad_params=None)
                 train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval

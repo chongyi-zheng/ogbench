@@ -139,11 +139,11 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
         next_actions = batch['next_actions']
         masks = batch['masks']
 
-        if self.config['encoder'] is not None:
-            observations = self.network.select('critic_vf_encoder')(
-                batch['observations'], params=grad_params)
-            next_observations = self.network.select('target_critic_vf_encoder')(
-                batch['next_observations'])
+        # if self.config['encoder'] is not None:
+        #     observations = self.network.select('critic_vf_encoder')(
+        #         batch['observations'], params=grad_params)
+        #     next_observations = self.network.select('target_critic_vf_encoder')(
+        #         batch['next_observations'])
 
         # if self.config['critic_fm_loss_type'] == 'mc':
         #     # MC value flow matching
@@ -267,10 +267,6 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             critic_flow_matching_loss = jnp.square(vf_pred - path_sample.dx_t).mean()
         elif self.config['critic_fm_loss_type'] == 'sarsa_squared':
             if self.config['encoder'] is not None:
-                # debugging for image observations
-                del observations
-                del next_observations
-
                 observations = self.network.select('critic_vf_encoder')(
                     batch['observations'])
                 next_observations = self.network.select('target_critic_vf_encoder')(
@@ -325,10 +321,10 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
                         future_noise_rng, shape=observations.shape, dtype=observations.dtype)
                 else:
                     raise NotImplementedError
-                target_flow_future_observations = self.compute_fwd_flow_goals(
+                flow_future_observations = self.compute_fwd_flow_goals(
                     future_noises, next_observations, next_actions, use_target_network=True)
                 target_future_path = self.cond_prob_path(
-                    x_0=future_noises, x_1=target_flow_future_observations, t=times)
+                    x_0=future_noises, x_1=flow_future_observations, t=times)
                 future_vf_target = self.network.select('target_critic_vf')(
                     target_future_path.x_t,
                     times,
