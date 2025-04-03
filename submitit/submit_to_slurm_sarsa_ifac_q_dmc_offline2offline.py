@@ -60,22 +60,23 @@ def main():
             # "cheetah_run_backward",
             # "walker_flip",
             # "cheetah_run",
-            # "walker_walk",
+            "walker_walk",
             # "cheetah_run_backward",
-            "walker_flip",
+            # "walker_flip",
+            "quadruped_jump",
         ]:
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [1.0]:
                         for alpha in [30.0, 3.0, 0.3]:
-                            for num_flow_goals in [1, 16]:
+                            for num_flow_goals in [16]:
                                 for actor_freq in [2, 4]:
                                     for expectile in [0.55, 0.65, 0.75, 0.85, 0.95]:
                                         for q_agg in ['mean']:
                                             for normalize_q_loss in [False]:
                                                 for critic_fm_loss_type in ['sarsa_squared']:
                                                     for reward_type in ['state_action']:
-                                                        for clip_flow_goals in [True, False]:
+                                                        for clip_flow_goals in [False]:
                                                             for use_terminal_masks in [False]:
                                                                 for seed in [10]:
                                                                     exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_clip_fg={clip_flow_goals}_use_mask={use_terminal_masks}"
