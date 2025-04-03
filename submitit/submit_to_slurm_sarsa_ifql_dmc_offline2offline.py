@@ -61,13 +61,13 @@ def main():
             # "walker_flip",
             "cheetah_run",
             "walker_walk",
-            # "cheetah_run_backward",
-            # "walker_flip",
+            "cheetah_run_backward",
+            "walker_flip",
         ]:
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:
-                        for alpha in [30.0, 3.0, 0.3]:
+                        for alpha in [0.3, 0.1, 0.03, 0.01]:
                             for num_flow_goals in [16]:
                                 for actor_freq in [2, 4]:
                                     for expectile in [0.55, 0.65, 0.75, 0.85, 0.95]:
