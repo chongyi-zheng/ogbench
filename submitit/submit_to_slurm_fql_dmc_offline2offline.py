@@ -49,89 +49,91 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            "cheetah_run",
+            # "cheetah_run",
             "walker_walk",
-            "cheetah_run_backward",
-            "walker_flip",
-            # "quadruped_jump",
+            # "cheetah_run_backward",
+            # "walker_flip",
+            "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
-            for obs_norm_type in ['normal', 'none']:
+            for obs_norm_type in ['none']:
                 for alpha in [10.0, 1.0, 0.1]:
-                    for num_flow_steps in [10]:
-                        for distill_type in ["fwd_sample"]:
-                            for q_agg in ['mean']:
-                                for actor_freq in [1, 2, 4]:
-                                    for normalize_q_loss in [False]:
-                                        for seed in [10]:
-                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_actor_freq={actor_freq}_normalize_q_loss={normalize_q_loss}"
-                                            log_dir = os.path.expanduser(
-                                                f"{log_root_dir}/exp_logs/ogbench_logs/fql_offline2offline/{exp_name}/{seed}")
+                    for finetuning_size in [5_000, 10_000, 50_000, 100_000, 500_000]:
+                        for num_flow_steps in [10]:
+                            for distill_type in ["fwd_sample"]:
+                                for q_agg in ['mean']:
+                                    for actor_freq in [1, 2, 4]:
+                                        for normalize_q_loss in [False]:
+                                            for seed in [10]:
+                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_finetuning_size={finetuning_size}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_actor_freq={actor_freq}_normalize_q={normalize_q_loss}"
+                                                log_dir = os.path.expanduser(
+                                                    f"{log_root_dir}/exp_logs/ogbench_logs/fql_offline2offline/{exp_name}/{seed}")
 
-                                            # change the log folder of slurm executor
-                                            submitit_log_dir = os.path.join(os.path.dirname(log_dir),
-                                                                            'submitit')
-                                            executor._executor.folder = Path(
-                                                submitit_log_dir).expanduser().absolute()
+                                                # change the log folder of slurm executor
+                                                submitit_log_dir = os.path.join(os.path.dirname(log_dir),
+                                                                                'submitit')
+                                                executor._executor.folder = Path(
+                                                    submitit_log_dir).expanduser().absolute()
 
-                                            cmds = f"""
-                                                unset PYTHONPATH;
-                                                source $HOME/.zshrc;
-                                                conda activate ogbench;
-                                                which python;
-                                                echo $CONDA_PREFIX;
-        
-                                                echo job_id: $SLURM_ARRAY_JOB_ID;
-                                                echo task_id: $SLURM_ARRAY_TASK_ID;
-                                                squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
-                                                echo seed: {seed};
-                                                
-                                                export PROJECT_DIR=$PWD;
-                                                export PYTHONPATH=$HOME/research/ogbench/impls;
-                                                export PATH="$PATH":"$CONDA_PREFIX"/bin;
-                                                export CUDA_VISIBLE_DEVICES=0;
-                                                export MUJOCO_GL=egl;
-                                                export PYOPENGL_PLATFORM=egl;
-                                                export EGL_DEVICE_ID=0;
-                                                export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
-                                                export D4RL_SUPPRESS_IMPORT_ERROR=1;
-                                                export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
-                                                export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-        
-                                                rm -rf {log_dir};
-                                                mkdir -p {log_dir};
-                                                python $PROJECT_DIR/impls/main_offline2offline.py \
-                                                    --enable_wandb=1 \
-                                                    --env_name={env_name} \
-                                                    --obs_norm_type={obs_norm_type} \
-                                                    --eval_episodes=50 \
-                                                    --agent=impls/agents/fql.py \
-                                                    --agent.discount=0.99 \
-                                                    --agent.alpha={alpha} \
-                                                    --agent.num_flow_steps={num_flow_steps} \
-                                                    --agent.distill_type={distill_type} \
-                                                    --agent.q_agg={q_agg} \
-                                                    --agent.actor_layer_norm=False \
-                                                    --agent.vf_q_loss=False \
-                                                    --agent.actor_freq={actor_freq} \
-                                                    --agent.normalize_q_loss={normalize_q_loss} \
-                                                    --seed={seed} \
-                                                    --save_dir={log_dir} \
-                                                2>&1 | tee {log_dir}/stream.log;
-        
-                                                export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
-                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
-                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
-                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                            """
+                                                cmds = f"""
+                                                    unset PYTHONPATH;
+                                                    source $HOME/.zshrc;
+                                                    conda activate ogbench;
+                                                    which python;
+                                                    echo $CONDA_PREFIX;
+            
+                                                    echo job_id: $SLURM_ARRAY_JOB_ID;
+                                                    echo task_id: $SLURM_ARRAY_TASK_ID;
+                                                    squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
+                                                    echo seed: {seed};
+                                                    
+                                                    export PROJECT_DIR=$PWD;
+                                                    export PYTHONPATH=$HOME/research/ogbench/impls;
+                                                    export PATH="$PATH":"$CONDA_PREFIX"/bin;
+                                                    export CUDA_VISIBLE_DEVICES=0;
+                                                    export MUJOCO_GL=egl;
+                                                    export PYOPENGL_PLATFORM=egl;
+                                                    export EGL_DEVICE_ID=0;
+                                                    export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
+                                                    export D4RL_SUPPRESS_IMPORT_ERROR=1;
+                                                    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
+                                                    export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
+            
+                                                    rm -rf {log_dir};
+                                                    mkdir -p {log_dir};
+                                                    python $PROJECT_DIR/impls/main_offline2offline.py \
+                                                        --enable_wandb=1 \
+                                                        --env_name={env_name} \
+                                                        --obs_norm_type={obs_norm_type} \
+                                                        --finetuning_size={finetuning_size} \
+                                                        --eval_episodes=50 \
+                                                        --agent=impls/agents/fql.py \
+                                                        --agent.discount=0.99 \
+                                                        --agent.alpha={alpha} \
+                                                        --agent.num_flow_steps={num_flow_steps} \
+                                                        --agent.distill_type={distill_type} \
+                                                        --agent.q_agg={q_agg} \
+                                                        --agent.actor_layer_norm=False \
+                                                        --agent.vf_q_loss=False \
+                                                        --agent.actor_freq={actor_freq} \
+                                                        --agent.normalize_q_loss={normalize_q_loss} \
+                                                        --seed={seed} \
+                                                        --save_dir={log_dir} \
+                                                    2>&1 | tee {log_dir}/stream.log;
+            
+                                                    export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
+                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
+                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
+                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                                """
 
-                                            cmd_func = submitit.helpers.CommandFunction([
-                                                "/bin/zsh", "-c",
-                                                cmds,
-                                            ], verbose=True)
+                                                cmd_func = submitit.helpers.CommandFunction([
+                                                    "/bin/zsh", "-c",
+                                                    cmds,
+                                                ], verbose=True)
 
-                                            executor.submit(cmd_func)
+                                                executor.submit(cmd_func)
 
 
 if __name__ == "__main__":

@@ -35,6 +35,7 @@ flags.DEFINE_integer('restore_epoch', None, 'Restore epoch.')
 
 flags.DEFINE_integer('pretraining_steps', 1_000_000, 'Number of offline steps.')
 flags.DEFINE_integer('finetuning_steps', 500_000, 'Number of online steps.')
+flags.DEFINE_integer('finetuning_size', 500_000, 'Size of the dataset for finetuning.')
 flags.DEFINE_integer('log_interval', 5_000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 50_000, 'Evaluation interval.')
 flags.DEFINE_integer('save_interval', 1_500_000, 'Saving interval.')
@@ -71,7 +72,7 @@ def main(_):
     _, _, pretraining_train_dataset, pretraining_val_dataset = make_env_and_datasets(
         FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=10_000_000, reward_free=True)
     _, eval_env, finetuning_train_dataset, finetuning_val_dataset = make_env_and_datasets(
-        FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=500_000, reward_free=False)
+        FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=FLAGS.finetuning_size, reward_free=False)
     if FLAGS.video_episodes > 0:
         assert 'singletask' in FLAGS.env_name, 'Rendering is currently only supported for OGBench environments.'
 
