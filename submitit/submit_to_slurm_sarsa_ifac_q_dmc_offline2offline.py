@@ -65,13 +65,13 @@ def main():
             # "walker_flip",
             "quadruped_jump",
         ]:
-            for obs_norm_type in ['normal']:
-                for lr in [3e-4]:
-                    for tau in [1.0]:
-                        for alpha in [30.0, 3.0, 0.3]:
+            for obs_norm_type in ['none']:
+                for tau in [1.0]:
+                    for alpha in [30.0, 3.0]:
+                        for finetuning_size in [5_000, 10_000, 50_000, 100_000, 500_000]:
                             for num_flow_goals in [16]:
-                                for actor_freq in [2, 4]:
-                                    for expectile in [0.55, 0.65, 0.75, 0.85, 0.95]:
+                                for actor_freq in [2]:
+                                    for expectile in [0.65, 0.75, 0.85]:
                                         for q_agg in ['mean']:
                                             for normalize_q_loss in [False]:
                                                 for critic_fm_loss_type in ['sarsa_squared']:
@@ -79,7 +79,7 @@ def main():
                                                         for clip_flow_goals in [False]:
                                                             for use_terminal_masks in [False]:
                                                                 for seed in [10]:
-                                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_clip_fg={clip_flow_goals}_use_mask={use_terminal_masks}"
+                                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_offline2offline_{env_name}_obs_norm={obs_norm_type}_tau={tau}_alpha={alpha}_ft_size={finetuning_size}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_clip_fg={clip_flow_goals}_use_mask={use_terminal_masks}"
                                                                     log_dir = os.path.expanduser(
                                                                         f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifac_q_offline2offline/{exp_name}/{seed}")
 
@@ -121,12 +121,13 @@ def main():
                                                                             --env_name={env_name} \
                                                                             --obs_norm_type={obs_norm_type} \
                                                                             --eval_episodes=50 \
+                                                                            --finetuning_size={finetuning_size} \
                                                                             --agent=impls/agents/sarsa_ifac_q.py \
                                                                             --agent.batch_size=256 \
                                                                             --agent.actor_hidden_dims="(512,512,512,512)" \
                                                                             --agent.value_hidden_dims="(512,512,512,512)" \
                                                                             --agent.reward_hidden_dims="(512,512,512,512)" \
-                                                                            --agent.lr={lr} \
+                                                                            --agent.lr=3e-4 \
                                                                             --agent.tau={tau} \
                                                                             --agent.network_type=mlp \
                                                                             --agent.num_residual_blocks=1 \
