@@ -59,22 +59,22 @@ def main():
             # "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
-            # "cheetah_run",
-            # "walker_walk",
+            "cheetah_run",
+            "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
-            "quadruped_jump",
-            "jaco_reach_top_left",
+            # "quadruped_jump",
+            # "jaco_reach_top_left",
         ]:
-            for obs_norm_type in ['normal']:
+            for obs_norm_type in ['normal', 'none']:
                 for lr in [3e-4]:
-                    for tau in [0.005]:
-                        for alpha in [0.3, 0.1, 0.03, 0.01]:
+                    for tau in [1.0]:
+                        for alpha in [0.3, 0.03, 0.003, 0.0003]:
                             for num_flow_goals in [16]:
                                 for actor_freq in [2, 4]:
                                     for expectile in [0.65, 0.75, 0.8, 0.85]:
                                         for q_agg in ['mean']:
-                                            for normalize_q_loss in [False]:
+                                            for normalize_q_loss in [True, False]:
                                                 for critic_fm_loss_type in ['sarsa_squared', 'sarsa_squared_stepwise']:
                                                     for reward_type in ['state_action']:
                                                         for clip_flow_goals in [False]:
