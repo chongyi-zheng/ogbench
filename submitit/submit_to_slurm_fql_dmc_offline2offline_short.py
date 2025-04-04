@@ -56,7 +56,7 @@ def main():
             "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
-            for obs_norm_type in ['none']:
+            for obs_norm_type in ['normal']:
                 for alpha in [10.0, 1.0, 0.1]:
                     for finetuning_size in [500_000]:
                         for finetuning_steps in [250_000]:
@@ -64,7 +64,7 @@ def main():
                                 for num_flow_steps in [10]:
                                     for distill_type in ["fwd_sample"]:
                                         for q_agg in ['mean']:
-                                            for actor_freq in [1, 2, 4]:
+                                            for actor_freq in [4]:
                                                 for normalize_q_loss in [False]:
                                                     for seed in [10]:
                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_actor_freq={actor_freq}_normalize_q={normalize_q_loss}"
