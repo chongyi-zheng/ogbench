@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -59,23 +59,23 @@ def main():
             # "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
-            "cheetah_run",
-            "walker_walk",
+            # "cheetah_run",
+            # "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
-            # "quadruped_jump",
+            "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
-            for obs_norm_type in ['normal', 'none']:
+            for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
-                    for tau in [1.0]:
-                        for alpha in [0.3, 0.03, 0.003, 0.0003]:
+                    for tau in [0.005]:  # 1.0 doesn't work better than 0.005
+                        for alpha in [3.0, 1.0, 0.3, 0.1, 0.03, 0.01]:
                             for num_flow_goals in [16]:
-                                for actor_freq in [2, 4]:
+                                for actor_freq in [4]:
                                     for expectile in [0.65, 0.75, 0.8, 0.85]:
                                         for q_agg in ['mean']:
                                             for normalize_q_loss in [True, False]:
-                                                for critic_fm_loss_type in ['sarsa_squared', 'sarsa_squared_stepwise']:
+                                                for critic_fm_loss_type in ['sarsa_squared']:
                                                     for reward_type in ['state_action']:
                                                         for clip_flow_goals in [False]:
                                                             for use_terminal_masks in [False]:
