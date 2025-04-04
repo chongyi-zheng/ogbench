@@ -10,7 +10,7 @@ from dm_env import Environment
 from dm_env import StepType, specs
 import numpy as np
 
-
+from dm_control.rl.control import PhysicsError
 from dm_control import suite  # , manipulation
 from dm_control.suite.wrappers import action_scale, pixels
 
@@ -73,7 +73,11 @@ class EnvWrapper:
         return self._augment_time_step(time_step)
 
     def step(self, action: np.ndarray) -> TimeStep:
-        time_step = self._env.step(action)
+        try:
+            time_step = self._env.step(action)
+        except PhysicsError:
+            return self.reset()
+
         return self._augment_time_step(time_step, action)
 
     def observation_spec(self) -> tp.Any:
