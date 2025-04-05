@@ -69,13 +69,13 @@ def main():
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [30.0, 3.0, 0.3, 0.03]:
-                            for num_flow_goals in [16, 32]:
-                                for actor_freq in [4]:
+                        for alpha in [30.0, 3.0, 0.3]:
+                            for num_flow_goals in [16]:
+                                for actor_freq in [1, 4]:
                                     for expectile in [0.65, 0.75, 0.8, 0.85]:
                                         for q_agg in ['mean', 'min']:
                                             for normalize_q_loss in [False]:
-                                                for critic_fm_loss_type in ['sarsa_squared']:
+                                                for critic_fm_loss_type in ['sarsa_squared', 'sarsa_squared_stepwise']:
                                                     for reward_type in ['state_action']:
                                                         for clip_flow_goals in [False]:
                                                             for use_terminal_masks in [False]:
