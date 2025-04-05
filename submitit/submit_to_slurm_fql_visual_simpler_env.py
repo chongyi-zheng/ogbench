@@ -50,9 +50,9 @@ def main():
             for obs_norm_type in ['none']:
                 for alpha in [1000, 300, 100, 30]:
                     for distill_type in ['fwd_sample']:
-                        for q_agg in ['min']:
-                            for normalize_q_loss in [True, False]:
-                                for encoder in ['impala_small']:
+                        for q_agg in ['mean', 'min']:
+                            for normalize_q_loss in [False]:
+                                for encoder in ['impala_large', 'resnet_34']:
                                     for seed in [20]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_distill_type={distill_type}_q_agg={q_agg}_normalize_q_loss={normalize_q_loss}_encoder={encoder}"
                                         log_dir = os.path.expanduser(
