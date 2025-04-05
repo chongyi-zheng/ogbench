@@ -51,31 +51,31 @@ def main():
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
-            # "cube-single-play-singletask-task2-v0",
-            # "cube-double-play-singletask-task2-v0",
+            "cube-single-play-singletask-task2-v0",
+            "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
             # "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
-            "cheetah_run",
-            "walker_walk",
-            "cheetah_run_backward",
-            "walker_flip",
-            "quadruped_jump",
-            "jaco_reach_top_left",
+            # "cheetah_run",
+            # "walker_walk",
+            # "cheetah_run_backward",
+            # "walker_flip",
+            # "quadruped_jump",
+            # "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [3.0, 0.3, 0.03]:
-                            for num_flow_goals in [16]:
-                                for actor_freq in [1, 2, 4]:
+                        for alpha in [30.0, 3.0, 0.3, 0.03]:
+                            for num_flow_goals in [16, 32]:
+                                for actor_freq in [4]:
                                     for expectile in [0.65, 0.75, 0.8, 0.85]:
                                         for q_agg in ['mean', 'min']:
                                             for normalize_q_loss in [False]:
-                                                for critic_fm_loss_type in ['sarsa_squared_stepwise']:
+                                                for critic_fm_loss_type in ['sarsa_squared']:
                                                     for reward_type in ['state_action']:
                                                         for clip_flow_goals in [False]:
                                                             for use_terminal_masks in [False]:
