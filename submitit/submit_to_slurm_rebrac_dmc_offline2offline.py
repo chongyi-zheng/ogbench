@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=30,
+        slurm_array_parallelism=25,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -49,19 +49,19 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            # "cheetah_run",
-            "walker_walk",
-            "cheetah_run_backward",
-            "walker_flip",
-            "quadruped_jump",
-            "jaco_reach_top_left",
+            "cheetah_run",
+            # "walker_walk",
+            # "cheetah_run_backward",
+            # "walker_flip",
+            # "quadruped_jump",
+            # "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
                 for alpha_actor in [10.0, 1.0, 0.1]:
                     for alpha_critic in [10.0, 1.0, 0.1]:
                         for actor_freq in [4]:
                             for seed in [10]:
-                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_actor_freq={actor_freq}"
+                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_actor_freq={actor_freq}"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/ogbench_logs/rebrac_offline2offline/{exp_name}/{seed}")
 
