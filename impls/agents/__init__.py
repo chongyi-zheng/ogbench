@@ -3,24 +3,26 @@ from agents.crl_infonce import CRLInfoNCEAgent
 from agents.fac import FACAgent
 from agents.fmrl import FMRLAgent
 from agents.fql import FQLAgent
+from agents.gcbc import GCBCAgent
 from agents.gcfac import GCFlowActorCriticAgent
 from agents.gcfmrl import GCFMRLAgent
-from agents.gcbc import GCBCAgent
 from agents.gciql import GCIQLAgent
-from agents.gcsarsaql import GCSARSAQLAgent
-from agents.gcmciql import GCMCIQLAgent
 from agents.gcivl import GCIVLAgent
+from agents.gcmciql import GCMCIQLAgent
+from agents.gcsarsaql import GCSARSAQLAgent
+from agents.gctd_fmrl import GCTDFMRLAgent
 from agents.hiql import HIQLAgent
-from agents.mcfac import MCFACAgent
 from agents.ifac import IFACAgent
+from agents.iql import IQLAgent
+from agents.mcfac import MCFACAgent
 from agents.qrl import QRLAgent
+from agents.rebrac import ReBRACAgent
 from agents.rg_fmrl import RewardGuidedFMRLAgent
 from agents.sac import SACAgent
 from agents.sarsa_ifac import SARSAIFACAgent
 from agents.sarsa_ifac_q import SARSAIFACQAgent
 from agents.sarsa_ifql import SARSAIFQLAgent
 from agents.td_fmrl import TDFMRLAgent
-from agents.gctd_fmrl import GCTDFMRLAgent
 from agents.td_infonce import TDInfoNCEAgent
 
 agents = dict(
@@ -39,7 +41,9 @@ agents = dict(
     hiql=HIQLAgent,
     mcfac=MCFACAgent,
     ifac=IFACAgent,
+    iql=IQLAgent,
     qrl=QRLAgent,
+    rebrac=ReBRACAgent,
     rg_fmrl=RewardGuidedFMRLAgent,
     sac=SACAgent,
     sarsa_ifac=SARSAIFACAgent,

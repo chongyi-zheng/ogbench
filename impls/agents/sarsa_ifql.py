@@ -539,7 +539,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
         for k, v in bc_info.items():
             info[f'bc/{k}'] = v
 
-        loss = flow_matching_loss
+        loss = flow_matching_loss + bc_loss
         return loss, info
 
     @partial(jax.jit, static_argnames=('full_update',))
