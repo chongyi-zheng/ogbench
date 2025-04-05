@@ -407,6 +407,22 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
 
         return flow_matching_loss, info
 
+    def behavioral_cloning_loss(self, batch, grad_params):
+        """Compute the behavioral cloning loss for pretraining."""
+        observations = batch['observations']
+        actions = batch['actions']
+
+        dist = self.network.select('actor')(observations, params=grad_params)
+        log_prob = dist.log_prob(actions)
+        bc_loss = -log_prob.mean()
+
+        return bc_loss, {
+            'bc_loss': bc_loss,
+            'bc_log_prob': log_prob.mean(),
+            'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+            'std': jnp.mean(dist.scale_diag),
+        }
+
     def actor_loss(self, batch, grad_params, rng):
         """Compute the DDPG + BC actor loss."""
 
@@ -518,6 +534,10 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             batch, grad_params, flow_matching_rng)
         for k, v in flow_matching_info.items():
             info[f'flow_matching/{k}'] = v
+
+        bc_loss, bc_info = self.behavioral_cloning_loss(batch, grad_params)
+        for k, v in bc_info.items():
+            info[f'bc/{k}'] = v
 
         loss = flow_matching_loss
         return loss, info

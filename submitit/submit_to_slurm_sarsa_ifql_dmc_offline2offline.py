@@ -60,27 +60,27 @@ def main():
             # "cheetah_run_backward",
             # "walker_flip",
             # "cheetah_run",
-            # "walker_walk",
-            # "cheetah_run_backward",
-            # "walker_flip",
-            # "quadruped_jump",
+            "walker_walk",
+            "cheetah_run_backward",
+            "walker_flip",
+            "quadruped_jump",
             "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [3.0, 1.0, 0.3, 0.1, 0.03, 0.01]:
+                        for alpha in [3.0, 0.3, 0.03]:
                             for num_flow_goals in [16]:
-                                for actor_freq in [4]:
+                                for actor_freq in [2, 4]:
                                     for expectile in [0.65, 0.75, 0.8, 0.85]:
                                         for q_agg in ['mean']:
-                                            for normalize_q_loss in [True, False]:
+                                            for normalize_q_loss in [False]:
                                                 for critic_fm_loss_type in ['sarsa_squared']:
                                                     for reward_type in ['state_action']:
                                                         for clip_flow_goals in [False]:
                                                             for use_terminal_masks in [False]:
                                                                 for seed in [10]:
-                                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_clip_fg={clip_flow_goals}_use_mask={use_terminal_masks}"
+                                                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_clip_fg={clip_flow_goals}_use_mask={use_terminal_masks}_bc_pretrain"
                                                                     log_dir = os.path.expanduser(
                                                                         f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
 
