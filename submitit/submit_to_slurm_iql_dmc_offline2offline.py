@@ -49,12 +49,12 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            # "cheetah_run",
-            "walker_walk",
-            "cheetah_run_backward",
-            "walker_flip",
-            "quadruped_jump",
-            "jaco_reach_top_left",
+            "cheetah_run",
+            # "walker_walk",
+            # "cheetah_run_backward",
+            # "walker_flip",
+            # "quadruped_jump",
+            # "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
                 for alpha in [100.0, 10.0, 1.0, 0.1]:
