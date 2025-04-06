@@ -70,11 +70,11 @@ def main():
                 for alpha in [3.0, 0.3]:
                     for finetuning_size in [500_000]:
                         for finetuning_steps in [250_000]:
-                            for eval_interval in [1_000]:
+                            for eval_interval in [2_000]:
                                 for num_flow_goals in [16]:
                                     for actor_freq in [4]:
                                         for expectile in [0.7, 0.75, 0.8]:
-                                            for q_agg in ['mean']:
+                                            for q_agg in ['mean', 'min']:
                                                 for critic_fm_loss_type in ['sarsa_squared']:
                                                     for reward_type in ['state_action']:
                                                         for seed in [10]:

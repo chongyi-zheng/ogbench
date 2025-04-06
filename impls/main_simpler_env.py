@@ -74,7 +74,9 @@ def main(_):
     np.random.seed(FLAGS.seed)
 
     # Set up datasets.
+    train_dataset = train_dataset.shuffle(4 * config['batch_size'])
     train_dataset_iter = train_dataset.batch(config['batch_size']).as_numpy_iterator()
+    val_dataset = val_dataset.shuffle(4 * config['batch_size'])
     val_dataset_iter = val_dataset.batch(config['batch_size']).as_numpy_iterator()
 
     assert config['agent_name'] not in ['mcfac']
