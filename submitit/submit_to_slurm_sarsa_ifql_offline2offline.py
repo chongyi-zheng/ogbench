@@ -69,13 +69,13 @@ def main():
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [30.0, 3.0, 0.3]:
+                        for alpha in [300.0, 100.0, 10.0]:
                             for num_flow_goals in [16]:
-                                for actor_freq in [1, 4]:
-                                    for expectile in [0.65, 0.75, 0.8, 0.85]:
+                                for actor_freq in [2, 4]:
+                                    for expectile in [0.8, 0.85, 0.9, 0.99]:
                                         for q_agg in ['mean', 'min']:
                                             for normalize_q_loss in [False]:
-                                                for critic_fm_loss_type in ['sarsa_squared', 'sarsa_squared_stepwise']:
+                                                for critic_fm_loss_type in ['sarsa_squared']:
                                                     for reward_type in ['state_action']:
                                                         for seed in [10]:
                                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_bc_pretrain"
