@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=30,
+        slurm_array_parallelism=10,
     )
 
     with executor.batch():  # job array
@@ -71,7 +71,7 @@ def main():
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
                         for alpha in [30.0]:
                             for num_flow_goals in [16]:
-                                for actor_freq in [2, 4]:
+                                for actor_freq in [4]:
                                     for expectile in [0.75, 0.8, 0.85, 0.9, 0.99]:
                                         for q_agg in ['mean', 'min']:
                                             for clip_flow_goals in [True]:
