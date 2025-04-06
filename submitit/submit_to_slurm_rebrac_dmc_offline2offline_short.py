@@ -37,7 +37,7 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="8G",
+        slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=25,
@@ -49,21 +49,21 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            "cheetah_run",
+            # "cheetah_run",
             # "walker_walk",
-            "cheetah_run_backward",
+            # "cheetah_run_backward",
             # "walker_flip",
             "quadruped_jump",
-            "jaco_reach_top_left",
+            # "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha_actor in [10.0, 1.0, 0.1]:
-                    for alpha_critic in [10.0, 1.0, 0.1]:
+                for alpha_actor in [1.0]:
+                    for alpha_critic in [1.0]:
                         for finetuning_size in [500_000]:
                             for finetuning_steps in [250_000]:
                                 for eval_interval in [2_000]:
                                     for actor_freq in [4]:
-                                        for seed in [10]:
+                                        for seed in [10, 20]:
                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_actor_freq={actor_freq}"
                                             log_dir = os.path.expanduser(
                                                 f"{log_root_dir}/exp_logs/ogbench_logs/rebrac_offline2offline/{exp_name}/{seed}")

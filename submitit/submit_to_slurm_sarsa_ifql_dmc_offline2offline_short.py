@@ -59,25 +59,25 @@ def main():
             # "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
-            "cheetah_run",
+            # "cheetah_run",
             # "walker_walk",
-            "cheetah_run_backward",
+            # "cheetah_run_backward",
             # "walker_flip",
-            "quadruped_jump",
+            # "quadruped_jump",
             "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [3.0, 0.3]:
+                for alpha in [0.03]:
                     for finetuning_size in [500_000]:
                         for finetuning_steps in [250_000]:
                             for eval_interval in [2_000]:
                                 for num_flow_goals in [16]:
                                     for actor_freq in [4]:
-                                        for expectile in [0.7, 0.75, 0.8]:
-                                            for q_agg in ['mean', 'min']:
+                                        for expectile in [0.8]:
+                                            for q_agg in ['mean']:
                                                 for critic_fm_loss_type in ['sarsa_squared']:
                                                     for reward_type in ['state_action']:
-                                                        for seed in [10]:
+                                                        for seed in [10, 20]:
                                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_bc_pretrain"
                                                             log_dir = os.path.expanduser(
                                                                 f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
