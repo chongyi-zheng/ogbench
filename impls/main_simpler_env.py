@@ -5,8 +5,6 @@ import json
 import random
 import time
 
-import jax
-import jax.numpy as jnp
 import numpy as np
 import tqdm
 import wandb
@@ -69,19 +67,14 @@ def main(_):
     # Make environment and datasets.
     config = FLAGS.agent
     _, eval_env, train_dataset, val_dataset = make_env_and_datasets(
-        FLAGS.env_name, frame_stack=FLAGS.frame_stack)
+        FLAGS.env_name, frame_stack=FLAGS.frame_stack, action_clip_eps=None)
 
     # Initialize agent.
     random.seed(FLAGS.seed)
     np.random.seed(FLAGS.seed)
 
     # Set up datasets.
-    train_dataset = train_dataset.shuffle(config['batch_size'] * 4)  # set shuffle buffer size
-    train_dataset = train_dataset.repeat()  # ensure that data never runs out
     train_dataset_iter = train_dataset.batch(config['batch_size']).as_numpy_iterator()
-
-    val_dataset = val_dataset.shuffle(config['batch_size'] * 4)
-    val_dataset = val_dataset.repeat()
     val_dataset_iter = val_dataset.batch(config['batch_size']).as_numpy_iterator()
 
     assert config['agent_name'] not in ['mcfac']

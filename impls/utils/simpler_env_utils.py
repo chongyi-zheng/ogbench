@@ -426,6 +426,16 @@ def rescale_action_with_bound(
     )
 
 
+def pad_initial_zero_episode(episode: tf.data.Dataset, num_zero_step: int) -> tf.data.Dataset:
+    zero_steps = episode[rlds.STEPS].take(1)
+    zero_steps = zero_steps.map(lambda x: tf.nest.map_structure(tf.zeros_like, x),
+                                num_parallel_calls=tf.data.AUTOTUNE)
+    zero_steps = zero_steps.repeat(num_zero_step)
+
+    episode[rlds.STEPS] = rlds.transformations.concatenate(zero_steps, episode[rlds.STEPS])
+    return episode
+
+
 def base_step_map_fn(step: rlds.Step, map_action: StepFnMapType,
                      width: int = 64, height: int = 64):
     transformed_step = {}
@@ -438,9 +448,13 @@ def base_step_map_fn(step: rlds.Step, map_action: StepFnMapType,
     transformed_step[rlds.IS_TERMINAL] = tf.cast(
         step[rlds.IS_TERMINAL], tf.bool)
 
+    # transformed_step[rlds.OBSERVATION] = tf.cast(
+    #     tf.image.resize_with_pad(step[rlds.OBSERVATION]['image'],
+    #                              target_width=width, target_height=height),
+    #     tf.uint8
+    # )
     transformed_step[rlds.OBSERVATION] = tf.cast(
-        tf.image.resize_with_pad(step[rlds.OBSERVATION]['image'],
-                                 target_width=width, target_height=height),
+        tf.image.resize(step[rlds.OBSERVATION]['image'], (width, height)),
         tf.uint8
     )
     transformed_step[rlds.ACTION] = {
@@ -452,18 +466,22 @@ def base_step_map_fn(step: rlds.Step, map_action: StepFnMapType,
     map_action(transformed_step, step)
 
     transformed_step[rlds.ACTION] = tf.cast(tf.concat([
-        v for v in transformed_step[rlds.ACTION].values()
+        transformed_step[rlds.ACTION][k] for k in ['world_vector', 'rotation_delta', 'gripper_closedness_action']
     ], axis=-1), tf.float32)
 
     return transformed_step
 
 
 def google_robot_map_action(to_step: rlds.Step, from_step: rlds.Step):
+    # (chongyiz): remember to put all keys from the 'from_step' into 'to_step'.
+    to_step[rlds.ACTION]['world_vector'] = from_step[rlds.ACTION]['world_vector']
     to_step[rlds.ACTION]['rotation_delta'] = rescale_action_with_bound(
         from_step[rlds.ACTION]['rotation_delta'],
         low=-np.pi / 2, high=np.pi / 2,
         post_scaling_max=1.0, post_scaling_min=-1.0,
     )
+    # to_step[rlds.ACTION]['rotation_delta'] = from_step[rlds.ACTION]['rotation_delta']
+    to_step[rlds.ACTION]['gripper_closedness_action'] = from_step[rlds.ACTION]['gripper_closedness_action']
 
 
 def bridge_map_action(to_step: rlds.Step, from_step: rlds.Step):
@@ -644,8 +662,21 @@ def make_env_and_datasets(
     ds_builder = tfds.builder_from_directory(builder_dir=dataset_dir)
     # 78491 / 8721 episodes for google_robot dataset
     # 47873 / 5319 episodes for bridge_v2 dataset
+    # TODO (chongyiz): bridge_v2 already contains 'train' and 'test' splits.
     train_ds, val_ds = ds_builder.as_dataset(
         split=['train[:90%]', 'train[90%:]'])
+
+    # We need pad_initial_zero_episode because reverb.PatternDataset will skip
+    # constructing trajectories where the first trajectory_length - 1 steps are
+    # the final step in a trajectory. As such, without padding, the policies will
+    # not be trained to predict the actions in the first trajectory_length - 1
+    # steps.
+    # We are padding with num_zero_step = trajectory_length - 1 steps.
+    frame_stack = frame_stack or 1
+    trajectory_length = frame_stack + 1
+    train_ds = train_ds.map(
+        functools.partial(pad_initial_zero_episode, num_zero_step=trajectory_length - 1),
+        num_parallel_calls=tf.data.AUTOTUNE)
 
     # The RLDSSpec for the dataset.
     rlds_spec = RLDSSpec(
@@ -663,112 +694,23 @@ def make_env_and_datasets(
     else:
         raise NotImplementedError()
 
-    # The following will create a trajectories of length 2.
-    frame_stack = frame_stack or 1
+    # The following will create a trajectories of length 'trajectory_length'.
     stacked_step_map_fn = functools.partial(
         base_stacked_step_map_fn, frame_stack=frame_stack)
     trajectory_transform = TrajectoryTransformBuilder(
         rlds_spec, step_map_fn=step_map_fn,
-        pattern_fn=n_step_pattern_builder(frame_stack + 1)).build(
+        pattern_fn=n_step_pattern_builder(trajectory_length)).build(
         validate_expected_tensor_spec=False)
 
     train_dataset = trajectory_transform.transform_episodic_rlds_dataset(
         train_ds)
     train_dataset = train_dataset.map(
         stacked_step_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    # train_dataset = tfds.as_numpy(train_dataset)
+    train_dataset = train_dataset.repeat()  # ensure that data never runs out
     val_dataset = trajectory_transform.transform_episodic_rlds_dataset(
         val_ds)
     val_dataset = val_dataset.map(
         stacked_step_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    # val_dataset = tfds.as_numpy(val_dataset)
-
-    # train_ds = train_ds.batch(len(train_ds))
-    # train_ds = train_ds.unbatch()
-
-    # def episode_map_fn(traj):
-    #     episode = traj['steps']
-    #
-    #     return {
-    #         'observation': tf.cast(
-    #             tf.image.resize(episode['observation']['image'], (64, 64)),
-    #             tf.uint8
-    #         ),
-    #         'action': tf.cast(tf.concat([
-    #             episode['action']['world_vector'],
-    #             episode['action']['rotation_delta'],
-    #             episode['action']['gripper_closedness_action'],
-    #         ], axis=-1), tf.float32),
-    #         'reward': tf.cast(episode['reward'], tf.float32),
-    #         'terminal': tf.cast(episode['is_last'], tf.bool),
-    #         'mask': tf.cast(1.0 - episode['reward'], tf.bool),
-    #     }
-    #
-    # # train_ds = train_ds.map(
-    # #     episode_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    # #
-    # # train_ds_iter = iter(tfds.as_numpy(train_ds))
-    # # elems = defaultdict(list)
-    # # for episode in tqdm.tqdm(train_ds_iter):
-    # #     for k, v in episode.items():
-    # #         elems[k].append(v)
-    # #
-    # # for k, v in elems.items():
-    # #     elems[k] = np.array(v)
-    # #
-    # # print()
-    #
-    # def step_map_fn(step):
-    #     return {
-    #         'observation': tf.cast(
-    #             tf.image.resize(step['observation']['image'], (64, 64)),
-    #             tf.uint8
-    #         ),
-    #         'action': tf.cast(tf.concat([
-    #             step['action']['world_vector'],
-    #             step['action']['rotation_delta'],
-    #             step['action']['gripper_closedness_action'],
-    #         ], axis=-1), tf.float32),
-    #         'reward': tf.cast(step['reward'], tf.float32),
-    #         'terminal': tf.cast(step['is_last'], tf.bool),
-    #         'mask': tf.cast(1.0 - step['reward'], tf.bool),
-    #     }
-    #
-    # # convert RLDS episode dataset to individual steps & reformat
-    # train_ds = train_ds.map(
-    #     lambda episode: episode['steps'],
-    #     num_parallel_calls=tf.data.AUTOTUNE
-    # ).flat_map(lambda x: x)
-    # train_ds = train_ds.map(step_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    #
-    # # shuffle, repeat, pre-fetch, batch
-    # # train_ds = train_ds.cache()  # optionally keep full dataset in memory
-    # # train_ds = train_ds.shuffle(1024)  # set shuffle buffer size
-    # # train_ds = train_ds.repeat()  # ensure that data never runs out
-    # train_ds = train_ds.batch(1024)
-    #
-    # train_ds_iter = iter(tfds.as_numpy(train_ds))
-    # elems = defaultdict(list)
-    # for elem in tqdm.tqdm(train_ds_iter):
-    #     for k, v in elem.items():
-    #         elems[k].append(v)
-    #
-    # for k, v in elems.items():
-    #     elems[k] = np.concatenate(v, axis=0)
-
-    # print()
-
-    # train_ds = train_ds.prefetch(3).batch(256).as_numpy_iterator()
-
-    # train_dataset = load_dataset(
-    #     train_dataset_path,
-    #     ob_dtype=ob_dtype,
-    #     action_dtype=action_dtype,
-    # )
-    # val_dataset = load_dataset(
-    #     val_dataset_path,
-    #     ob_dtype=ob_dtype,
-    #     action_dtype=action_dtype,
-    # )
+    val_dataset = val_dataset.repeat()
 
     return env, train_dataset, val_dataset
