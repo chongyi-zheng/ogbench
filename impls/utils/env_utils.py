@@ -330,6 +330,17 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
             env_name, frame_stack=frame_stack, env_only=True)
         env = EpisodeMonitor(env)
         eval_env = EpisodeMonitor(eval_env)
+    elif 'widowx' in env_name:
+        from utils import simpler_env_utils
+        _, train_dataset, val_dataset = simpler_env_utils.make_env_and_datasets(
+            env_name, frame_stack=frame_stack)
+
+        env = simpler_env_utils.make_env_and_datasets(
+            env_name, frame_stack=frame_stack, env_only=True)
+        eval_env = simpler_env_utils.make_env_and_datasets(
+            env_name, frame_stack=frame_stack, env_only=True)
+        env = EpisodeMonitor(env)
+        eval_env = EpisodeMonitor(eval_env)
     else:
         env, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)
         eval_env = ogbench.make_env_and_datasets(env_name, env_only=True)
@@ -353,7 +364,7 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
                 val_dataset = val_dataset.copy(
                     add_or_replace=dict(actions=np.clip(val_dataset['actions'], -1 + action_clip_eps, 1 - action_clip_eps))
                 )
-        elif isinstance(val_dataset, tf.data.Dataset):
+        elif isinstance(train_dataset, tf.data.Dataset):
             def action_clipping_map_fn(step):
                 step['actions'] = tf.clip_by_value(
                     step['actions'], -1 + action_clip_eps, 1 - action_clip_eps)

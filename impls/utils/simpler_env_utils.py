@@ -1,24 +1,29 @@
 import abc
 import dataclasses
+import functools
 import os
-from typing import Any, Union
-from typing import Dict, Optional
+from typing import Any, Union, Dict, Optional, Callable
 
-import gymnasium
 import cv2 as cv
+import gymnasium
+import numpy as np
 import reverb
+import rlds
 import simpler_env
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import tree
 from rlds import rlds_types
 from rlds import transformations
+from transforms3d.euler import euler2axangle
 
-DEFAULT_DATASET_DIR = '~/tensorflow_datasets/fractal20220817_data/0.1.0'
+StepFnMapType = Callable[[rlds_types.Step, rlds_types.Step], None]
+
+DEFAULT_DATASET_DIR = '~/tensorflow_datasets/dataset_dir_name/0.1.0'
 
 """
 The following dataset construction code is adapted from: 
-    https://colab.research.google.com/github/google-deepmind/open_x_embodiment/blob/main/colabs/Open_X_Embodiment_Datasets.ipynb
+    https://github.com/google-deepmind/open_x_embodiment/blob/main/colabs/Minimal_Training_Example.ipynb
 """
 
 
@@ -397,41 +402,218 @@ def n_step_pattern_builder(n: int) -> Any:
     return transform_fn
 
 
+def rescale_action_with_bound(
+        actions: np.ndarray | tf.Tensor,
+        low: float,
+        high: float,
+        safety_margin: float = 0,
+        post_scaling_max: float = 1.0,
+        post_scaling_min: float = -1.0,
+) -> np.ndarray | tf.Tensor:
+    """Formula taken from https://stats.stackexchange.com/questions/281162/scale-a-number-between-a-range."""
+    if isinstance(actions, tf.Tensor):
+        clip_by_value = tf.clip_by_value
+    else:
+        clip_by_value = np.clip
+
+    resc_actions = (actions - low) / (high - low) * (
+            post_scaling_max - post_scaling_min
+    ) + post_scaling_min
+    return clip_by_value(
+        resc_actions,
+        post_scaling_min + safety_margin,
+        post_scaling_max - safety_margin,
+    )
+
+
+def base_step_map_fn(step: rlds.Step, map_action: StepFnMapType,
+                     width: int = 64, height: int = 64):
+    transformed_step = {}
+    transformed_step[rlds.REWARD] = tf.cast(
+        step[rlds.REWARD], tf.float32)
+    transformed_step[rlds.IS_FIRST] = tf.cast(
+        step[rlds.IS_FIRST], tf.bool)
+    transformed_step[rlds.IS_LAST] = tf.cast(
+        step[rlds.IS_LAST], tf.bool)
+    transformed_step[rlds.IS_TERMINAL] = tf.cast(
+        step[rlds.IS_TERMINAL], tf.bool)
+
+    transformed_step[rlds.OBSERVATION] = tf.cast(
+        tf.image.resize_with_pad(step[rlds.OBSERVATION]['image'],
+                                 target_width=width, target_height=height),
+        tf.uint8
+    )
+    transformed_step[rlds.ACTION] = {
+        'world_vector': tf.zeros(3, dtype=tf.float32),
+        'rotation_delta': tf.zeros(3, dtype=tf.float32),
+        'gripper_closedness_action': tf.zeros(1, dtype=tf.float32),
+    }
+
+    map_action(transformed_step, step)
+
+    transformed_step[rlds.ACTION] = tf.cast(tf.concat([
+        v for v in transformed_step[rlds.ACTION].values()
+    ], axis=-1), tf.float32)
+
+    return transformed_step
+
+
+def google_robot_map_action(to_step: rlds.Step, from_step: rlds.Step):
+    to_step[rlds.ACTION]['rotation_delta'] = rescale_action_with_bound(
+        from_step[rlds.ACTION]['rotation_delta'],
+        low=-np.pi / 2, high=np.pi / 2,
+        post_scaling_max=1.0, post_scaling_min=-1.0,
+    )
+
+
+def bridge_map_action(to_step: rlds.Step, from_step: rlds.Step):
+    to_step[rlds.ACTION]['world_vector'] = rescale_action_with_bound(
+        from_step[rlds.ACTION]['world_vector'],
+        low=-0.05, high=0.05,
+        safety_margin=0.01,
+        post_scaling_max=1.0, post_scaling_min=-1.0,
+    )
+    to_step[rlds.ACTION]['rotation_delta'] = rescale_action_with_bound(
+        from_step[rlds.ACTION]['rotation_delta'],
+        low=-0.25, high=0.25,
+        safety_margin=0.01,
+        post_scaling_max=1.0, post_scaling_min=-1.0,
+    )
+
+    open_gripper = from_step[rlds.ACTION]['open_gripper']
+    possible_values = tf.constant([True, False], dtype=tf.bool)
+    eq = tf.equal(possible_values, open_gripper)
+    assert_op = tf.Assert(tf.reduce_any(eq), [open_gripper])
+
+    with tf.control_dependencies([assert_op]):
+        to_step[rlds.ACTION]['gripper_closedness_action'] = tf.cond(
+            # for open_gripper in bridge dataset,
+            # 0 is fully closed and 1 is fully open
+            open_gripper,
+            # for Fractal data,
+            # gripper_closedness_action = -1 means opening the gripper and
+            # gripper_closedness_action = 1 means closing the gripper.
+            lambda: tf.constant([-1.0], dtype=tf.float32),
+            lambda: tf.constant([1.0], dtype=tf.float32),
+        )
+    # to_step[rlds.ACTION]['gripper_closedness_action'] = tf.cond(
+    #     # for open_gripper in bridge dataset,
+    #     # 0 is fully closed and 1 is fully open
+    #     from_step[rlds.ACTION]['open_gripper'],
+    #     # for Fractal data,
+    #     # gripper_closedness_action = -1 means opening the gripper and
+    #     # gripper_closedness_action = 1 means closing the gripper.
+    #     lambda: tf.constant([-1.0], dtype=tf.float32),
+    #     lambda: tf.constant([1.0], dtype=tf.float32),
+    # )
+
+
+def base_stacked_step_map_fn(step: rlds.Step, frame_stack: int = 1):
+    return {
+        'observations': tf.concat([
+            step['observation'][idx] for idx in range(frame_stack)
+        ], axis=-1),
+        'next_observations': tf.concat([
+            step['observation'][idx] for idx in range(1, frame_stack + 1)
+        ], axis=-1),
+        'actions': step['action'][frame_stack - 1],
+        'next_actions': step['action'][frame_stack],
+        'rewards': step['reward'][frame_stack - 1],
+        'terminals': tf.cast(step['is_last'][frame_stack - 1], tf.float32),
+        'masks': 1.0 - step['reward'][frame_stack - 1],
+    }
+
+
 class SimplerEnvWrapper(gymnasium.Wrapper):
     """Environment wrapper for simpler environments."""
 
     def __init__(self, env, width=64, height=64):
         super().__init__(env)
-        #
-        # self.num_stack = num_stack
-        # self.frames = collections.deque(maxlen=num_stack)
-        #
+
         self.width = width
         self.height = height
 
-        assert 'google_robot' in self.robot_uid
+        if 'google_robot' in self.robot_uid:
+            self.camera_name = 'overhead_camera'
+        elif 'widowx' in self.robot_uid:
+            self.camera_name = '3rd_view_camera'
+        else:
+            raise NotImplementedError("Unknown robot_uid: {}".format(self.robot_uid))
 
-        image_obs_space = self.observation_space['image']['overhead_camera']['rgb']
+        image_obs_space = self.observation_space['image'][self.camera_name]['rgb']
         self.observation_space = gymnasium.spaces.Box(
             low=image_obs_space.low[0, 0, 0], high=image_obs_space.high[0, 0, 0],
             shape=(self.width, self.height, 3),
             dtype=image_obs_space.dtype,
         )
+        self.action_space = gymnasium.spaces.Box(
+            low=-1.0, high=1.0, shape=self.action_space.shape,
+            dtype=self.action_space.dtype,
+        )
 
-    # def get_observation(self):
-    #     assert len(self.frames) == self.num_stack
-    #     return np.concatenate(list(self.frames), axis=-1)
+    def process_action(self, action):
+        """
+        Reference: https://github.com/simpler-env/SimplerEnv/blob/main/simpler_env/policies/rt1/rt1_model.py.
+        """
+
+        processed_action = action.copy().astype(np.float64)
+        if 'google_robot' in self.robot_uid:
+            processed_action[-1] = np.where(
+                np.abs(processed_action[-1]) < 1e-2,
+                0.0,
+                processed_action[-1],
+            )
+
+            action_rotation_delta = rescale_action_with_bound(
+                processed_action[3:6],
+                low=-1.0, high=1.0,
+                post_scaling_max=np.pi / 2, post_scaling_min=-np.pi / 2,
+            )
+            action_rotation_angle = np.linalg.norm(action_rotation_delta)
+            action_rotation_ax = (
+                action_rotation_delta / action_rotation_angle
+                if action_rotation_angle > 1e-6
+                else np.array([0.0, 1.0, 0.0])
+            )
+            processed_action[3:6] = action_rotation_ax * action_rotation_angle
+        elif 'widowx' in self.robot_uid:
+            processed_action[0:3] = rescale_action_with_bound(
+                processed_action[0:3],
+                low=-1.0, high=1.0,
+                post_scaling_max=0.05, post_scaling_min=-0.05,
+            )
+            processed_action[3:6] = rescale_action_with_bound(
+                processed_action[3:6],
+                low=-1.0, high=1.0,
+                post_scaling_max=0.25, post_scaling_min=-0.25,
+            )
+
+            roll, pitch, yaw = processed_action[3:6]
+            action_rotation_ax, action_rotation_angle = euler2axangle(roll, pitch, yaw)
+            processed_action[3:6] = action_rotation_ax * action_rotation_angle
+
+            # rt1 policy output is uniformized such that -1 is open gripper, 1 is close gripper;
+            # thus we need to invert the rt1 output gripper action for some embodiments like WidowX, since for these embodiments -1 is close gripper, 1 is open gripper
+            processed_action[-1] = -processed_action[-1]
+
+            # binarize gripper action to be -1 or 1
+            processed_action[-1] = 2.0 * (processed_action[-1] > 0.0) - 1.0
+        else:
+            raise NotImplementedError("Unknown robot_uid: {}".format(self.robot_uid))
+
+        return processed_action
 
     def reset(self, **kwargs):
         observation, info = self.env.reset(**kwargs)
-        observation = observation['image']['overhead_camera']['rgb']
+        observation = observation['image'][self.camera_name]['rgb']
         observation = cv.resize(observation, (self.width, self.height))
 
         return observation, info
 
     def step(self, action):
+        action = self.process_action(action)
         observation, reward, terminated, truncated, info = self.env.step(action)
-        observation = observation['image']['overhead_camera']['rgb']
+        observation = observation['image'][self.camera_name]['rgb']
         observation = cv.resize(observation, (self.width, self.height))
 
         return observation, reward, terminated, truncated, info
@@ -442,19 +624,28 @@ def make_env_and_datasets(
         frame_stack=None,
         dataset_dir=DEFAULT_DATASET_DIR,
         env_only=False,
+        width=64,
+        height=64,
 ):
-    dataset_dir = os.path.expanduser(dataset_dir)
+    if 'google_robot' in dataset_name:
+        dataset_dir_name = 'fractal20220817_data'
+    elif 'widowx' in dataset_name:
+        dataset_dir_name = 'bridge'
+    else:
+        raise NotImplementedError("Unknown dataset_name: {}".format(dataset_name))
+
+    dataset_dir = os.path.expanduser(dataset_dir.replace('dataset_dir_name', dataset_dir_name))
     env = simpler_env.make(dataset_name)
-    env = SimplerEnvWrapper(env)
+    env = SimplerEnvWrapper(env, width=width, height=height)
 
     if env_only:
         return env
 
     ds_builder = tfds.builder_from_directory(builder_dir=dataset_dir)
+    # 78491 / 8721 episodes for google_robot dataset
+    # 47873 / 5319 episodes for bridge_v2 dataset
     train_ds, val_ds = ds_builder.as_dataset(
-        split=['train[:90%]', 'train[90%:]'])  # 78491 and 8721 episodes
-    # train_ds, val_ds = ds_builder.as_dataset(
-    #     split=['train[:10]', 'train[10:14]'])  # 10 and 4 episodes
+        split=['train[:90%]', 'train[90%:]'])
 
     # The RLDSSpec for the dataset.
     rlds_spec = RLDSSpec(
@@ -463,40 +654,19 @@ def make_env_and_datasets(
         reward_info=ds_builder.info.features['steps']['reward'],
     )
 
-    def step_map_fn(step):
-        return {
-            'observation': tf.cast(
-                tf.image.resize(step['observation']['image'], (64, 64)),
-                tf.uint8
-            ),
-            'action': tf.cast(tf.concat([
-                step['action']['world_vector'],
-                step['action']['rotation_delta'],
-                step['action']['gripper_closedness_action'],
-            ], axis=-1), tf.float32),
-            'reward': tf.cast(step['reward'], tf.float32),
-            'is_first': tf.cast(step['is_first'], tf.bool),
-            'is_last': tf.cast(step['is_last'], tf.bool),
-            'is_terminal': tf.cast(step['is_terminal'], tf.bool), 
-        }
-
-    def stacked_step_map_fn(step):
-        return {
-            'observations': tf.concat([
-                step['observation'][idx] for idx in range(frame_stack)
-            ], axis=-1),
-            'next_observations': tf.concat([
-                step['observation'][idx] for idx in range(1, frame_stack + 1)
-            ], axis=-1),
-            'actions': step['action'][frame_stack - 1],
-            'next_actions': step['action'][frame_stack],
-            'rewards': step['reward'][frame_stack - 1],
-            'terminals': tf.cast(step['is_last'][frame_stack - 1], tf.float32),
-            'masks': 1.0 - step['reward'][frame_stack - 1],
-        }
+    if 'google_robot' in env.unwrapped.robot_uid:
+        step_map_fn = functools.partial(base_step_map_fn,
+                                        map_action=google_robot_map_action)
+    elif 'widowx' in env.unwrapped.robot_uid:
+        step_map_fn = functools.partial(base_step_map_fn,
+                                        map_action=bridge_map_action)
+    else:
+        raise NotImplementedError()
 
     # The following will create a trajectories of length 2.
     frame_stack = frame_stack or 1
+    stacked_step_map_fn = functools.partial(
+        base_stacked_step_map_fn, frame_stack=frame_stack)
     trajectory_transform = TrajectoryTransformBuilder(
         rlds_spec, step_map_fn=step_map_fn,
         pattern_fn=n_step_pattern_builder(frame_stack + 1)).build(

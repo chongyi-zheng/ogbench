@@ -31,13 +31,13 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="fql",
-        slurm_time=int(12 * 60),  # minute
+        slurm_time=int(20 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="8G",
+        slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=20,
@@ -50,9 +50,9 @@ def main():
             for obs_norm_type in ['none']:
                 for alpha in [1000, 300, 100, 30]:
                     for distill_type in ['fwd_sample']:
-                        for q_agg in ['mean', 'min']:
+                        for q_agg in ['mean']:
                             for normalize_q_loss in [False]:
-                                for encoder in ['impala_large', 'resnet_34']:
+                                for encoder in ['impala_small', 'impala_large', 'resnet_34']:
                                     for seed in [20]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_distill_type={distill_type}_q_agg={q_agg}_normalize_q_loss={normalize_q_loss}_encoder={encoder}"
                                         log_dir = os.path.expanduser(
@@ -77,7 +77,7 @@ def main():
                                             echo seed: {seed};
     
                                             export PROJECT_DIR=$PWD;
-                                            export PYTHONPATH=$HOME/research/ogbench/impls;
+                                            export PYTHONPATH=$HOME/research/ogbench/impls:$HOME/research/SimplerEnv;
                                             export PATH="$PATH":"$CONDA_PREFIX"/bin;
                                             export CUDA_VISIBLE_DEVICES=0;
                                             export MUJOCO_GL=egl;
