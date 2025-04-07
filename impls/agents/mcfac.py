@@ -618,7 +618,7 @@ def get_config():
             value_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the value goal.
             value_p_randomgoal=0.0,  # Probability of using a random state as the value goal.
             value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
-            value_geom_start=0,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
+            value_geom_start=0,  # Whether the support of the geometric sampling is [0, inf) or [1, inf)
             num_value_goals=1,  # Number of value goals to sample
             actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
             actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.

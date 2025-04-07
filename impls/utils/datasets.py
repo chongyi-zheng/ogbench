@@ -449,6 +449,9 @@ class GCDataset:
 
         return goal_idxs
 
+    def normalize_observations(self, observations=None):
+        return self.dataset.normalize_observations(observations)
+
     def get_observations(self, idxs):
         """Return the observations for the given indices."""
         if self.config['frame_stack'] is None:

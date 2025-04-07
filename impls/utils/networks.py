@@ -469,7 +469,7 @@ class GCBilinearValue(nn.Module):
         hidden_dims: Hidden layer dimensions.
         latent_dim: Latent dimension.
         layer_norm: Whether to apply layer normalization.
-        ensemble: Whether to ensemble the value function.
+        num_ensembles: Number of ensemble components.
         value_exp: Whether to exponentiate the value. Useful for contrastive learning.
         state_encoder: Optional state encoder.
         goal_encoder: Optional goal encoder.
@@ -480,7 +480,7 @@ class GCBilinearValue(nn.Module):
     network_type: str = 'mlp'
     num_residual_blocks: int = 1
     layer_norm: bool = True
-    ensemble: bool = True
+    num_ensembles: int = 1
     value_exp: bool = False
     state_encoder: nn.Module = None
     goal_encoder: nn.Module = None
@@ -491,8 +491,8 @@ class GCBilinearValue(nn.Module):
         elif self.network_type == 'simba':
             network_module = SimBaMLP
 
-        if self.ensemble:
-            network_module = ensemblize(network_module, 2)
+        if self.num_ensembles > 1:
+            network_module = ensemblize(network_module,  self.num_ensembles)
 
         if self.network_type == 'mlp':
             self.phi = network_module(

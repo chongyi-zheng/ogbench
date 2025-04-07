@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=30,
+        slurm_array_parallelism=20,
     )
 
     with executor.batch():  # job array
@@ -76,7 +76,7 @@ def main():
                                         for q_agg in ['mean', 'min']:
                                             for normalize_q_loss in [False]:
                                                 for critic_fm_loss_type in ['sarsa_squared']:  # sarsa_squared_stepwise is worse than sarsa_squared
-                                                    for reward_type in ['state_action']:
+                                                    for reward_type in ['state']:
                                                         for seed in [10]:
                                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_norm_q={normalize_q_loss}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_bc_pretrain"
                                                             log_dir = os.path.expanduser(

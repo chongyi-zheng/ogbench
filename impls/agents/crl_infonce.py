@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Any
 
 import flax
@@ -8,8 +9,7 @@ import optax
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import (
-    GCActor, GCBilinearValue, GCValue,
-    GCDiscreteActor, GCDiscreteBilinearCritic, GCDiscreteCritic
+    GCActor, GCBilinearValue, Value
 )
 
 
@@ -24,88 +24,62 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
     network: Any
     config: Any = nonpytree_field()
 
+    def reward_loss(self, batch, grad_params):
+        observations = batch['observations']
+        if self.config['reward_type'] == 'state_action':
+            actions = batch['actions']
+        else:
+            actions = None
+        rewards = batch['rewards']
+
+        reward_preds = self.network.select('reward')(
+            observations, actions=actions,
+            params=grad_params,
+        )
+
+        reward_loss = jnp.square(reward_preds - rewards).mean()
+
+        return reward_loss, {
+            'reward_loss': reward_loss
+        }
+
     def contrastive_loss(self, batch, grad_params, module_name='critic'):
         """Compute the contrastive value loss for the Q or V function."""
         batch_size = batch['observations'].shape[0]
 
-        if module_name == 'critic':
-            actions = batch['actions']
-        else:
-            actions = None
+        v, phi, psi = self.network.select(module_name)(
+            batch['observations'],
+            batch['value_goals'],
+            actions=batch['actions'],
+            info=True,
+            params=grad_params,
+        )
+        if len(phi.shape) == 2:  # Non-ensemble.
+            phi = phi[None, ...]
+            psi = psi[None, ...]
+        logits = jnp.einsum('eik,ejk->ije', phi, psi) / jnp.sqrt(phi.shape[-1])
 
-        if self.config['critic_arch'] == 'bilinear':
-            v, phi, psi = self.network.select(module_name)(
-                batch['observations'],
-                batch['value_goals'],
-                actions=actions,
-                info=True,
-                params=grad_params,
-            )
-            if len(phi.shape) == 2:  # Non-ensemble.
-                phi = phi[None, ...]
-                psi = psi[None, ...]
-            logits = jnp.einsum('eik,ejk->ije', phi, psi) / jnp.sqrt(phi.shape[-1])
+        # logits.shape is (B, B, e) with one term for positive pair and (B - 1) terms for negative pairs in each row.
+        I = jnp.eye(batch_size)
 
-            # logits.shape is (B, B, e) with one term for positive pair and (B - 1) terms for negative pairs in each row.
-            I = jnp.eye(batch_size)
+        if self.config['contrastive_loss'] == 'forward_infonce':
+            def loss_fn(_logits):  # pylint: disable=invalid-name
+                return (optax.softmax_cross_entropy(logits=_logits, labels=I)
+                        + self.config['logsumexp_penalty_coeff'] * jax.nn.logsumexp(_logits, axis=1) ** 2)
 
-            if self.config['contrastive_loss'] == 'forward_infonce':
-                def loss_fn(_logits):  # pylint: disable=invalid-name
-                    return (optax.softmax_cross_entropy(logits=_logits, labels=I)
-                            + self.config['logsumexp_penalty_coeff'] * jax.nn.logsumexp(_logits, axis=1) ** 2)
-
-                contrastive_loss = jax.vmap(loss_fn, in_axes=-1, out_axes=-1)(logits)
-            elif self.config['contrastive_loss'] == 'symmetric_infonce':
-                contrastive_loss = jax.vmap(
-                    lambda _logits: optax.softmax_cross_entropy(logits=_logits, labels=I),
-                    in_axes=-1,
-                    out_axes=-1,
-                )(logits) + jax.vmap(
-                    lambda _logits: optax.softmax_cross_entropy(logits=_logits, labels=I),
-                    in_axes=-1,
-                    out_axes=-1,
-                )(logits.transpose([1, 0, 2]))
-            else:
-                raise NotImplementedError
-        elif self.config['critic_arch'] == 'mlp':
-            # if module_name == 'critic':
-            #     actions = actions[:, None].repeat(batch_size, axis=1)
-            # v = self.network.select(module_name)(
-            #     batch['observations'][:, None].repeat(batch_size, axis=1),
-            #     batch['value_goals'][None, :].repeat(batch_size, axis=0),
-            #     actions=actions,
-            #     params=grad_params,
-            # )
-            # if len(v.shape) == 2:  # Non-ensemble.
-            #     v = v[None, ...]
-            # logits = v.transpose([1, 2, 0])
-            pos_v = self.network.select(module_name)(
-                batch['observations'],
-                batch['value_goals'],
-                actions=actions,
-                params=grad_params,
-            )
-            neg_v = self.network.select(module_name)(
-                batch['observations'],
-                jnp.roll(batch['value_goals'], -1, axis=0),
-                actions=actions,
-                params=grad_params,
-            )
-            if len(pos_v.shape) == 1:  # Non-ensemble.
-                pos_v = pos_v[None, ...]
-                neg_v = neg_v[None, ...]
-            pos_v = pos_v.transpose([1, 0])
-            neg_v = neg_v.transpose([1, 0])
-            v = pos_v
-            logits = jnp.stack([pos_v, neg_v], axis=1)
-
-            # logits.shape is (B, 2, e) with one term for positive pair and one terms for negative pairs in each row.
-            I = jnp.stack([jnp.ones(batch_size), jnp.zeros(batch_size)], axis=1)
-
+            contrastive_loss = jax.vmap(loss_fn, in_axes=-1, out_axes=-1)(logits)
+        elif self.config['contrastive_loss'] == 'symmetric_infonce':
             contrastive_loss = jax.vmap(
-                lambda _logits: optax.sigmoid_binary_cross_entropy(_logits, I),
-                in_axes=-1, out_axes=-1
-            )(logits)
+                lambda _logits: optax.softmax_cross_entropy(logits=_logits, labels=I),
+                in_axes=-1,
+                out_axes=-1,
+            )(logits) + jax.vmap(
+                lambda _logits: optax.softmax_cross_entropy(logits=_logits, labels=I),
+                in_axes=-1,
+                out_axes=-1,
+            )(logits.transpose([1, 0, 2]))
+        else:
+            raise NotImplementedError
 
         contrastive_loss = jnp.mean(contrastive_loss)
 
@@ -128,110 +102,133 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
             'logits': logits.mean(),
         }
 
+    def behavioral_cloning_loss(self, batch, grad_params):
+        """Compute the behavioral cloning loss for pretraining."""
+        observations = batch['observations']
+        actions = batch['actions']
+
+        dist = self.network.select('actor')(observations, params=grad_params)
+        log_prob = dist.log_prob(actions)
+        bc_loss = -log_prob.mean()
+
+        return bc_loss, {
+            'bc_loss': bc_loss,
+            'bc_log_prob': log_prob.mean(),
+            'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+            'std': jnp.mean(dist.scale_diag),
+        }
+
     def actor_loss(self, batch, grad_params, rng=None):
         """Compute the actor loss (AWR or DDPG+BC)."""
-        # Maximize log Q if actor_log_q is True (which is default).
-        if self.config['actor_log_q']:
+        # Maximize log Q if actor_log_q.
+        def value_transform(x):
+            return jnp.log(jnp.maximum(x, 1e-6))
 
-            def value_transform(x):
-                return jnp.log(jnp.maximum(x, 1e-6))
+        # DDPG+BC loss.
+        dist = self.network.select('actor')(
+            batch['observations'], params=grad_params)
+        if self.config['const_std']:
+            q_actions = jnp.clip(dist.mode(), -1, 1)
         else:
+            q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
+        logits1, logits2 = value_transform(
+            self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
+        )
+        logits = jnp.minimum(logits1, logits2)
+        log_ratios = jnp.diag(logits) - jax.nn.logsumexp(logits, axis=-1) + jnp.log(logits.shape[-1])
 
-            def value_transform(x):
-                return x
-
-        if self.config['actor_loss'] == 'awr':
-            # AWR loss.
-            v = value_transform(self.network.select('value')(batch['observations'], batch['actor_goals']))
-            q1, q2 = value_transform(
-                self.network.select('critic')(batch['observations'], batch['actor_goals'], batch['actions'])
-            )
-            if self.config['critic_arch'] == 'bilinear':
-                v, q1, q2 = jnp.diag(v), jnp.diag(q1), jnp.diag(q2)
-            q = jnp.minimum(q1, q2)
-            adv = q - v
-
-            exp_a = jnp.exp(adv * self.config['alpha'])
-            exp_a = jnp.minimum(exp_a, 100.0)
-
-            dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
-            log_prob = dist.log_prob(batch['actions'])
-
-            actor_loss = -(exp_a * log_prob).mean()
-
-            actor_info = {
-                'actor_loss': actor_loss,
-                'adv': adv.mean(),
-                'bc_log_prob': log_prob.mean(),
-            }
-            if not self.config['discrete']:
-                actor_info.update(
-                    {
-                        'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
-                        'std': jnp.mean(dist.scale_diag),
-                    }
-                )
-
-            return actor_loss, actor_info
-        elif self.config['actor_loss'] == 'ddpgbc':
-            # DDPG+BC loss.
-            assert not self.config['discrete']
-
-            dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
+        if self.config['reward_type'] == 'state_action':
+            future_dist = self.network.select('actor')(
+                batch['actor_goals'], params=grad_params)
             if self.config['const_std']:
-                q_actions = jnp.clip(dist.mode(), -1, 1)
+                future_actions = jnp.clip(future_dist.mode(), -1, 1)
             else:
-                q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
-            q1, q2 = value_transform(
-                self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
-            )
-            if self.config['critic_arch'] == 'bilinear':
-                q1, q2 = jnp.diag(q1), jnp.diag(q2)
-            q = jnp.minimum(q1, q2)
-
-            # Normalize Q values by the absolute mean to make the loss scale invariant.
-            q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
-            log_prob = dist.log_prob(batch['actions'])
-
-            bc_loss = -(self.config['alpha'] * log_prob).mean()
-
-            actor_loss = q_loss + bc_loss
-
-            return actor_loss, {
-                'actor_loss': actor_loss,
-                'q_loss': q_loss,
-                'bc_loss': bc_loss,
-                'q_mean': q.mean(),
-                'q_abs_mean': jnp.abs(q).mean(),
-                'bc_log_prob': log_prob.mean(),
-                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
-                'std': jnp.mean(dist.scale_diag),
-            }
+                future_actions = jnp.clip(future_dist.sample(seed=rng), -1, 1)
         else:
-            raise ValueError(f'Unsupported actor loss: {self.config["actor_loss"]}')
+            future_actions = None
+        reward_preds = self.network.select('reward')(batch['actor_goals'], future_actions)
+        q = jnp.exp(log_ratios) * reward_preds
+
+        # Normalize Q values by the absolute mean to make the loss scale invariant.
+        q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
+        log_prob = dist.log_prob(batch['actions'])
+
+        bc_loss = -(self.config['alpha'] * log_prob).mean()
+
+        actor_loss = q_loss + bc_loss
+
+        return actor_loss, {
+            'actor_loss': actor_loss,
+            'q_loss': q_loss,
+            'bc_loss': bc_loss,
+            'q_mean': q.mean(),
+            'q_abs_mean': jnp.abs(q).mean(),
+            'bc_log_prob': log_prob.mean(),
+            'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+            'std': jnp.mean(dist.scale_diag),
+        }
 
     @jax.jit
-    def total_loss(self, batch, grad_params, rng=None):
+    def pretraining_loss(self, batch, grad_params, rng=None):
+        info = {}
+
+        bc_loss, bc_info = self.behavioral_cloning_loss(batch, grad_params)
+        for k, v in bc_info.items():
+            info[f'bc/{k}'] = v
+
+        loss = bc_loss
+        return loss, info
+
+    @partial(jax.jit, static_argnames=('full_update',))
+    def total_loss(self, batch, grad_params, full_update=True, rng=None):
         """Compute the total loss."""
         info = {}
         rng = rng if rng is not None else self.rng
 
-        critic_loss, critic_info = self.contrastive_loss(batch, grad_params, 'critic')
+        reward_loss, reward_info = self.reward_loss(batch, grad_params)
+        for k, v in reward_info.items():
+            info[f'reward/{k}'] = v
+
+        critic_loss, critic_info = self.contrastive_loss(batch, grad_params)
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
-        # Always train a separate V network
-        value_loss, value_info = self.contrastive_loss(batch, grad_params, 'value')
-        for k, v in value_info.items():
-            info[f'value/{k}'] = v
+        if full_update:
+            # Update the actor.
+            rng, actor_rng = jax.random.split(rng)
+            actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
+            for k, v in actor_info.items():
+                info[f'actor/{k}'] = v
+        else:
+            # Skip actor update.
+            actor_loss = 0.0
 
-        rng, actor_rng = jax.random.split(rng)
-        actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
-        for k, v in actor_info.items():
-            info[f'actor/{k}'] = v
-
-        loss = critic_loss + value_loss + actor_loss
+        loss = reward_loss + critic_loss + actor_loss
         return loss, info
+
+    @jax.jit
+    def pretrain(self, batch):
+        """Pre-train the agent and return a new agent with information dictionary."""
+        new_rng, rng = jax.random.split(self.rng)
+
+        def loss_fn(grad_params):
+            return self.pretraining_loss(batch, grad_params, rng=rng)
+
+        new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
+
+        return self.replace(network=new_network, rng=new_rng), info
+
+    @partial(jax.jit, static_argnames=('full_update',))
+    def finetune(self, batch, full_update=True):
+        """Update the agent and return a new agent with information dictionary."""
+        new_rng, rng = jax.random.split(self.rng)
+
+        def loss_fn(grad_params):
+            return self.total_loss(batch, grad_params, full_update, rng=rng)
+
+        new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
+
+        return self.replace(network=new_network, rng=new_rng), info
 
     @jax.jit
     def update(self, batch):
@@ -239,7 +236,7 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
         new_rng, rng = jax.random.split(self.rng)
 
         def loss_fn(grad_params):
-            return self.total_loss(batch, grad_params, rng=rng)
+            return self.total_loss(batch, grad_params, full_update=True, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
 
@@ -256,8 +253,7 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
         """Sample actions from the actor."""
         dist = self.network.select('actor')(observations, goals, temperature=temperature)
         actions = dist.sample(seed=seed)
-        if not self.config['discrete']:
-            actions = jnp.clip(actions, -1, 1)
+        actions = jnp.clip(actions, -1, 1)
         return actions
 
     @classmethod
@@ -273,121 +269,54 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
         Args:
             seed: Random seed.
             ex_observations: Example observations.
-            ex_actions: Example batch of actions. In discrete-action MDPs, this should contain the maximum action value.
+            ex_actions: Example batch of actions.
             config: Configuration dictionary.
         """
         rng = jax.random.PRNGKey(seed)
         rng, init_rng = jax.random.split(rng, 2)
 
         ex_goals = ex_observations
-        if config['discrete']:
-            action_dim = ex_actions.max() + 1
-        else:
-            action_dim = ex_actions.shape[-1]
-
-        # Critic architecture
-        assert config['critic_arch'] in ['bilinear', 'mlp']
+        action_dim = ex_actions.shape[-1]
 
         # Define encoders.
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
-            encoders['actor'] = GCEncoder(concat_encoder=encoder_module())
+            encoders['reward'] = encoder_module()
+            encoders['critic_state'] = encoder_module()
+            encoders['critic_goal'] = encoder_module()
+            encoders['actor'] = encoder_module()
 
-            if config['critic_arch'] == 'bilinear':
-                encoders['critic_state'] = encoder_module()
-                encoders['critic_goal'] = encoder_module()
-                encoders['value_state'] = encoder_module()
-                encoders['value_goal'] = encoder_module()
-            elif config['critic_arch'] == 'mlp':
-                encoders['value'] = GCEncoder(concat_encoder=encoder_module())
-                encoders['critic'] = GCEncoder(concat_encoder=encoder_module())
+        # Define the reward, the critic, and the actor networks.
+        reward_def = Value(
+            hidden_dims=config['reward_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            encoder=encoders.get('reward'),
+        )
 
-        # Define value and actor networks.
-        if config['discrete']:
-            if config['critic_arch'] == 'bilinear':
-                critic_def = GCDiscreteBilinearCritic(
-                    hidden_dims=config['value_hidden_dims'],
-                    latent_dim=config['latent_dim'],
-                    layer_norm=config['layer_norm'],
-                    ensemble=True,
-                    value_exp=True,
-                    state_encoder=encoders.get('critic_state'),
-                    goal_encoder=encoders.get('critic_goal'),
-                    action_dim=action_dim,
-                )
-            elif config['critic_arch'] == 'mlp':
-                critic_def = GCDiscreteCritic(
-                    hidden_dims=config['value_hidden_dims'],
-                    layer_norm=config['layer_norm'],
-                    ensemble=True,
-                    gc_encoder=encoders.get('critic'),
-                    action_dim=action_dim,
-                )
-        else:
-            if config['critic_arch'] == 'bilinear':
-                critic_def = GCBilinearValue(
-                    hidden_dims=config['value_hidden_dims'],
-                    latent_dim=config['latent_dim'],
-                    layer_norm=config['layer_norm'],
-                    ensemble=True,
-                    value_exp=True,
-                    state_encoder=encoders.get('critic_state'),
-                    goal_encoder=encoders.get('critic_goal'),
-                )
-            elif config['critic_arch'] == 'mlp':
-                critic_def = GCValue(
-                    hidden_dims=config['value_hidden_dims'],
-                    network_type=config['network_type'],
-                    num_residual_blocks=config['value_num_residual_blocks'],
-                    layer_norm=config['layer_norm'],
-                    ensemble=True,
-                    gc_encoder=encoders.get('critic'),
-                )
+        critic_def = GCBilinearValue(
+            hidden_dims=config['value_hidden_dims'],
+            latent_dim=config['latent_dim'],
+            layer_norm=config['layer_norm'],
+            num_ensembles=2,
+            value_exp=True,
+            state_encoder=encoders.get('critic_state'),
+            goal_encoder=encoders.get('critic_goal'),
+        )
 
-        # Always train a separte V network.
-        # AWR requires a separate V network to compute advantages (Q - V).
-        if config['critic_arch'] == 'bilinear':
-            value_def = GCBilinearValue(
-                hidden_dims=config['value_hidden_dims'],
-                latent_dim=config['latent_dim'],
-                layer_norm=config['layer_norm'],
-                ensemble=False,
-                value_exp=True,
-                state_encoder=encoders.get('value_state'),
-                goal_encoder=encoders.get('value_goal'),
-            )
-        elif config['critic_arch'] == 'mlp':
-            value_def = GCValue(
-                hidden_dims=config['value_hidden_dims'],
-                network_type=config['network_type'],
-                num_residual_blocks=config['value_num_residual_blocks'],
-                layer_norm=config['layer_norm'],
-                ensemble=False,
-                gc_encoder=encoders.get('value'),
-            )
-
-        if config['discrete']:
-            actor_def = GCDiscreteActor(
-                hidden_dims=config['actor_hidden_dims'],
-                action_dim=action_dim,
-                gc_encoder=encoders.get('actor'),
-            )
-        else:
-            actor_def = GCActor(
-                hidden_dims=config['actor_hidden_dims'],
-                action_dim=action_dim,
-                network_type=config['network_type'],
-                num_residual_blocks=config['actor_num_residual_blocks'],
-                state_dependent_std=False,
-                const_std=config['const_std'],
-                gc_encoder=encoders.get('actor'),
-            )
+        actor_def = GCActor(
+            hidden_dims=config['actor_hidden_dims'],
+            action_dim=action_dim,
+            state_dependent_std=False,
+            layer_norm=config['actor_layer_norm'],
+            const_std=config['const_std'],
+            gc_encoder=encoders.get('actor'),
+        )
 
         network_info = dict(
+            reward=(reward_def, (ex_observations, )),
             critic=(critic_def, (ex_observations, ex_goals, ex_actions)),
-            actor=(actor_def, (ex_observations, ex_goals)),
-            value=(value_def, (ex_observations, ex_goals)),
+            actor=(actor_def, (ex_observations, )),
         )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
@@ -405,39 +334,36 @@ def get_config():
         dict(
             # Agent hyperparameters.
             agent_name='crl_infonce',  # Agent name.
-            normalize_observation=False,  # Whether to normalize observation s.t. each coordinate is centered with unit variance.
-            network_type='mlp',  # Network type of the actor and critic ('mlp' or 'simba')
             lr=3e-4,  # Learning rate.
-            batch_size=1024,  # Batch size.
-            actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
-            value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
-            actor_num_residual_blocks=1,  # Actor network number of residual blocks when using SimBa architecture.
-            value_num_residual_blocks=2,  # Critic network number of residual blocks when using SimBa architecture.
+            batch_size=256,  # Batch size.
+            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
+            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
+            reward_hidden_dims=(512, 512, 512, 512),  # Reward network hidden dimensions.
             latent_dim=512,  # Latent dimension for phi and psi.
             layer_norm=True,  # Whether to use layer normalization.
+            actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             discount=0.99,  # Discount factor.
-            critic_arch="bilinear",  # Contrastive critic architecture ('bilinear' or 'mlp')
-            contrastive_loss='symmetric_infonce',  # Contrastive loss type ('forward_infonce', 'symmetric_infonce').
+            actor_freq=2,  # Actor update frequency.
+            contrastive_loss='forward_infonce',  # Contrastive loss type ('forward_infonce', 'symmetric_infonce').
             logsumexp_penalty_coeff=0.01,  # Coefficient for the logsumexp regularization in forward InfoNCE loss.
-            actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').
+            reward_type='state',  # Reward type. ('state', 'state_action')
             alpha=0.1,  # Temperature in AWR or BC coefficient in DDPG+BC.
-            actor_log_q=True,  # Whether to maximize log Q (True) or Q itself (False) in the actor loss.
             const_std=True,  # Whether to use constant standard deviation for the actor.
-            discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             # Dataset hyperparameters.
-            dataset_class='GCDataset',  # Dataset class name.
+            relabel_reward=False,  # Whether to relabel the reward.
             value_p_curgoal=0.0,  # Probability of using the current state as the value goal.
             value_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the value goal.
             value_p_randomgoal=0.0,  # Probability of using a random state as the value goal.
             value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
+            value_geom_start=0,  # Whether the support of the geometric sampling is [0, inf) or [1, inf)
+            num_value_goals=1,  # Number of value goals to sample
             actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
             actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
             actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
             actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
-            gc_negative=False,  # Unused (defined for compatibility with GCDataset).
-            p_aug=0.0,  # Probability of applying image augmentation.
-            frame_stack=ml_collections.config_dict.placeholder(int),  # Number of frames to stack.
+            actor_geom_start=1,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
+            num_actor_goals=1,  # Number of actor goals to sample
         )
     )
     return config

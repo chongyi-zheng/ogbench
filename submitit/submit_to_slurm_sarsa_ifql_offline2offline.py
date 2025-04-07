@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=30,
+        slurm_array_parallelism=10,
     )
 
     with executor.batch():  # job array
@@ -71,13 +71,13 @@ def main():
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
                         for alpha in [30.0]:
                             for num_flow_goals in [16]:
-                                for actor_freq in [2, 4]:
+                                for actor_freq in [4]:
                                     for expectile in [0.75, 0.8, 0.85, 0.9, 0.99]:
-                                        for q_agg in ['mean', 'min']:
-                                            for clip_flow_goals in [True]:
+                                        for q_agg in ['min']:
+                                            for clip_flow_goals in [True, False]:
                                                 for normalize_q_loss in [False]:
                                                     for critic_fm_loss_type in ['sarsa_squared']:
-                                                        for reward_type in ['state_action']:
+                                                        for reward_type in ['state']:
                                                             for seed in [10]:
                                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_clip_fgs={clip_flow_goals}_norm_q={normalize_q_loss}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_bc_pretrain"
                                                                 log_dir = os.path.expanduser(
