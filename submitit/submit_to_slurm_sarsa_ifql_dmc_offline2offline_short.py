@@ -52,7 +52,7 @@ def main():
             # "pen-human-v1",
             # "door-human-v1",
             # "cube-single-play-singletask-task2-v0",
-            # "cube-double-play-singletask-task2-v0",
+            "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
@@ -64,17 +64,17 @@ def main():
             # "cheetah_run_backward",
             # "walker_flip",
             # "quadruped_jump",
-            "jaco_reach_top_left",
+            # "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [0.03]:
+                for alpha in [30.0]:
                     for finetuning_size in [500_000]:
                         for finetuning_steps in [250_000]:
                             for eval_interval in [2_000]:
                                 for num_flow_goals in [16]:
                                     for actor_freq in [4]:
-                                        for expectile in [0.8]:
-                                            for q_agg in ['mean']:
+                                        for expectile in [0.85]:
+                                            for q_agg in ['min']:
                                                 for critic_fm_loss_type in ['sarsa_squared']:
                                                     for reward_type in ['state_action']:
                                                         for seed in [10, 20]:

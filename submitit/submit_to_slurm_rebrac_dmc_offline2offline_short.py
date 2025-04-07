@@ -49,16 +49,18 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
+            # "cube-single-play-singletask-task2-v0",
+            # "cube-double-play-singletask-task2-v0",
             # "cheetah_run",
             # "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
-            "quadruped_jump",
-            # "jaco_reach_top_left",
+            # "quadruped_jump",
+            "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha_actor in [1.0]:
-                    for alpha_critic in [1.0]:
+                for alpha_actor in [0.1]:
+                    for alpha_critic in [0.1]:
                         for finetuning_size in [500_000]:
                             for finetuning_steps in [250_000]:
                                 for eval_interval in [2_000]:
