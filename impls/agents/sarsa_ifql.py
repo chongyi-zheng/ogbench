@@ -742,8 +742,8 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
         )
         if config['reward_type'] == 'state':
             network_info.update(
-                reward=(reward_def, (ex_observations,)),
-                target_reward=(copy.deepcopy(reward_def), (ex_observations,)),
+                reward=(reward_def, (ex_observations, )),
+                target_reward=(copy.deepcopy(reward_def), (ex_observations, )),
             )
         else:
             network_info.update(
