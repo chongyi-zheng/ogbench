@@ -416,11 +416,17 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             rng, perm_rng, beta_rng = jax.random.split(rng, 3)
             batch_size = observations.shape[0]
 
-            perms = jax.random.permutation(perm_rng, jnp.arange(batch_size))
+            pdist = jnp.sum((observations[:, None] - observations[None]) ** 2, axis=-1)
+            mixup_probs = jnp.exp(-pdist / (2 * self.config['mixup_bandwidth'] ** 2))
+            mixup_probs /= jnp.sum(mixup_probs, axis=-1)
+            c = jnp.cumsum(mixup_probs, axis=-1)
+            u = jax.random.uniform(perm_rng, shape=(batch_size, 1))
+            perms = (u < c).argmax(axis=-1)
+
             lam = jax.random.beta(beta_rng, self.config['mixup_alpha'], self.config['mixup_alpha'],
                                   shape=(batch_size, 1))
-            mixup_observations = lam * observations + (1 - lam) * observations[perms]
-            mixup_actions = lam * actions + (1 - lam) * actions[perms]
+            mixup_observations = lam * observations + (1.0 - lam) * observations[perms]
+            mixup_actions = lam * actions + (1.0 - lam) * actions[perms]
 
             dist = self.network.select('actor')(observations)
             log_prob = dist.log_prob(actions)
@@ -476,11 +482,17 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             rng, perm_rng, beta_rng = jax.random.split(rng, 3)
             batch_size = observations.shape[0]
 
-            perms = jax.random.permutation(perm_rng, jnp.arange(batch_size))
+            pdist = jnp.sum((observations[:, None] - observations[None]) ** 2, axis=-1)
+            mixup_probs = jnp.exp(-pdist / (2 * self.config['mixup_bandwidth'] ** 2))
+            mixup_probs /= jnp.sum(mixup_probs, axis=-1)
+            c = jnp.cumsum(mixup_probs, axis=-1)
+            u = jax.random.uniform(perm_rng, shape=(batch_size, 1))
+            perms = (u < c).argmax(axis=-1)
+
             lam = jax.random.beta(beta_rng, self.config['mixup_alpha'], self.config['mixup_alpha'],
                                   shape=(batch_size, 1))
-            mixup_observations = lam * observations + (1 - lam) * observations[perms]
-            mixup_actions = lam * actions + (1 - lam) * actions[perms]
+            mixup_observations = lam * observations + (1.0 - lam) * observations[perms]
+            mixup_actions = lam * actions + (1.0 - lam) * actions[perms]
 
             dist = self.network.select('actor')(observations)
             log_prob = dist.log_prob(actions)
@@ -859,6 +871,7 @@ def get_config():
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             use_mixup=False,  # Whether to use mixup for the behavioral cloning loss. (prevent overfitting).
             mixup_alpha=2.0,  # mixup beta distribution parameter.
+            mixup_bandwidth=2.75,  # mixup distance bandwith.
             actor_freq=2,  # Actor update frequency.
             alpha=10.0,  # BC coefficient (need to be tuned for each environment).
             const_std=True,  # Whether to use constant standard deviation for the actor.

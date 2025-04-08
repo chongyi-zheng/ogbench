@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=40,
+        slurm_array_parallelism=30,
     )
 
     with executor.batch():  # job array
@@ -52,7 +52,7 @@ def main():
             # "pen-human-v1",
             # "door-human-v1",
             "cube-single-play-singletask-task2-v0",
-            "cube-double-play-singletask-task2-v0",
+            # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
@@ -75,11 +75,11 @@ def main():
                                     for expectile in [0.8, 0.85, 0.9, 0.99]:
                                         for q_agg in ['min']:
                                             for clip_flow_goals in [False]:
-                                                for use_mixup in [False]:
-                                                    for mixup_alpha in [0.5, 1.0, 2.0, 4.0]:
+                                                for use_mixup in [True]:
+                                                    for mixup_bw in [0.5, 1.0, 2.0, 2.75, 4.0]:
                                                         for reward_type in ['state']:
                                                             for seed in [10]:
-                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_alpha={mixup_alpha}_reward={reward_type}_bc_pretrain"
+                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_bw={mixup_bw}_reward={reward_type}_bc_pretrain"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
 
@@ -96,12 +96,12 @@ def main():
                                                                     conda activate ogbench;
                                                                     which python;
                                                                     echo $CONDA_PREFIX;
-    
+
                                                                     echo job_id: $SLURM_ARRAY_JOB_ID;
                                                                     echo task_id: $SLURM_ARRAY_TASK_ID;
                                                                     squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
                                                                     echo seed: {seed};
-    
+
                                                                     export PROJECT_DIR=$PWD;
                                                                     export PYTHONPATH=$HOME/research/ogbench/impls;
                                                                     export PATH="$PATH":"$CONDA_PREFIX"/bin;
@@ -113,7 +113,7 @@ def main():
                                                                     export D4RL_SUPPRESS_IMPORT_ERROR=1;
                                                                     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
                                                                     export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-    
+
                                                                     rm -rf {log_dir};
                                                                     mkdir -p {log_dir};
                                                                     python $PROJECT_DIR/impls/main_offline2offline.py \
@@ -145,13 +145,14 @@ def main():
                                                                         --agent.normalize_q_loss=False \
                                                                         --agent.use_target_reward=False \
                                                                         --agent.use_mixup={use_mixup} \
-                                                                        --agent.mixup_alpha={mixup_alpha} \
+                                                                        --agent.mixup_alpha=2.0 \
+                                                                        --agent.mixup_bw={mixup_bw} \
                                                                         --agent.reward_type={reward_type} \
                                                                         --agent.use_terminal_masks=False \
                                                                         --seed={seed} \
                                                                         --save_dir={log_dir} \
                                                                     2>&1 | tee {log_dir}/stream.log;
-    
+
                                                                     export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
                                                                     echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
                                                                     echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
