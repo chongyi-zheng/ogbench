@@ -52,7 +52,7 @@ def main():
             # "pen-human-v1",
             # "door-human-v1",
             # "cube-single-play-singletask-task2-v0",
-            "cube-double-play-singletask-task2-v0",
+            # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
@@ -63,21 +63,21 @@ def main():
             # "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
-            # "quadruped_jump",
+            "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [30.0]:
+                for alpha in [3.0]:
                     for finetuning_size in [1_000, 5_000, 10_000, 50_000]:
                         for finetuning_steps in [500_000]:
                             for eval_interval in [10_000]:
                                 for num_flow_goals in [16]:
                                     for actor_freq in [4]:
-                                        for expectile in [0.85]:
+                                        for expectile in [0.8]:
                                             for q_agg in ['min']:
                                                 for critic_fm_loss_type in ['sarsa_squared']:
-                                                    for reward_type in ['state_action']:
-                                                        for seed in [10, 20]:
+                                                    for reward_type in ['state']:
+                                                        for seed in [10]:
                                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_bc_pretrain"
                                                             log_dir = os.path.expanduser(
                                                                 f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")

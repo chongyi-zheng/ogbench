@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=10,
+        slurm_array_parallelism=20,
     )
 
     with executor.batch():  # job array
@@ -51,9 +51,9 @@ def main():
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
-            "cube-single-play-singletask-task2-v0",
-            "cube-double-play-singletask-task2-v0",
-            # "scene-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task2-v0",
+            # "cube-double-play-singletask-task2-v0",
+            "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
             # "walker_walk",
@@ -69,11 +69,11 @@ def main():
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [30.0]:
+                        for alpha in [1000.0]:
                             for num_flow_goals in [16]:
                                 for actor_freq in [4]:
                                     for expectile in [0.75, 0.8, 0.85, 0.9, 0.99]:
-                                        for q_agg in ['min']:
+                                        for q_agg in ['mean', 'min']:
                                             for clip_flow_goals in [True, False]:
                                                 for normalize_q_loss in [False]:
                                                     for critic_fm_loss_type in ['sarsa_squared']:

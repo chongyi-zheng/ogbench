@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -105,6 +105,7 @@ def main():
                                         --finetuning_steps=500_000 \
                                         --eval_interval=50_000 \
                                         --eval_episodes=50 \
+                                        --dataset_class=GCDataset \
                                         --agent=impls/agents/crl_infonce.py \
                                         --agent.discount=0.99 \
                                         --agent.reward_type={reward_type} \

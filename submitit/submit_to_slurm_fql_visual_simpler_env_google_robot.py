@@ -48,8 +48,8 @@ def main():
             "google_robot_pick_coke_can",
         ]:
             for obs_norm_type in ['none']:
-                for alpha in [1000, 300, 100, 30]:
-                    for frame_stack in [1, 3]:
+                for alpha in [10000, 3000, 1000]:
+                    for frame_stack in [3]:
                         for distill_type in ['fwd_sample']:
                             for q_agg in ['mean']:
                                 for normalize_q_loss in [False]:

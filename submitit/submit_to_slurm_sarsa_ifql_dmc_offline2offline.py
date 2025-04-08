@@ -71,7 +71,7 @@ def main():
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
                         for alpha in [3.0, 0.3]:
                             for num_flow_goals in [16]:
-                                for actor_freq in [1, 4]:
+                                for actor_freq in [4]:
                                     for expectile in [0.7, 0.75, 0.8, 0.85]:
                                         for q_agg in ['mean', 'min']:
                                             for normalize_q_loss in [False]:
