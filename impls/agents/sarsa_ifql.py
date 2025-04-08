@@ -407,21 +407,47 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
 
         return flow_matching_loss, info
 
-    def behavioral_cloning_loss(self, batch, grad_params):
+    def behavioral_cloning_loss(self, batch, grad_params, rng):
         """Compute the behavioral cloning loss for pretraining."""
         observations = batch['observations']
         actions = batch['actions']
 
-        dist = self.network.select('actor')(observations, params=grad_params)
-        log_prob = dist.log_prob(actions)
-        bc_loss = -log_prob.mean()
+        if self.config['use_mixup']:
+            rng, perm_rng, beta_rng = jax.random.split(rng, 3)
+            batch_size = observations.shape[0]
 
-        return bc_loss, {
-            'bc_loss': bc_loss,
-            'bc_log_prob': log_prob.mean(),
-            'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
-            'std': jnp.mean(dist.scale_diag),
-        }
+            perms = jax.random.permutation(perm_rng, jnp.arange(batch_size))
+            lam = jax.random.beta(beta_rng, self.config['mixup_alpha'], self.config['mixup_alpha'],
+                                  shape=(batch_size, 1))
+            mixup_observations = lam * observations + (1 - lam) * observations[perms]
+            mixup_actions = lam * actions + (1 - lam) * actions[perms]
+
+            dist = self.network.select('actor')(observations)
+            log_prob = dist.log_prob(actions)
+            mixup_dist = self.network.select('actor')(mixup_observations, params=grad_params)
+            mixup_log_prob = mixup_dist.log_prob(mixup_actions)
+            bc_loss = -mixup_log_prob.mean()
+
+            return bc_loss, {
+                'bc_loss': bc_loss,
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+                'mixup_bc_log_prob': mixup_log_prob.mean(),
+                'mixup_mse': jnp.mean((mixup_dist.mode() - mixup_actions) ** 2),
+                'mixup_std': jnp.mean(mixup_dist.scale_diag),
+            }
+        else:
+            dist = self.network.select('actor')(observations, params=grad_params)
+            log_prob = dist.log_prob(actions)
+            bc_loss = -log_prob.mean()
+
+            return bc_loss, {
+                'bc_loss': bc_loss,
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+            }
 
     def actor_loss(self, batch, grad_params, rng):
         """Compute the DDPG + BC actor loss."""
@@ -446,21 +472,54 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             lam = jax.lax.stop_gradient(1 / jnp.abs(q).mean())
             q_loss = lam * q_loss
 
-        log_prob = dist.log_prob(actions)
-        bc_loss = -(self.config['alpha'] * log_prob).mean()
+        if self.config['use_mixup']:
+            rng, perm_rng, beta_rng = jax.random.split(rng, 3)
+            batch_size = observations.shape[0]
 
-        actor_loss = q_loss + bc_loss
+            perms = jax.random.permutation(perm_rng, jnp.arange(batch_size))
+            lam = jax.random.beta(beta_rng, self.config['mixup_alpha'], self.config['mixup_alpha'],
+                                  shape=(batch_size, 1))
+            mixup_observations = lam * observations + (1 - lam) * observations[perms]
+            mixup_actions = lam * actions + (1 - lam) * actions[perms]
 
-        return actor_loss, {
-            'actor_loss': actor_loss,
-            'q_loss': q_loss,
-            'bc_loss': bc_loss,
-            'q_mean': q.mean(),
-            'q_abs_mean': jnp.abs(q).mean(),
-            'bc_log_prob': log_prob.mean(),
-            'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
-            'std': jnp.mean(dist.scale_diag),
-        }
+            dist = self.network.select('actor')(observations)
+            log_prob = dist.log_prob(actions)
+            mixup_dist = self.network.select('actor')(mixup_observations, params=grad_params)
+            mixup_log_prob = mixup_dist.log_prob(mixup_actions)
+            bc_loss = -(self.config['alpha'] * mixup_log_prob).mean()
+
+            actor_loss = q_loss + bc_loss
+
+            return actor_loss, {
+                'actor_loss': actor_loss,
+                'q_loss': q_loss,
+                'bc_loss': bc_loss,
+                'q_mean': q.mean(),
+                'q_abs_mean': jnp.abs(q).mean(),
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+                'mixup_bc_log_prob': mixup_log_prob.mean(),
+                'mixup_mse': jnp.mean((mixup_dist.mode() - mixup_actions) ** 2),
+                'mixup_std': jnp.mean(mixup_dist.scale_diag),
+            }
+        else:
+            dist = self.network.select('actor')(observations, params=grad_params)
+            log_prob = dist.log_prob(actions)
+            bc_loss = -(self.config['alpha'] * log_prob).mean()
+
+            actor_loss = q_loss + bc_loss
+
+            return actor_loss, {
+                'actor_loss': actor_loss,
+                'q_loss': q_loss,
+                'bc_loss': bc_loss,
+                'q_mean': q.mean(),
+                'q_abs_mean': jnp.abs(q).mean(),
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+            }
 
     def compute_fwd_flow_goals(self, noises, observations, actions,
                                init_times=None, end_times=None,
@@ -497,45 +556,20 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
 
         return noisy_goals
 
-    # def compute_fwd_flow_goals(self, noises, observations, use_target_network=False):
-    #     if use_target_network:
-    #         module_name = 'target_critic_vf'
-    #     else:
-    #         module_name = 'critic_vf'
-    #
-    #     def vector_field(time, noisy_goals, carry):
-    #         (observations, ) = carry
-    #         times = jnp.full(noisy_goals.shape[:-1], time)
-    #
-    #         vf = self.network.select(module_name)(
-    #             noisy_goals, times, observations)
-    #
-    #         return vf
-    #
-    #     ode_term = ODETerm(vector_field)
-    #     ode_sol = diffeqsolve(
-    #         ode_term, self.ode_solver,
-    #         t0=0.0, t1=1.0, dt0=1 / self.config['num_flow_steps'],
-    #         y0=noises, args=(observations, ),
-    #         throw=False,  # (chongyi): setting throw to false is important for speed
-    #     )
-    #     noisy_goals = ode_sol.ys[-1]
-    #
-    #     return noisy_goals
-
     @jax.jit
     def pretraining_loss(self, batch, grad_params, rng=None):
         info = {}
         rng = rng if rng is not None else self.rng
 
-        rng, flow_matching_rng = jax.random.split(rng)
+        rng, flow_matching_rng, behavioral_cloning_rng = jax.random.split(rng, 3)
 
         flow_matching_loss, flow_matching_info = self.flow_matching_loss(
             batch, grad_params, flow_matching_rng)
         for k, v in flow_matching_info.items():
             info[f'flow_matching/{k}'] = v
 
-        bc_loss, bc_info = self.behavioral_cloning_loss(batch, grad_params)
+        bc_loss, bc_info = self.behavioral_cloning_loss(
+            batch, grad_params, behavioral_cloning_rng)
         for k, v in bc_info.items():
             info[f'bc/{k}'] = v
 
@@ -553,10 +587,6 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
         reward_loss, reward_info = self.reward_loss(batch, grad_params)
         for k, v in reward_info.items():
             info[f'reward/{k}'] = v
-
-        # value_loss, value_info = self.value_loss(batch, grad_params, value_rng)
-        # for k, v in value_info.items():
-        #     info[f'value/{k}'] = v
 
         critic_loss, critic_info = self.critic_loss(batch, grad_params, critic_rng)
         for k, v in critic_info.items():
@@ -820,14 +850,15 @@ def get_config():
             expectile=0.9,  # IQL style expectile.
             q_agg='mean',  # Aggregation method for target Q values.
             critic_noise_type='normal',  # Critic noise type. ('marginal_state', 'normal').
-            critic_fm_loss_type='sarsa_squared',
-            # Type of critic flow matching loss. ('naive_sarsa', 'coupled_sarsa', 'sarsa_squared')
+            critic_fm_loss_type='sarsa_squared', # Type of critic flow matching loss. ('naive_sarsa', 'coupled_sarsa', 'sarsa_squared')
             num_flow_goals=1,  # Number of future flow goals for the compute target q.
             clip_flow_goals=False,  # Whether to clip the flow goals.
             use_terminal_masks=False,  # Whether to use the terminal masks.
             ode_solver_type='euler',  # Type of ODE solver ('euler', 'dopri5').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
+            use_mixup=False,  # Whether to use mixup for the behavioral cloning loss. (prevent overfitting).
+            mixup_alpha=2.0,  # mixup beta distribution parameter.
             actor_freq=2,  # Actor update frequency.
             alpha=10.0,  # BC coefficient (need to be tuned for each environment).
             const_std=True,  # Whether to use constant standard deviation for the actor.

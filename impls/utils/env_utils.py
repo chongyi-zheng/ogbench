@@ -303,8 +303,8 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
         env = DMCEpisodeMonitor(env, filter_regexes=['internal_state'])
         eval_env = DMCEpisodeMonitor(eval_env, filter_regexes=['internal_state'])
 
-        dataset = dmc_utils.get_dataset(env_name, reward_free=reward_free, max_size=max_size)
-        train_dataset, val_dataset = dataset, None
+        train_dataset, val_dataset = dmc_utils.get_dataset(
+            env_name, reward_free=reward_free, max_size=max_size)
     elif ('basketball' in env_name or 'button-press-topdown' in env_name
           or 'peg-insert-side' in env_name or 'sweep' in env_name
           or 'window-open' in env_name):

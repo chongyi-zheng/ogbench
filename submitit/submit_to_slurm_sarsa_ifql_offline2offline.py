@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=40,
     )
 
     with executor.batch():  # job array
@@ -51,9 +51,9 @@ def main():
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
-            # "cube-single-play-singletask-task2-v0",
-            # "cube-double-play-singletask-task2-v0",
-            "scene-play-singletask-task2-v0",
+            "cube-single-play-singletask-task2-v0",
+            "cube-double-play-singletask-task2-v0",
+            # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
             # "walker_walk",
@@ -69,17 +69,17 @@ def main():
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [1000.0]:
+                        for alpha in [30.0]:
                             for num_flow_goals in [16]:
                                 for actor_freq in [4]:
-                                    for expectile in [0.75, 0.8, 0.85, 0.9, 0.99]:
-                                        for q_agg in ['mean', 'min']:
-                                            for clip_flow_goals in [True, False]:
-                                                for normalize_q_loss in [False]:
-                                                    for critic_fm_loss_type in ['sarsa_squared']:
+                                    for expectile in [0.8, 0.85, 0.9, 0.99]:
+                                        for q_agg in ['min']:
+                                            for clip_flow_goals in [False]:
+                                                for use_mixup in [False]:
+                                                    for mixup_alpha in [0.5, 1.0, 2.0, 4.0]:
                                                         for reward_type in ['state']:
                                                             for seed in [10]:
-                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_clip_fgs={clip_flow_goals}_norm_q={normalize_q_loss}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_bc_pretrain"
+                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_alpha={mixup_alpha}_reward={reward_type}_bc_pretrain"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
 
@@ -133,7 +133,7 @@ def main():
                                                                         --agent.alpha={alpha} \
                                                                         --agent.num_flow_steps=10 \
                                                                         --agent.critic_noise_type=normal \
-                                                                        --agent.critic_fm_loss_type={critic_fm_loss_type} \
+                                                                        --agent.critic_fm_loss_type=sarsa_squared \
                                                                         --agent.num_flow_goals={num_flow_goals} \
                                                                         --agent.actor_freq={actor_freq} \
                                                                         --agent.clip_flow_goals={clip_flow_goals} \
@@ -142,8 +142,10 @@ def main():
                                                                         --agent.q_agg={q_agg} \
                                                                         --agent.reward_layer_norm=True \
                                                                         --agent.actor_layer_norm=False \
-                                                                        --agent.normalize_q_loss={normalize_q_loss} \
+                                                                        --agent.normalize_q_loss=False \
                                                                         --agent.use_target_reward=False \
+                                                                        --agent.use_mixup={use_mixup} \
+                                                                        --agent.mixup_alpha={mixup_alpha} \
                                                                         --agent.reward_type={reward_type} \
                                                                         --agent.use_terminal_masks=False \
                                                                         --seed={seed} \

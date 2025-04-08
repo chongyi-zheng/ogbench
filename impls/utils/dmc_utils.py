@@ -359,37 +359,69 @@ def get_dataset(
     dataset_dir = os.path.expanduser(dataset_dir)
     reward_free_prefix = 'reward_free' if reward_free else 'reward_labeled'
     env_suffix = env_name.split('_')[0] if reward_free else env_name
-    h5path = os.path.join(
+    train_h5path = os.path.join(
         dataset_dir,
         '_'.join([unsupervised_algo, reward_free_prefix, env_suffix]) + '.hdf5'
     )
+    val_h5path = os.path.join(
+        dataset_dir,
+        '_'.join([unsupervised_algo, reward_free_prefix, env_suffix]) + '_val.hdf5'
+    )
 
-    dataset = {}
-    with h5py.File(h5path, 'r') as dataset_file:
+    train_dataset = {}
+    with h5py.File(train_h5path, 'r') as dataset_file:
         for k in tqdm(get_keys(dataset_file), desc="load datafile"):
             try:  # first try loading as an array
-                dataset[k] = dataset_file[k][:]
+                train_dataset[k] = dataset_file[k][:]
             except ValueError as e:  # try loading as a scalar
-                dataset[k] = dataset_file[k][()]
+                train_dataset[k] = dataset_file[k][()]
 
-    if dataset['observations'].shape[0] > max_size:
-        for k, v in dataset.items():
-            dataset[k] = v[:max_size]
+    val_dataset = {}
+    with h5py.File(val_h5path, 'r') as dataset_file:
+        for k in tqdm(get_keys(dataset_file), desc="load datafile"):
+            try:  # first try loading as an array
+                val_dataset[k] = dataset_file[k][:]
+            except ValueError as e:  # try loading as a scalar
+                val_dataset[k] = dataset_file[k][()]
+
+    if train_dataset['observations'].shape[0] > max_size:
+        for k, v in train_dataset.items():
+            train_dataset[k] = v[:max_size]
+    if val_dataset['observations'].shape[0] > max_size:
+        for k, v in train_dataset.items():
+            train_dataset[k] = v[:max_size]
 
     if reward_free:
-        return Dataset.create(
-            observations=dataset['observations'].astype(np.float32),
-            actions=dataset['actions'].astype(np.float32),
-            next_observations=dataset['next_observations'].astype(np.float32),
-            terminals=dataset['terminals'].astype(np.float32),
-            masks=dataset['masks'].astype(np.float32),
+        train_dataset = Dataset.create(
+            observations=train_dataset['observations'].astype(np.float32),
+            actions=train_dataset['actions'].astype(np.float32),
+            next_observations=train_dataset['next_observations'].astype(np.float32),
+            terminals=train_dataset['terminals'].astype(np.float32),
+            masks=train_dataset['masks'].astype(np.float32),
+        )
+        val_dataset = Dataset.create(
+            observations=val_dataset['observations'].astype(np.float32),
+            actions=val_dataset['actions'].astype(np.float32),
+            next_observations=val_dataset['next_observations'].astype(np.float32),
+            terminals=val_dataset['terminals'].astype(np.float32),
+            masks=val_dataset['masks'].astype(np.float32),
         )
     else:
-        return Dataset.create(
-            observations=dataset['observations'].astype(np.float32),
-            actions=dataset['actions'].astype(np.float32),
-            next_observations=dataset['next_observations'].astype(np.float32),
-            terminals=dataset['terminals'].astype(np.float32),
-            rewards=dataset['rewards'].astype(np.float32),
-            masks=dataset['masks'].astype(np.float32),
+        train_dataset = Dataset.create(
+            observations=train_dataset['observations'].astype(np.float32),
+            actions=train_dataset['actions'].astype(np.float32),
+            next_observations=train_dataset['next_observations'].astype(np.float32),
+            terminals=train_dataset['terminals'].astype(np.float32),
+            rewards=train_dataset['rewards'].astype(np.float32),
+            masks=train_dataset['masks'].astype(np.float32),
         )
+        val_dataset = Dataset.create(
+            observations=val_dataset['observations'].astype(np.float32),
+            actions=val_dataset['actions'].astype(np.float32),
+            next_observations=val_dataset['next_observations'].astype(np.float32),
+            terminals=val_dataset['terminals'].astype(np.float32),
+            rewards=val_dataset['rewards'].astype(np.float32),
+            masks=val_dataset['masks'].astype(np.float32),
+        )
+
+    return train_dataset, val_dataset
