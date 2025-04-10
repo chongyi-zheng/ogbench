@@ -43,11 +43,11 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
             'reward_loss': reward_loss
         }
 
-    def contrastive_loss(self, batch, grad_params, module_name='critic'):
+    def contrastive_loss(self, batch, grad_params):
         """Compute the contrastive value loss for the Q or V function."""
         batch_size = batch['observations'].shape[0]
 
-        v, phi, psi = self.network.select(module_name)(
+        v, phi, psi = self.network.select('critic')(
             batch['observations'],
             batch['value_goals'],
             actions=batch['actions'],
@@ -176,7 +176,11 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
         for k, v in bc_info.items():
             info[f'bc/{k}'] = v
 
-        loss = bc_loss
+        critic_loss, critic_info = self.contrastive_loss(batch, grad_params)
+        for k, v in critic_info.items():
+            info[f'critic/{k}'] = v
+
+        loss = critic_loss + bc_loss
         return loss, info
 
     @partial(jax.jit, static_argnames=('full_update',))

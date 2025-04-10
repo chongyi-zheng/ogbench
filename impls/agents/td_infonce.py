@@ -43,7 +43,7 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             'reward_loss': reward_loss
         }
 
-    def critic_loss(self, batch, grad_params, rng=None):
+    def contrastive_loss(self, batch, grad_params, td_loss_type='sarsa', rng=None):
         """Compute the contrastive value loss for the Q or V function."""
         batch_size = batch['observations'].shape[0]
         actions = batch['actions']
@@ -104,11 +104,16 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
         #     random_psi = random_psi[None, ...]
         # random_logits = jnp.einsum('eik,ejk->ije', random_phi, random_psi) / jnp.sqrt(random_phi.shape[-1])
 
-        next_dist = self.network.select('actor')(batch['next_observations'], params=grad_params)
-        if self.config['const_std']:
-            next_actions = jnp.clip(next_dist.mode(), -1, 1)
+        if td_loss_type == 'q_learning':
+            next_dist = self.network.select('actor')(batch['next_observations'], params=grad_params)
+            if self.config['const_std']:
+                next_actions = jnp.clip(next_dist.mode(), -1, 1)
+            else:
+                next_actions = jnp.clip(next_dist.sample(seed=rng), -1, 1)
+        elif td_loss_type == 'sarsa':
+            next_actions = batch['next_actions']
         else:
-            next_actions = jnp.clip(next_dist.sample(seed=rng), -1, 1)
+            raise NotImplementedError
 
         # importance sampling logits
         _, w_phi, w_psi = self.network.select('target_critic')(
@@ -173,8 +178,10 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
     def actor_loss(self, batch, grad_params, rng=None):
         """Compute the actor loss (AWR or DDPG+BC)."""
         # Maximize log Q if actor_log_q.
+        # def value_transform(x):
+        #     return jnp.log(jnp.maximum(x, 1e-6))
         def value_transform(x):
-            return jnp.log(jnp.maximum(x, 1e-6))
+            return x
 
         # DDPG+BC loss.
         # batch_size = batch['observations'].shape[0]
@@ -249,7 +256,12 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
         for k, v in bc_info.items():
             info[f'bc/{k}'] = v
 
-        loss = bc_loss
+        critic_loss, critic_info = self.contrastive_loss(
+            batch, grad_params, td_loss_type='sarsa')
+        for k, v in critic_info.items():
+            info[f'critic/{k}'] = v
+
+        loss = critic_loss + bc_loss
         return loss, info
 
     @partial(jax.jit, static_argnames=('full_update',))
@@ -263,7 +275,8 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             info[f'reward/{k}'] = v
 
         rng, critic_rng = jax.random.split(rng)
-        critic_loss, critic_info = self.critic_loss(batch, grad_params, critic_rng)
+        critic_loss, critic_info = self.contrastive_loss(
+            batch, grad_params, td_loss_type='q_learning', rng=critic_rng)
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
@@ -384,7 +397,7 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
             latent_dim=config['latent_dim'],
             layer_norm=config['layer_norm'],
             num_ensembles=2,
-            value_exp=True,
+            value_exp=False,
             state_encoder=encoders.get('critic_state'),
             goal_encoder=encoders.get('critic_goal'),
         )
