@@ -27,7 +27,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
     rng: Any
     network: Any
     cond_prob_path: Any
-    ode_solver: Any
+    # ode_solver: Any
     config: Any = nonpytree_field()
 
     @staticmethod
@@ -822,19 +822,19 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             scheduler=scheduler_class[config['scheduler_class']]()
         )
 
-        if config['ode_solver_type'] == 'euler':
-            ode_solver = Euler()
-        elif config['ode_solver_type'] == 'dopri5':
-            ode_solver = Dopri5()
-        else:
-            raise TypeError("Unknown ode_solver_type: {}".format(config['ode_solver_type']))
+        # if config['ode_solver_type'] == 'euler':
+        #     ode_solver = Euler()
+        # elif config['ode_solver_type'] == 'dopri5':
+        #     ode_solver = Dopri5()
+        # else:
+        #     raise TypeError("Unknown ode_solver_type: {}".format(config['ode_solver_type']))
 
         config['obs_dims'] = obs_dims
         config['action_dim'] = action_dim
         config['action_dtype'] = action_dtype
 
         return cls(rng, network=network, cond_prob_path=cond_prob_path,
-                   ode_solver=ode_solver, config=flax.core.FrozenDict(**config))
+                   config=flax.core.FrozenDict(**config))
 
 
 def get_config():
