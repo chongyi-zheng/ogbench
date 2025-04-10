@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=30,
+        slurm_array_parallelism=20,
     )
 
     with executor.batch():  # job array
@@ -51,9 +51,9 @@ def main():
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
-            "cube-single-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task2-v0",
             # "cube-double-play-singletask-task2-v0",
-            # "scene-play-singletask-task2-v0",
+            "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
             # "walker_walk",
@@ -69,16 +69,16 @@ def main():
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [30.0]:
+                        for alpha in [1000.0, 300.0]:
                             for num_flow_goals in [16]:
                                 for actor_freq in [4]:
-                                    for expectile in [0.8, 0.85, 0.9, 0.99]:
+                                    for expectile in [0.9, 0.95, 0.99]:
                                         for q_agg in ['min']:
-                                            for clip_flow_goals in [False]:
+                                            for clip_flow_goals in [True]:
                                                 for use_mixup in [True]:
-                                                    for mixup_bw in [0.5, 1.0, 2.0, 2.75, 4.0]:
+                                                    for mixup_bw in [0.1, 0.25, 0.5, 1.0]:
                                                         for reward_type in ['state']:
-                                                            for seed in [10]:
+                                                            for seed in [20]:
                                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_bw={mixup_bw}_reward={reward_type}_bc_pretrain"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
@@ -146,7 +146,7 @@ def main():
                                                                         --agent.use_target_reward=False \
                                                                         --agent.use_mixup={use_mixup} \
                                                                         --agent.mixup_alpha=2.0 \
-                                                                        --agent.mixup_bw={mixup_bw} \
+                                                                        --agent.mixup_bandwidth={mixup_bw} \
                                                                         --agent.reward_type={reward_type} \
                                                                         --agent.use_terminal_masks=False \
                                                                         --seed={seed} \

@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=10,
+        slurm_array_parallelism=20,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -49,18 +49,21 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            "cheetah_run",
-            "walker_walk",
+            "cube-single-play-singletask-task2-v0",
+            "cube-double-play-singletask-task2-v0",
+            # "scene-play-singletask-task2-v0",
+            # "cheetah_run",
+            # "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
-            "quadruped_jump",
-            "jaco_reach_top_left",
+            # "quadruped_jump",
+            # "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [3.0, 0.3, 0.03, 0.003]:
-                    for reward_type in ['state', 'state_action']:
+                for alpha in [3.0, 0.3, 0.03, 0.003, 0.0003]:
+                    for reward_type in ['state']:
                         for actor_freq in [4]:
-                            for seed in [10]:
+                            for seed in [10, 20]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_crl_infonce_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_reward_type={reward_type}_actor_freq={actor_freq}"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/ogbench_logs/crl_infonce_offline2offline/{exp_name}/{seed}")
