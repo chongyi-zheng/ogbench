@@ -68,104 +68,108 @@ def main():
         ]:
             for obs_norm_type in ['normal']:
                 for alpha in [30.0]:
-                    for finetuning_size in [100_000, 200_000, 300_000]:
+                    for finetuning_size in [10_000, 50_000, 100_000, 200_000, 300_000, 400_000]:
                         for finetuning_steps in [500_000]:
                             for eval_interval in [10_000]:
                                 for num_flow_goals in [16]:
                                     for actor_freq in [4]:
-                                        for expectile in [0.99]:
+                                        for expectile in [0.9]:
                                             for q_agg in ['min']:
-                                                for critic_fm_loss_type in ['sarsa_squared']:
-                                                    for reward_type in ['state']:
-                                                        for seed in [10, 20]:
-                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_critic_fm_loss={critic_fm_loss_type}_reward={reward_type}_bc_pretrain"
-                                                            log_dir = os.path.expanduser(
-                                                                f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
+                                                for use_mixup in [True]:
+                                                    for mixup_bw in [0.25]:
+                                                        for reward_type in ['state']:
+                                                            for seed in [10, 20]:
+                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_mixup={use_mixup}_mixup_bw={mixup_bw}_reward={reward_type}_bc_pretrain"
+                                                                log_dir = os.path.expanduser(
+                                                                    f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
 
-                                                            # change the log folder of slurm executor
-                                                            submitit_log_dir = os.path.join(
-                                                                os.path.dirname(log_dir),
-                                                                'submitit')
-                                                            executor._executor.folder = Path(
-                                                                submitit_log_dir).expanduser().absolute()
+                                                                # change the log folder of slurm executor
+                                                                submitit_log_dir = os.path.join(
+                                                                    os.path.dirname(log_dir),
+                                                                    'submitit')
+                                                                executor._executor.folder = Path(
+                                                                    submitit_log_dir).expanduser().absolute()
 
-                                                            cmds = f"""
-                                                                unset PYTHONPATH;
-                                                                source $HOME/.zshrc;
-                                                                conda activate ogbench;
-                                                                which python;
-                                                                echo $CONDA_PREFIX;
+                                                                cmds = f"""
+                                                                    unset PYTHONPATH;
+                                                                    source $HOME/.zshrc;
+                                                                    conda activate ogbench;
+                                                                    which python;
+                                                                    echo $CONDA_PREFIX;
 
-                                                                echo job_id: $SLURM_ARRAY_JOB_ID;
-                                                                echo task_id: $SLURM_ARRAY_TASK_ID;
-                                                                squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
-                                                                echo seed: {seed};
+                                                                    echo job_id: $SLURM_ARRAY_JOB_ID;
+                                                                    echo task_id: $SLURM_ARRAY_TASK_ID;
+                                                                    squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
+                                                                    echo seed: {seed};
 
-                                                                export PROJECT_DIR=$PWD;
-                                                                export PYTHONPATH=$HOME/research/ogbench/impls;
-                                                                export PATH="$PATH":"$CONDA_PREFIX"/bin;
-                                                                export CUDA_VISIBLE_DEVICES=0;
-                                                                export MUJOCO_GL=egl;
-                                                                export PYOPENGL_PLATFORM=egl;
-                                                                export EGL_DEVICE_ID=0;
-                                                                export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
-                                                                export D4RL_SUPPRESS_IMPORT_ERROR=1;
-                                                                export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
-                                                                export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
+                                                                    export PROJECT_DIR=$PWD;
+                                                                    export PYTHONPATH=$HOME/research/ogbench/impls;
+                                                                    export PATH="$PATH":"$CONDA_PREFIX"/bin;
+                                                                    export CUDA_VISIBLE_DEVICES=0;
+                                                                    export MUJOCO_GL=egl;
+                                                                    export PYOPENGL_PLATFORM=egl;
+                                                                    export EGL_DEVICE_ID=0;
+                                                                    export WANDB_API_KEY=bbb3bca410f71c2d7cfe6fe0bbe55a38d1015831;
+                                                                    export D4RL_SUPPRESS_IMPORT_ERROR=1;
+                                                                    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
+                                                                    export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
 
-                                                                rm -rf {log_dir};
-                                                                mkdir -p {log_dir};
-                                                                python $PROJECT_DIR/impls/main_offline2offline.py \
-                                                                    --enable_wandb=1 \
-                                                                    --env_name={env_name} \
-                                                                    --obs_norm_type={obs_norm_type} \
-                                                                    --finetuning_size={finetuning_size} \
-                                                                    --finetuning_steps={finetuning_steps} \
-                                                                    --eval_interval={eval_interval} \
-                                                                    --eval_episodes=50 \
-                                                                    --agent=impls/agents/sarsa_ifql.py \
-                                                                    --agent.batch_size=256 \
-                                                                    --agent.actor_hidden_dims="(512,512,512,512)" \
-                                                                    --agent.value_hidden_dims="(512,512,512,512)" \
-                                                                    --agent.reward_hidden_dims="(512,512,512,512)" \
-                                                                    --agent.lr=3e-4 \
-                                                                    --agent.tau=0.005 \
-                                                                    --agent.network_type=mlp \
-                                                                    --agent.num_residual_blocks=1 \
-                                                                    --agent.alpha={alpha} \
-                                                                    --agent.num_flow_steps=10 \
-                                                                    --agent.critic_noise_type=normal \
-                                                                    --agent.critic_fm_loss_type={critic_fm_loss_type} \
-                                                                    --agent.num_flow_goals={num_flow_goals} \
-                                                                    --agent.actor_freq={actor_freq} \
-                                                                    --agent.clip_flow_goals=False \
-                                                                    --agent.ode_solver_type=euler \
-                                                                    --agent.expectile={expectile} \
-                                                                    --agent.q_agg={q_agg} \
-                                                                    --agent.reward_layer_norm=True \
-                                                                    --agent.actor_layer_norm=False \
-                                                                    --agent.normalize_q_loss=False \
-                                                                    --agent.use_target_reward=False \
-                                                                    --agent.reward_type={reward_type} \
-                                                                    --agent.use_terminal_masks=False \
-                                                                    --seed={seed} \
-                                                                    --save_dir={log_dir} \
-                                                                2>&1 | tee {log_dir}/stream.log;
+                                                                    rm -rf {log_dir};
+                                                                    mkdir -p {log_dir};
+                                                                    python $PROJECT_DIR/impls/main_offline2offline.py \
+                                                                        --enable_wandb=1 \
+                                                                        --env_name={env_name} \
+                                                                        --obs_norm_type={obs_norm_type} \
+                                                                        --finetuning_size={finetuning_size} \
+                                                                        --finetuning_steps={finetuning_steps} \
+                                                                        --eval_interval={eval_interval} \
+                                                                        --eval_episodes=50 \
+                                                                        --agent=impls/agents/sarsa_ifql.py \
+                                                                        --agent.batch_size=256 \
+                                                                        --agent.actor_hidden_dims="(512,512,512,512)" \
+                                                                        --agent.value_hidden_dims="(512,512,512,512)" \
+                                                                        --agent.reward_hidden_dims="(512,512,512,512)" \
+                                                                        --agent.lr=3e-4 \
+                                                                        --agent.tau=0.005 \
+                                                                        --agent.network_type=mlp \
+                                                                        --agent.num_residual_blocks=1 \
+                                                                        --agent.alpha={alpha} \
+                                                                        --agent.num_flow_steps=10 \
+                                                                        --agent.critic_noise_type=normal \
+                                                                        --agent.critic_fm_loss_type=sarsa_squared \
+                                                                        --agent.num_flow_goals={num_flow_goals} \
+                                                                        --agent.actor_freq={actor_freq} \
+                                                                        --agent.clip_flow_goals=True \
+                                                                        --agent.ode_solver_type=euler \
+                                                                        --agent.expectile={expectile} \
+                                                                        --agent.q_agg={q_agg} \
+                                                                        --agent.reward_layer_norm=True \
+                                                                        --agent.actor_layer_norm=False \
+                                                                        --agent.normalize_q_loss=False \
+                                                                        --agent.use_target_reward=False \
+                                                                        --agent.use_mixup={use_mixup} \
+                                                                        --agent.mixup_alpha=2.0 \
+                                                                        --agent.mixup_bandwidth={mixup_bw} \
+                                                                        --agent.reward_type={reward_type} \
+                                                                        --agent.use_terminal_masks=False \
+                                                                        --seed={seed} \
+                                                                        --save_dir={log_dir} \
+                                                                    2>&1 | tee {log_dir}/stream.log;
 
-                                                                export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
-                                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
-                                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
-                                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                                            """
+                                                                    export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
+                                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
+                                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
+                                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                                                """
 
-                                                            cmd_func = submitit.helpers.CommandFunction(
-                                                                [
-                                                                    "/bin/zsh", "-c",
-                                                                    cmds,
-                                                                ], verbose=True)
+                                                                cmd_func = submitit.helpers.CommandFunction(
+                                                                    [
+                                                                        "/bin/zsh", "-c",
+                                                                        cmds,
+                                                                    ], verbose=True)
 
-                                                            executor.submit(cmd_func)
+                                                                executor.submit(cmd_func)
 
 
 if __name__ == "__main__":

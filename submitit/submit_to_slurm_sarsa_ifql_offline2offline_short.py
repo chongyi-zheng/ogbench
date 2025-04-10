@@ -138,7 +138,7 @@ def main():
                                                                     --agent.critic_fm_loss_type={critic_fm_loss_type} \
                                                                     --agent.num_flow_goals={num_flow_goals} \
                                                                     --agent.actor_freq={actor_freq} \
-                                                                    --agent.clip_flow_goals=False \
+                                                                    --agent.clip_flow_goals=True \
                                                                     --agent.ode_solver_type=euler \
                                                                     --agent.expectile={expectile} \
                                                                     --agent.q_agg={q_agg} \
