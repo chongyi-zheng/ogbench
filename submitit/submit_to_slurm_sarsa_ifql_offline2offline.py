@@ -52,8 +52,8 @@ def main():
             # "pen-human-v1",
             # "door-human-v1",
             # "cube-single-play-singletask-task2-v0",
-            # "cube-double-play-singletask-task2-v0",
-            "scene-play-singletask-task2-v0",
+            "cube-double-play-singletask-task2-v0",
+            # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task4-v0"
             # "cheetah_run",
             # "walker_walk",
@@ -69,10 +69,10 @@ def main():
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [1000.0, 300.0]:
+                        for alpha in [30.0]:
                             for num_flow_goals in [16]:
                                 for actor_freq in [4]:
-                                    for expectile in [0.9, 0.95, 0.99]:
+                                    for expectile in [0.65, 0.75, 0.85, 0.9, 0.9, 0.99]:
                                         for q_agg in ['min']:
                                             for clip_flow_goals in [True]:
                                                 for use_mixup in [True]:
