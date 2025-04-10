@@ -1,4 +1,4 @@
-from diffrax import diffeqsolve, ODETerm, Dopri5, Euler
+# from diffrax import diffeqsolve, ODETerm, Dopri5, Euler
 
 import numpy as np
 import jax.numpy as jnp

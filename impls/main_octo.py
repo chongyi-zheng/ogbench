@@ -47,7 +47,12 @@ flags.DEFINE_integer('num_aug', 1, 'Number of image augmentations.')
 flags.DEFINE_integer('inplace_aug', 1, 'Whether to replace the original image after applying augmentations.')
 flags.DEFINE_integer('frame_stack', None, 'Number of frames to stack.')
 
-config_flags.DEFINE_config_file('agent', 'agents/fql.py', lock_config=False)
+config_flags.DEFINE_config_file(
+    'config',
+    'octo_utils/config.py',
+    "File path to the training hyperparameter configuration.",
+    lock_config=False,
+)
 
 
 def main(_):

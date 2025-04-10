@@ -8,10 +8,10 @@ import jax.numpy as jnp
 import numpy as np
 import ml_collections
 import optax
-from diffrax import (
-    diffeqsolve, ODETerm,
-    Euler, Dopri5,
-)
+# from diffrax import (
+#     diffeqsolve, ODETerm,
+#     Euler, Dopri5,
+# )
 
 from utils.encoders import encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field

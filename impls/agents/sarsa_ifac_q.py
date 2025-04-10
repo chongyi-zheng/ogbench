@@ -9,10 +9,10 @@ import numpy as np
 import ml_collections
 import optax
 
-from diffrax import (
-    diffeqsolve, ODETerm,
-    Euler, Dopri5,
-)
+# from diffrax import (
+#     diffeqsolve, ODETerm,
+#     Euler, Dopri5,
+# )
 
 from utils.env_utils import compute_reward
 from utils.encoders import encoder_modules

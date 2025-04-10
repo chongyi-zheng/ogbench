@@ -5,11 +5,11 @@ import jax
 import jax.numpy as jnp
 import ml_collections
 import optax
-from diffrax import (
-    diffeqsolve, ODETerm,
-    Euler, Dopri5, Tsit5,
-    RecursiveCheckpointAdjoint, DirectAdjoint, BacksolveAdjoint
-)
+# from diffrax import (
+#     diffeqsolve, ODETerm,
+#     Euler, Dopri5, Tsit5,
+#     RecursiveCheckpointAdjoint, DirectAdjoint, BacksolveAdjoint
+# )
 
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
