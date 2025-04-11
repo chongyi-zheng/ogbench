@@ -5,6 +5,7 @@ import json
 import random
 import time
 
+import jax
 import tensorflow as tf
 import numpy as np
 import tqdm
@@ -12,7 +13,23 @@ import wandb
 from absl import app, flags
 from ml_collections import config_flags
 
-from agents import agents
+from octo.utils.spec import ModuleSpec
+from octo.data.dataset import make_interleaved_dataset
+from octo.data.oxe import make_oxe_dataset_kwargs_and_weights
+from octo.model.octo_model import OctoModel
+from octo.utils.train_utils import (
+    create_optimizer,
+    filter_eval_datasets,
+    format_name_with_config,
+    process_text,
+    Timer,
+    TrainState,
+)
+from octo.utils.train_callbacks import (
+    create_validation_dataset
+)
+
+from octo_agents import agents
 from utils.env_utils import make_env_and_datasets
 from utils.datasets import augment
 from utils.evaluation import evaluate
@@ -48,12 +65,18 @@ flags.DEFINE_integer('inplace_aug', 1, 'Whether to replace the original image af
 flags.DEFINE_integer('frame_stack', None, 'Number of frames to stack.')
 
 config_flags.DEFINE_config_file(
-    'config',
+    'octo',
     'octo_utils/config.py',
-    "File path to the training hyperparameter configuration.",
+    "File path to the octo hyperparameter configuration.",
     lock_config=False,
 )
 
+config_flags.DEFINE_config_file(
+    'agent',
+    'octo_agents/iql.py',
+    "File path to the agent hyperparameter configuration.",
+    lock_config=False,
+)
 
 def main(_):
     # Set up logger.
@@ -66,39 +89,110 @@ def main(_):
             project='ogbench', group=FLAGS.wandb_run_group, name=exp_name,
             mode=FLAGS.wandb_mode
         )
+
+        codebase_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        wandb.run.log_code(codebase_directory)
     flag_dict = get_flag_dict()
     with open(os.path.join(FLAGS.save_dir, 'flags.json'), 'w') as f:
         json.dump(flag_dict, f)
 
-    # prevent tensorflow from using GPU memory since it's only used for data loading
-    tf.config.set_visible_devices([], "GPU")
+    # prevent tensorflow from using GPUs
+    tf.config.set_visible_devices([], 'GPU')
 
     # Make environment and datasets.
+    octo_config = FLAGS.octo
     config = FLAGS.agent
-    _, eval_env, train_dataset, val_dataset = make_env_and_datasets(
-        FLAGS.env_name, frame_stack=FLAGS.frame_stack, action_clip_eps=None)
+    # _, eval_env, train_dataset, val_dataset = make_env_and_datasets(
+    #     FLAGS.env_name, frame_stack=FLAGS.frame_stack, action_clip_eps=None)
 
     # Initialize agent.
+    octo_config.seed = FLAGS.seed
     random.seed(FLAGS.seed)
     np.random.seed(FLAGS.seed)
+    tf.random.set_seed(FLAGS.seed)
+
+    # set up text tokenization (this needs to happen after batching but before sharding)
+    if octo_config.text_processor is None:
+        text_processor = None
+    else:
+        text_processor = ModuleSpec.instantiate(octo_config.text_processor)()
+
+    def process_batch(batch):
+        batch = process_text(batch, text_processor)
+        del batch['dataset_name']
+        return batch
+
+    # load datasets
+    assert 'oxe_kwargs' in octo_config.dataset_kwargs
+    # create dataset_kwargs_list from oxe_kwargs
+    (
+        octo_config.dataset_kwargs['dataset_kwargs_list'],
+        octo_config.dataset_kwargs['sample_weights'],
+    ) = make_oxe_dataset_kwargs_and_weights(
+        **octo_config.dataset_kwargs['oxe_kwargs']
+    )
+    del octo_config.dataset_kwargs['oxe_kwargs']
+
+    train_data = make_interleaved_dataset(**octo_config.dataset_kwargs, train=True)
+    train_data_iter = map(
+        process_batch,
+        train_data.iterator(prefetch=octo_config.prefetch_num_batches),
+    )
+
+    val_datasets_kwargs_list, _ = filter_eval_datasets(
+        octo_config.dataset_kwargs['dataset_kwargs_list'],
+        octo_config.dataset_kwargs['sample_weights'],
+        octo_config.eval_datasets,
+    )
+    assert len(val_datasets_kwargs_list) == 1
+
+    val_dataset_kwargs = val_datasets_kwargs_list[0]
+    val_dataset = create_validation_dataset(
+        val_dataset_kwargs,
+        octo_config.dataset_kwargs['traj_transform_kwargs'],
+        octo_config.dataset_kwargs['frame_transform_kwargs'],
+    )
+    val_iterator = (
+        val_dataset.unbatch()
+        .shuffle(octo_config.val_kwargs['val_shuffle_buffer_size'])
+        .repeat()
+        .batch(octo_config.dataset_kwargs['batch_size'])
+        .iterator(prefetch=0)
+    )
+    val_data_iterator = map(process_batch, val_iterator)
+
+    example_batch = next(train_data_iter)
+    # example_val_batch = next(val_data_iterator)
 
     # Set up datasets.
-    train_dataset = train_dataset.shuffle(4 * config['batch_size'])
-    train_dataset_iter = train_dataset.batch(config['batch_size']).as_numpy_iterator()
-    val_dataset = val_dataset.shuffle(4 * config['batch_size'])
-    val_dataset_iter = val_dataset.batch(config['batch_size']).as_numpy_iterator()
+    # train_dataset = train_dataset.shuffle(4 * config['batch_size'])
+    # train_dataset_iter = train_dataset.batch(config['batch_size']).as_numpy_iterator()
+    # val_dataset = val_dataset.shuffle(4 * config['batch_size'])
+    # val_dataset_iter = val_dataset.batch(config['batch_size']).as_numpy_iterator()
 
-    assert config['agent_name'] not in ['mcfac']
+    # assert config['agent_name'] not in ['mcfac']
 
     # Create agent.
-    example_batch = next(val_dataset_iter)
+    # example_batch = next(val_dataset_iter)
+    # rng = jax.random.PRNGKey(octo_config.seed)
+    # rng, init_rng = jax.random.split(rng)
+    # model = OctoModel.from_config(
+    #     octo_config.to_dict(),
+    #     example_batch,
+    #     text_processor,
+    #     verbose=True,
+    #     rng=init_rng,
+    #     dataset_statistics=train_data.dataset_statistics,
+    # )
 
     agent_class = agents[config['agent_name']]
     agent = agent_class.create(
         FLAGS.seed,
-        example_batch['observations'],
-        example_batch['actions'],
+        example_batch,
+        text_processor,
+        train_data.dataset_statistics,
         config,
+        octo_config,
     )
 
     # Restore agent.

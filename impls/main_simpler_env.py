@@ -66,7 +66,7 @@ def main(_):
         json.dump(flag_dict, f)
 
     # prevent tensorflow from using GPU memory since it's only used for data loading
-    tf.config.set_visible_devices([], "GPU")
+    tf.config.set_visible_devices([], 'GPU')
 
     # Make environment and datasets.
     config = FLAGS.agent

@@ -19,7 +19,6 @@ def get_config(
             seed=42,
             num_steps=2e6,
             save_dir=placeholder(str),
-            agent=dict(),
             model=get_model_config(transformer_size),
             window_size=window_size,
             dataset_kwargs=get_dataset_config(window_size),
