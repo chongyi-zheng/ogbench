@@ -6,6 +6,7 @@ import random
 import time
 
 import jax
+import simpler_env
 import tensorflow as tf
 import numpy as np
 import tqdm
@@ -58,11 +59,6 @@ flags.DEFINE_integer('eval_episodes', 50, 'Number of evaluation episodes.')
 flags.DEFINE_integer('video_episodes', 0, 'Number of video episodes for each task.')
 flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
 
-flags.DEFINE_string('obs_norm_type', 'none', 'Type of observation normalization. (none, normal, bounded)')
-flags.DEFINE_float('p_aug', None, 'Probability of applying image augmentation.')
-flags.DEFINE_integer('num_aug', 1, 'Number of image augmentations.')
-flags.DEFINE_integer('inplace_aug', 1, 'Whether to replace the original image after applying augmentations.')
-flags.DEFINE_integer('frame_stack', None, 'Number of frames to stack.')
 
 config_flags.DEFINE_config_file(
     'octo',
@@ -104,6 +100,8 @@ def main(_):
     config = FLAGS.agent
     # _, eval_env, train_dataset, val_dataset = make_env_and_datasets(
     #     FLAGS.env_name, frame_stack=FLAGS.frame_stack, action_clip_eps=None)
+    # eval_env = simpler_env_utils.make_env_and_datasets(FLAGS.env_name, env_only=True)
+    eval_env = simpler_env.make(FLAGS.env_name)
 
     # Initialize agent.
     octo_config.seed = FLAGS.seed
@@ -208,28 +206,14 @@ def main(_):
     # Offline RL.
     expl_metrics = dict()
     for i in tqdm.tqdm(range(1, FLAGS.offline_steps + 1), smoothing=0.1, dynamic_ncols=True):
-        batch = next(train_dataset_iter)
-        # data augmentation
-        if np.random.rand() < FLAGS.p_aug:
-            if FLAGS.inplace_aug:
-                augment(batch, ['observations', 'next_observations'])
-            else:
-                for aux_idx in range(FLAGS.num_aug):
-                    augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
+        batch = next(train_data_iter)
         agent, update_info = agent.update(batch)
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
             if val_dataset is not None:
-                val_batch = next(val_dataset_iter)
-                # data augmentation
-                if np.random.rand() < FLAGS.p_aug:
-                    if FLAGS.inplace_aug:
-                        augment(val_batch, ['observations', 'next_observations'])
-                    else:
-                        for aux_idx in range(FLAGS.num_aug):
-                            augment(val_batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
+                val_batch = next(val_data_iterator)
                 _, val_info = agent.total_loss(val_batch, grad_params=None)
                 train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval

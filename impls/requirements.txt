@@ -9,6 +9,4 @@ wandb==0.19.3
 tensorflow-datasets==4.9.2
 gsutil==5.33
 gcsfs==2025.3.2
-tensorflow==2.15.1
-rlds==0.1.8
-dm-reverb==0.14.0
+tensorflow==2.18.0

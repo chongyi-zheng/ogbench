@@ -2,10 +2,13 @@ import logging
 from typing import Dict, Optional
 
 import flax.linen as nn
+import distrax
 import jax
 import jax.numpy as jnp
+from einops import rearrange
 
 from octo.model.components.base import TokenGroup
+from octo.model.components.transformer import MAPHead
 from octo.model.components.tokenizers import BinTokenizer
 from octo.model.components.block_transformer import (
     AttentionRule,
@@ -14,6 +17,12 @@ from octo.model.components.block_transformer import (
     TimestepGroup,
 )
 from octo.utils.typing import Data, Sequence
+
+from utils.networks import (
+    default_init,
+    ensemblize,
+    TransformedWithMode
+)
 
 
 class LowdimActionTokenizer(BinTokenizer):
@@ -27,33 +36,19 @@ class LowdimActionTokenizer(BinTokenizer):
 
     # obs_keys: Sequence[str] = tuple()
     discretize: bool = False
-    proper_pad_mask: bool = True
+    action_horizon: int = 1
+    action_dim: int = 7
 
     def __call__(self, actions, *unused_args, **unused_kwargs):
-        # assert self.obs_keys, "Need to specify observation keys to tokenize."
-        # if len(regex_filter(self.obs_keys, sorted(observations.keys()))) == 0:
-        #     logging.warning(
-        #         f"No observation inputs matching {self.obs_keys} were found."
-        #         "Skipping tokenizer entirely."
-        #     )
-        #     assert self.proper_pad_mask, "Cannot skip unless using proper pad mask."
-        #     return None
-
-        # tokenizer_inputs = []
-        # for o_key in self.obs_keys:
-        #     for key in filter(re.compile(o_key).match, sorted(observations.keys())):
-        #         assert (
-        #             len(observations[key].shape) == 3
-        #         ), f"Only supports non-spatial inputs but {key} has shape {observations[key].shape}."
-        #         tokenizer_inputs.append(observations[key])
-        # tokenizer_inputs = jnp.concatenate(tokenizer_inputs, axis=-1)
-        tokenizer_inputs = actions
+        tokenizer_inputs = rearrange(
+            actions, "b w h a -> b w (h a)", h=self.action_horizon, a=self.action_dim
+        )
         if self.discretize:
             tokenized_inputs = super().__call__(tokenizer_inputs)
             tokens = jax.nn.one_hot(tokenized_inputs, self.n_bins)
         else:
             tokens = tokenizer_inputs[..., None]
-        mask = jnp.ones(tokens.shape[:-1])
+        mask = jnp.ones(tokens.shape[:-1], dtype=jnp.bool)
         return TokenGroup(tokens, mask)
 
 
@@ -122,12 +117,12 @@ class OctoTransformer(nn.Module):
 
     observation_tokenizers: Dict[str, nn.Module]
     task_tokenizers: Dict[str, nn.Module]
+    action_tokenizers: Dict[str, nn.Module]
     readouts: Dict[str, int]
     transformer_kwargs: Dict
     token_embedding_size: int
     max_horizon: int
     repeat_task_tokens: bool
-    action_tokenizers: Dict[str, nn.Module] = None
     use_correct_attention: bool = False
 
     @nn.compact
@@ -137,6 +132,7 @@ class OctoTransformer(nn.Module):
         tasks: Data,
         timestep_pad_mask: jax.Array,
         actions: Data = None,
+        action_pad_mask: Data = None,
         readouts: Optional[Sequence[str]] = None,
         train: bool = False,
         verbose: bool = False,
@@ -189,6 +185,13 @@ class OctoTransformer(nn.Module):
         observation_attention_rules = {
             "task_*": AttentionRule.CAUSAL,
             "obs_*": AttentionRule.CAUSAL,
+        }
+        
+        # Actions attend to all tasks and all other actions tokens causally,
+        # e.g. at same timestep or before, but do not attend to readouts
+        action_attention_rules = {
+            "task_*": AttentionRule.CAUSAL,
+            "action_*": AttentionRule.CAUSAL,
         }
 
         #
@@ -283,6 +286,71 @@ class OctoTransformer(nn.Module):
                 )
 
         #
+        # Then, add the action tokens
+        #
+
+        for name, tok in self.action_tokenizers.items():
+            group_name = f"action_{name}"
+            # Receive inputs from tokenizer and cast to embedding size
+            # TODO (chongyiz): add tasks input to the tokenizer
+            if actions is None:
+                actions = jnp.zeros((batch_size, horizon, tok.action_horizon, tok.action_dim),
+                                    dtype=jax.tree_util.tree_leaves(observations)[0].dtype)
+                action_pad_mask = jnp.ones_like(actions, dtype=timestep_pad_mask.dtype)
+            tokenizer_output: TokenGroup = tok(actions, tasks, train=train)
+            if tokenizer_output is None:
+                logging.warning(f"Skipping action tokenizer: {group_name}")
+                continue
+
+            action_tokens = nn.Dense(
+                self.token_embedding_size, name=f"{group_name}_projection"
+            )(tokenizer_output.tokens)
+            # action_tokens shape is (batch, horizon, n_tokens, token_embedding_size)
+
+            # Add positional embedding
+            action_tokens += self._create_positional_embedding(
+                group_name, action_tokens)
+
+            # Update mask to account for which timesteps are padding
+            if len(action_pad_mask.shape) == 4:
+                action_pad_mask = rearrange(
+                    action_pad_mask, "b w h a -> b w (h a)", h=tok.action_horizon, a=tok.action_dim
+                )
+            aggregated_action_pad_mask = (
+                action_pad_mask & timestep_pad_mask[:, :, None] & tokenizer_output.mask
+            )
+
+            all_timestep_groups.append(
+                TimestepGroup(
+                    tokens=action_tokens,
+                    mask=aggregated_action_pad_mask,
+                    name=group_name,
+                    attention_rules=action_attention_rules,
+                )
+            )
+        if self.repeat_task_tokens:
+            logging.info(
+                "repeating task tokens at each timestep to perform cross-modal attention"
+            )
+            # get task tokens
+            for tasks in all_prefix_groups:
+                # lang (batch, n_tokens, token_embedding_size)
+                task_tokens = tasks.tokens[:, jnp.newaxis, :, :]
+                ws = all_timestep_groups[0].tokens.shape[1]
+                task_tokens = jnp.tile(task_tokens, [1, ws, 1, 1])
+                task_pad_mask = tasks.mask[:, jnp.newaxis, :]
+                task_pad_mask = jnp.tile(task_pad_mask, [1, ws, 1])
+                group_name = f"action_{tasks.name}"
+                all_timestep_groups.append(
+                    TimestepGroup(
+                        tokens=task_tokens,
+                        mask=task_pad_mask,
+                        name=group_name,
+                        attention_rules=action_attention_rules,
+                    )
+                )
+
+        #
         # Finally, add the readout tokens
         #
 
@@ -299,11 +367,20 @@ class OctoTransformer(nn.Module):
                 group_name, readout_tokens
             )
             readout_mask = jnp.ones((batch_size, horizon, n_tokens_for_readout))
-            readout_attention_rules = {
-                "task_*": AttentionRule.CAUSAL,
-                "obs_*": AttentionRule.CAUSAL,
-                group_name: AttentionRule.CAUSAL,
-            }  # Attend to tasks, all previous observations, and *only it's own readout*
+
+            if readout_name in ['action', 'reward', 'value']:
+                readout_attention_rules = {
+                    "task_*": AttentionRule.CAUSAL,
+                    "obs_*": AttentionRule.CAUSAL,
+                    group_name: AttentionRule.CAUSAL,
+                }  # Attend to tasks, all previous observations, and *only it's own readout*
+            else:
+                readout_attention_rules = {
+                    "task_*": AttentionRule.CAUSAL,
+                    "obs_*": AttentionRule.CAUSAL,
+                    "action_*": AttentionRule.CAUSAL,
+                    group_name: AttentionRule.CAUSAL,
+                }  # Attend to tasks, all previous observations, all previous actions, and *only it's own readout*
 
             all_timestep_groups.append(
                 TimestepGroup(
@@ -354,6 +431,14 @@ class OctoTransformer(nn.Module):
             ],
             axis=-2,
         )
+        outputs["action"] = TokenGroup.concatenate(
+            [
+                TokenGroup(group.tokens, group.mask)
+                for group in timestep_outputs
+                if group.name.startswith("action_")
+            ],
+            axis=-2,
+        )
 
         return outputs
 
@@ -376,3 +461,159 @@ class OctoTransformer(nn.Module):
             # Use only the timesteps we receive as input
             embedding = embedding[:, : tokens.shape[1]]
         return jnp.broadcast_to(embedding, tokens.shape)
+
+
+class ContinuousGaussianActorHead(nn.Module):
+    """Predicts continuous actions (as opposed to discretized).
+
+    Continuous actions are predicted by tanh squashing the model output to [-max_action, max_action].
+
+    You may create an embedding by either mean-pooling across tokens (use_map=False) or using multi-head
+    attention pooling (use_map=True). It is recommended to use MAP when decoding from the observation token
+    stream.
+    """
+
+    readout_key: str
+    use_map: bool = False
+    action_horizon: int = 1
+    action_dim: int = 7
+    max_action: float = 5.0
+    log_std_min: Optional[float] = -5
+    log_std_max: Optional[float] = 2
+    state_dependent_std: bool = False
+    const_std: bool = True
+    final_fc_init_scale: float = 1e-2
+
+    def setup(self):
+        if self.use_map:
+            self.map_head = MAPHead()
+        self.mean_net = nn.Dense(self.action_horizon * self.action_dim,
+                                 kernel_init=default_init(self.final_fc_init_scale))
+
+        if self.state_dependent_std:
+            self.log_std_net = nn.Dense(
+                self.action_horizon * self.action_dim,
+                kernel_init=default_init(self.final_fc_init_scale)
+            )
+        else:
+            if not self.const_std:
+                self.log_stds = self.param(
+                    'log_stds', nn.initializers.zeros,
+                    (self.action_horizon * self.action_dim,)
+                )
+
+    def __call__(
+        self,
+        transformer_outputs: Dict[str, TokenGroup],
+        temperature: float = 1.0,
+        train: bool = True
+    ) -> distrax.Distribution:
+        """
+        Returns:
+            mean: Predicted actions w/ shape (batch_size, window_size, action_horizon, action_dim)
+        """
+        token_group = transformer_outputs[self.readout_key]
+        assert token_group.tokens.ndim == 4, (
+            f"Expected token_group.tokens to have shape (batch_size, window_size, num_tokens, embedding_size), "
+            f"but got shape {token_group.tokens.shape}"
+        )
+        if self.use_map:  # Multi-head attention pooling
+            embeddings = self.map_head(token_group, train=train)[:, :, 0]
+        else:  # mean pooling
+            embeddings = token_group.tokens.mean(axis=-2)
+        # Now, embeddings is (batch_size, window_size, embedding_size)
+
+        # mean = self.mean_proj(embeddings)
+        # mean = rearrange(
+        #     mean, "b w (h a) -> b w h a", h=self.action_horizon, a=self.action_dim
+        # )
+        # mean = jnp.tanh(mean / self.max_action) * self.max_action
+
+        mean_preds = self.mean_net(embeddings)
+        means = rearrange(
+            mean_preds, "b w (h a) -> b w h a", h=self.action_horizon, a=self.action_dim
+        )
+        if self.state_dependent_std:
+            log_stds = self.log_std_net(embeddings)
+        else:
+            if self.const_std:
+                log_stds = jnp.zeros_like(mean_preds)
+            else:
+                log_stds = self.log_stds
+        log_stds = rearrange(
+            log_stds, "b w (h a) -> b w h a", h=self.action_horizon, a=self.action_dim
+        )
+
+        log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
+
+        distribution = distrax.MultivariateNormalDiag(
+            loc=means, scale_diag=jnp.exp(log_stds) * temperature)
+        distribution = TransformedWithMode(
+            distribution,
+            distrax.Chain([distrax.Block(distrax.ScalarAffine(0.0, 1.0 / self.max_action), ndims=1),
+                           distrax.Block(distrax.Tanh(), ndims=1),
+                           distrax.Block(distrax.ScalarAffine(0.0, self.max_action), ndims=1)])
+        )
+
+        return distribution
+
+    # def predict_action(
+    #     self,
+    #     transformer_outputs: Dict[str, TokenGroup],
+    #     train: bool = True,
+    #     *args,
+    #     sample_shape: tuple = (),
+    #     **kwargs,
+    # ) -> jax.Array:
+    #     """Convenience methods for predicting actions for the final timestep in the window."""
+    #     # only get the last timestep in the window
+    #     mean = self(transformer_outputs, train=train)[:, -1]
+    #     return jnp.broadcast_to(mean, sample_shape + mean.shape)
+
+
+class ValueHead(nn.Module):
+    """Predicts values / critics.
+
+    You may create an embedding by either mean-pooling across tokens (use_map=False) or using multi-head
+    attention pooling (use_map=True). It is recommended to use MAP when decoding from the observation token
+    stream.
+    """
+
+    readout_key: str
+    use_map: bool = False
+    num_ensembles: int = 1
+
+    def setup(self):
+        if self.use_map:
+            self.map_head = MAPHead()
+
+        if self.num_ensembles > 1:
+            dense_layer_cls = ensemblize(nn.Dense, self.num_ensembles)
+        else:
+            dense_layer_cls = nn.Dense
+        self.value_net = dense_layer_cls(1)
+
+    def __call__(
+        self,
+        transformer_outputs: Dict[str, TokenGroup],
+        train: bool = True
+    ) -> jax.Array:
+        """
+        Returns:
+            mean: Predicted actions w/ shape (batch_size, window_size, action_horizon, action_dim)
+        """
+        token_group = transformer_outputs[self.readout_key]
+        assert token_group.tokens.ndim == 4, (
+            f"Expected token_group.tokens to have shape (batch_size, window_size, num_tokens, embedding_size), "
+            f"but got shape {token_group.tokens.shape}"
+        )
+        if self.use_map:  # Multi-head attention pooling
+            embeddings = self.map_head(token_group, train=train)[:, :, 0]
+        else:  # mean pooling
+            embeddings = token_group.tokens.mean(axis=-2)
+        # Now, embeddings is (batch_size, window_size, embedding_size)
+
+        # value is (ensemble_size, batch_size, window_size), the ensemble_size is optional.
+        v = self.value_net(embeddings).squeeze(-1)
+
+        return v
