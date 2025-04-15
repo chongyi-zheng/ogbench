@@ -134,6 +134,9 @@ class LogParam(nn.Module):
 class TransformedWithMode(distrax.Transformed):
     """Transformed distribution with mode calculation."""
 
+    def __getattr__(self, name):
+        return getattr(self.distribution, name)
+
     def mode(self):
         return self.bijector.forward(self.distribution.mode())
 

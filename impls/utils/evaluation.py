@@ -193,6 +193,106 @@ def evaluate_gc(
     return stats, trajs, renders
 
 
+def evaluate_octo(
+    agent,
+    env,
+    num_eval_episodes=50,
+    num_video_episodes=0,
+    video_frame_skip=3,
+    eval_temperature=0,
+):
+    """Evaluate the agent in the environment. 
+    Adapt from https://colab.research.google.com/github/simpler-env/SimplerEnv/blob/main/example.ipynb.
+
+    Args:
+        agent: Agent.
+        env: Environment.
+        dataset: Dataset.
+        num_eval_episodes: Number of episodes to evaluate the agent.
+        num_video_episodes: Number of episodes to render. These episodes are not included in the statistics.
+        video_frame_skip: Number of frames to skip between renders.
+        eval_temperature: Action sampling temperature.
+
+    Returns:
+        A tuple containing the statistics, trajectories, and rendered videos.
+    """
+
+    # obs, reset_info = env.reset()
+    # instruction = env.get_language_instruction()
+    # model.reset(instruction)
+    # print(instruction)
+    #
+    # image = get_image_from_maniskill2_obs_dict(env, obs)  # np.ndarray of shape (H, W, 3), uint8
+    # images = [image]
+    # predicted_terminated, success, truncated = False, False, False
+    # timestep = 0
+    # while not (predicted_terminated or truncated):
+    #     # step the model; "raw_action" is raw model action output; "action" is the processed action to be sent into maniskill env
+    #     raw_action, action = model.step(image)
+    #     predicted_terminated = bool(action["terminate_episode"][0] > 0)
+    #     obs, reward, success, truncated, info = env.step(
+    #         np.concatenate([action["world_vector"], action["rot_axangle"], action["gripper"]])
+    #     )
+    #     print(timestep, info)
+    #     # update image observation
+    #     image = get_image_from_maniskill2_obs_dict(env, obs)
+    #     images.append(image)
+    #     timestep += 1
+    #
+    # episode_stats = info.get("episode_stats", {})
+    # print(f"Episode success: {success}")
+
+    actor_fn = supply_rng(agent.sample_actions, rng=jax.random.PRNGKey(np.random.randint(0, 2**32)))
+    trajs = []
+    stats = defaultdict(list)
+
+    renders = []
+    for i in trange(num_eval_episodes + num_video_episodes):
+        traj = defaultdict(list)
+        should_render = i >= num_eval_episodes
+
+        observation, info = env.reset()
+        done = False
+        step = 0
+        render = []
+        while not done:
+            action = actor_fn(
+                observations=observation,
+                tasks=env.task,
+                temperature=eval_temperature,
+            )
+            action = np.array(action)
+
+            next_observation, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            step += 1
+
+            if should_render and (step % video_frame_skip == 0 or done):
+                frame = observation['image_primary'][0, -1]
+                render.append(frame)
+
+            transition = dict(
+                observation=observation,
+                next_observation=next_observation,
+                action=action,
+                reward=reward,
+                done=done,
+                info=info,
+            )
+            add_to(traj, transition)
+            observation = next_observation
+        if i < num_eval_episodes:
+            add_to(stats, flatten(info))
+            trajs.append(traj)
+        else:
+            renders.append(np.array(render))
+
+    for k, v in stats.items():
+        stats[k] = np.mean(v)
+
+    return stats, trajs, renders
+
+
 def evaluate_policy_evaluation(
     estimator,
     dataset,

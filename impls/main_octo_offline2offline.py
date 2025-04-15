@@ -31,9 +31,12 @@ from octo.utils.train_callbacks import (
 )
 
 from octo_agents import agents
+from octo_utils.wrappers import SimplerOctoWrapper
+
 from utils.env_utils import make_env_and_datasets
 from utils.datasets import augment
-from utils.evaluation import evaluate
+from utils.env_utils import EpisodeMonitor
+from utils.evaluation import evaluate_octo
 from utils.flax_utils import restore_agent, save_agent
 from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb
 
@@ -49,11 +52,12 @@ flags.DEFINE_string('save_dir', 'exp/', 'Save directory.')
 flags.DEFINE_string('restore_path', None, 'Restore path.')
 flags.DEFINE_integer('restore_epoch', None, 'Restore epoch.')
 
-flags.DEFINE_integer('offline_steps', 1000000, 'Number of offline steps.')
-flags.DEFINE_integer('buffer_size', 2000000, 'Replay buffer size.')
-flags.DEFINE_integer('log_interval', 5000, 'Logging interval.')
-flags.DEFINE_integer('eval_interval', 100000, 'Evaluation interval.')
-flags.DEFINE_integer('save_interval', 1000000, 'Saving interval.')
+flags.DEFINE_integer('pretraining_steps', 1_000_000, 'Number of offline steps.')
+flags.DEFINE_integer('finetuning_steps', 500_000, 'Number of online steps.')
+flags.DEFINE_integer('finetuning_size', 500_000, 'Size of the dataset for finetuning.')
+flags.DEFINE_integer('log_interval', 5_000, 'Logging interval.')
+flags.DEFINE_integer('eval_interval', 50_000, 'Evaluation interval.')
+flags.DEFINE_integer('save_interval', 1_500_000, 'Saving interval.')
 
 flags.DEFINE_integer('eval_episodes', 50, 'Number of evaluation episodes.')
 flags.DEFINE_integer('video_episodes', 0, 'Number of video episodes for each task.')
@@ -95,13 +99,12 @@ def main(_):
     # prevent tensorflow from using GPUs
     tf.config.set_visible_devices([], 'GPU')
 
-    # Make environment and datasets.
+    # Make datasets and environment.
     octo_config = FLAGS.octo
     config = FLAGS.agent
     # _, eval_env, train_dataset, val_dataset = make_env_and_datasets(
     #     FLAGS.env_name, frame_stack=FLAGS.frame_stack, action_clip_eps=None)
     # eval_env = simpler_env_utils.make_env_and_datasets(FLAGS.env_name, env_only=True)
-    eval_env = simpler_env.make(FLAGS.env_name)
 
     # Initialize agent.
     octo_config.seed = FLAGS.seed
@@ -131,10 +134,16 @@ def main(_):
     )
     del octo_config.dataset_kwargs['oxe_kwargs']
 
-    train_data = make_interleaved_dataset(**octo_config.dataset_kwargs, train=True)
-    train_data_iter = map(
+    # TODO (chongyi): use different datasets for pretraining and finetuning.
+    pretraining_train_data = make_interleaved_dataset(**octo_config.dataset_kwargs, train=True)
+    pretraining_train_data_iter = map(
         process_batch,
-        train_data.iterator(prefetch=octo_config.prefetch_num_batches),
+        pretraining_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
+    )
+    finetuning_train_data = make_interleaved_dataset(**octo_config.dataset_kwargs, train=True)
+    finetuning_train_data_iter = map(
+        process_batch,
+        finetuning_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
     )
 
     val_datasets_kwargs_list, _ = filter_eval_datasets(
@@ -145,50 +154,52 @@ def main(_):
     assert len(val_datasets_kwargs_list) == 1
 
     val_dataset_kwargs = val_datasets_kwargs_list[0]
-    val_dataset = create_validation_dataset(
+    pretraining_val_data = create_validation_dataset(
         val_dataset_kwargs,
         octo_config.dataset_kwargs['traj_transform_kwargs'],
         octo_config.dataset_kwargs['frame_transform_kwargs'],
     )
-    val_iterator = (
-        val_dataset.unbatch()
+    pretraining_val_iterator = (
+        pretraining_val_data.unbatch()
         .shuffle(octo_config.val_kwargs['val_shuffle_buffer_size'])
         .repeat()
         .batch(octo_config.dataset_kwargs['batch_size'])
         .iterator(prefetch=0)
     )
-    val_data_iterator = map(process_batch, val_iterator)
+    pretraining_val_data_iter = map(process_batch, pretraining_val_iterator)
+    finetuning_val_data = create_validation_dataset(
+        val_dataset_kwargs,
+        octo_config.dataset_kwargs['traj_transform_kwargs'],
+        octo_config.dataset_kwargs['frame_transform_kwargs'],
+    )
+    finetuning_val_iterator = (
+        finetuning_val_data.unbatch()
+        .shuffle(octo_config.val_kwargs['val_shuffle_buffer_size'])
+        .repeat()
+        .batch(octo_config.dataset_kwargs['batch_size'])
+        .iterator(prefetch=0)
+    )
+    finetuning_val_data_iter = map(process_batch, finetuning_val_iterator)
 
-    example_batch = next(train_data_iter)
-    # example_val_batch = next(val_data_iterator)
+    example_batch = next(pretraining_train_data_iter)
 
-    # Set up datasets.
-    # train_dataset = train_dataset.shuffle(4 * config['batch_size'])
-    # train_dataset_iter = train_dataset.batch(config['batch_size']).as_numpy_iterator()
-    # val_dataset = val_dataset.shuffle(4 * config['batch_size'])
-    # val_dataset_iter = val_dataset.batch(config['batch_size']).as_numpy_iterator()
-
-    # assert config['agent_name'] not in ['mcfac']
+    eval_env = simpler_env.make(FLAGS.env_name)
+    eval_env = SimplerOctoWrapper(
+        eval_env,
+        example_batch=example_batch,
+        # TODO (chongyiz): avoid hardcoding the dataset name.
+        unnormalization_statistics=pretraining_train_data.dataset_statistics['fractal20220817_data']['action'],
+        text_processor=text_processor,
+        window_size=octo_config['window_size'],
+        pred_action_horizon=4,
+    )
+    eval_env = EpisodeMonitor(eval_env)
 
     # Create agent.
-    # example_batch = next(val_dataset_iter)
-    # rng = jax.random.PRNGKey(octo_config.seed)
-    # rng, init_rng = jax.random.split(rng)
-    # model = OctoModel.from_config(
-    #     octo_config.to_dict(),
-    #     example_batch,
-    #     text_processor,
-    #     verbose=True,
-    #     rng=init_rng,
-    #     dataset_statistics=train_data.dataset_statistics,
-    # )
-
     agent_class = agents[config['agent_name']]
     agent = agent_class.create(
         FLAGS.seed,
         example_batch,
-        text_processor,
-        train_data.dataset_statistics,
         config,
         octo_config,
     )
@@ -198,24 +209,44 @@ def main(_):
         agent = restore_agent(agent, FLAGS.restore_path, FLAGS.restore_epoch)
 
     # Train agent.
-    train_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'train.csv'))
-    eval_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'eval.csv'))
+    pretraining_train_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'pretraining_train.csv'))
+    pretraining_eval_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'pretraining_eval.csv'))
+    finetuning_train_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'finetuning_train.csv'))
+    finetuning_eval_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'finetuning_eval.csv'))
     first_time = time.time()
     last_time = time.time()
 
     # Offline RL.
     expl_metrics = dict()
-    for i in tqdm.tqdm(range(1, FLAGS.offline_steps + 1), smoothing=0.1, dynamic_ncols=True):
-        batch = next(train_data_iter)
-        agent, update_info = agent.update(batch)
+    for i in tqdm.tqdm(range(1, FLAGS.pretraining_steps + FLAGS.finetuning_steps + 1), smoothing=0.1, dynamic_ncols=True):
+        if i <= FLAGS.pretraining_steps:
+            # Offline pre-training.
+            batch = next(pretraining_train_data_iter)
+            train_logger = pretraining_train_logger
+            eval_logger = pretraining_eval_logger
+
+            agent, update_info = agent.pretrain(batch)
+        else:
+            # Offline fine-tuning.
+            batch = next(finetuning_train_data_iter)
+            train_logger = finetuning_train_logger
+            eval_logger = finetuning_eval_logger
+
+            agent, update_info = agent.finetune(batch, full_update=(i % config['actor_freq'] == 0))
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
-            if val_dataset is not None:
-                val_batch = next(val_data_iterator)
-                _, val_info = agent.total_loss(val_batch, grad_params=None)
-                train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
+            if i <= FLAGS.pretraining_steps:
+                val_data_iter = pretraining_val_data_iter
+                loss_fn = agent.pretraining_loss
+            else:
+                val_data_iter = finetuning_val_data_iter
+                loss_fn = agent.total_loss
+            val_batch = next(val_data_iter)
+            _, val_info = loss_fn(val_batch, grad_params=None)
+            train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
+
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval
             train_metrics['time/total_time'] = time.time() - first_time
             train_metrics.update(expl_metrics)
@@ -225,13 +256,16 @@ def main(_):
 
                 if FLAGS.wandb_mode == 'offline':
                     trigger_sync()
+
             train_logger.log(train_metrics, step=i)
 
         # Evaluate agent.
+        # if (FLAGS.eval_interval != 0 and (i > FLAGS.pretraining_steps)
+        #         and (i == (FLAGS.pretraining_steps + 1) or i % FLAGS.eval_interval == 0)):
         if FLAGS.eval_interval != 0 and (i == 1 or i % FLAGS.eval_interval == 0):
             renders = []
             eval_metrics = {}
-            eval_info, trajs, cur_renders = evaluate(
+            eval_info, trajs, cur_renders = evaluate_octo(
                 agent=agent,
                 env=eval_env,
                 num_eval_episodes=FLAGS.eval_episodes,
@@ -257,8 +291,10 @@ def main(_):
         if i % FLAGS.save_interval == 0:
             save_agent(agent, FLAGS.save_dir, i)
 
-    train_logger.close()
-    eval_logger.close()
+    pretraining_train_logger.close()
+    pretraining_eval_logger.close()
+    finetuning_train_logger.close()
+    finetuning_eval_logger.close()
 
 
 if __name__ == '__main__':

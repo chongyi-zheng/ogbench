@@ -10,6 +10,7 @@ import ml_collections
 # import optax
 
 from octo.utils.spec import ModuleSpec
+# from octo.data.utils.data_utils import NormalizationType
 # from octo.model.components.action_heads import DiffusionActionHead
 # from octo.model.octo_model import OctoModel
 # from octo.model.octo_module import OctoModule, OctoTransformer
@@ -31,7 +32,6 @@ class IQLAgent(flax.struct.PyTreeNode):
     """Implicit Q-learning (IQL) agent."""
 
     rng: Any
-    dataset_statistics: Any
     network: Any
     config: Any = nonpytree_field()
 
@@ -49,27 +49,35 @@ class IQLAgent(flax.struct.PyTreeNode):
         actions = batch['action']
         action_pad_masks = batch['action_pad_mask']
 
-        rng, dropout_rng, target_dropout_rng = jax.random.split(rng, 3)
+        rng, transformer_dropout_rng, target_transformer_dropout_rng = jax.random.split(rng, 3)
         transformer_outputs = self.network.select('octo_transformer')(
             observations=observations, tasks=tasks,
             timestep_pad_mask=timestep_pad_masks,
             train=True,
             params=grad_params,
-            rngs={'dropout': rng},
+            rngs={'dropout': transformer_dropout_rng},
         )
         target_transformer_outputs = self.network.select('target_octo_transformer')(
             observations=observations, tasks=tasks,
             timestep_pad_mask=timestep_pad_masks,
             actions=actions, action_pad_mask=action_pad_masks,
             train=True,
-            rngs={'dropout': target_dropout_rng},
+            rngs={'dropout': target_transformer_dropout_rng},
         )
 
+        rng, q_dropout_rng, v_dropout_rng = jax.random.split(rng, 3)
         q1, q2 = self.network.select('target_critic_head')(
-            target_transformer_outputs, train=True)
+            target_transformer_outputs,
+            train=True,
+            rngs={'dropout': q_dropout_rng},
+        )
         q = jnp.minimum(q1, q2)
         v = self.network.select('value_head')(
-            transformer_outputs, train=True, params=grad_params)
+            transformer_outputs,
+            train=True,
+            rngs={'dropout': v_dropout_rng},
+            params=grad_params,
+        )
         value_loss = self.expectile_loss(q - v, q - v, self.config['expectile']).mean()
 
         return value_loss, {
@@ -87,33 +95,40 @@ class IQLAgent(flax.struct.PyTreeNode):
         actions = batch['action']
         action_pad_masks = batch['action_pad_mask']
         next_observations = batch['next_observation']
-        next_tasks = batch['next_task']
         next_timestep_pad_masks = batch['next_observation']['timestep_pad_mask']
-        rewards = batch['rewards']
-        terminals = batch['terminals']
+        rewards = batch['reward']
+        masks = batch['mask']
 
-        rng, dropout_rng, next_dropout_rng = jax.random.split(rng, 3)
+        rng, transformer_dropout_rng, next_transformer_dropout_rng = jax.random.split(rng, 3)
         transformer_outputs = self.network.select('octo_transformer')(
             observations=observations, tasks=tasks,
             timestep_pad_mask=timestep_pad_masks,
             actions=actions, action_pad_masks=action_pad_masks,
             train=True,
             params=grad_params,
-            key={'dropout': dropout_rng},
+            key={'dropout': transformer_dropout_rng},
         )
         next_transformer_outputs = self.network.select('octo_transformer')(
-            observations=next_observations, tasks=next_tasks,
+            observations=next_observations, tasks=tasks,
             timestep_pad_mask=next_timestep_pad_masks,
             train=True,
-            key={'dropout': next_dropout_rng}
+            key={'dropout': next_transformer_dropout_rng}
         )
 
+        rng, next_v_dropout_rng, q_dropout_rng = jax.random.split(rng, 3)
         next_v = self.network.select('value_head')(
-            next_transformer_outputs, train=True)
-        q = rewards + self.config['discount'] * (1.0 - terminals) * next_v
+            next_transformer_outputs,
+            train=True,
+            rngs={'dropout': next_v_dropout_rng},
+        )
+        q = rewards + self.config['discount'] * masks * next_v
 
         q1, q2 = self.network.select('critic_head')(
-            transformer_outputs, train=True, params=grad_params)
+            transformer_outputs,
+            train=True,
+            rngs={'dropout': q_dropout_rng},
+            params=grad_params,
+        )
         critic_loss = ((q1 - q) ** 2 + (q2 - q) ** 2).mean()
 
         return critic_loss, {
@@ -130,25 +145,28 @@ class IQLAgent(flax.struct.PyTreeNode):
         timestep_pad_masks = batch['observation']['timestep_pad_mask']
         actions = batch['action']
 
+        rng, transformer_dropout_rng, actor_dropout_rng = jax.random.split(rng, 3)
         transformer_outputs = self.network.select('octo_transformer')(
             observations=observations, tasks=tasks,
             timestep_pad_mask=timestep_pad_masks,
             train=True,
+            rngs={'dropout': transformer_dropout_rng},
             params=grad_params,
-            rngs={'dropout': rng},
         )
         dist = self.network.select('actor_head')(
             transformer_outputs,
             train=True,
-            params=grad_params)
+            rngs={'dropout': actor_dropout_rng},
+            params=grad_params,
+        )
 
-        log_prob = dist.log_probs(actions)
+        log_prob = dist.log_prob(actions)
         bc_loss = -log_prob.mean()
 
         return bc_loss, {
             'bc_loss': bc_loss,
             'bc_log_prob': log_prob.mean(),
-            'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+            'mse': jnp.mean((dist.mode() - actions) ** 2),
             'std': jnp.mean(dist.scale_diag),
         }
 
@@ -161,17 +179,27 @@ class IQLAgent(flax.struct.PyTreeNode):
         action_pad_masks = batch['action_pad_mask']
 
         # AWR loss.
+        rng, transformer_dropout_rng = jax.random.split(rng)
         transformer_outputs = self.network.select('octo_transformer')(
             observations=observations, tasks=tasks,
             timestep_pad_mask=timestep_pad_masks,
             actions=actions, action_pad_mask=action_pad_masks,
             train=True,
+            rngs={'dropout': transformer_dropout_rng},
             params=grad_params,
-            rngs={'dropout': rng},
         )
 
-        v = self.network.select('value_head')(transformer_outputs, train=True)
-        q1, q2 = self.network.select('critic_head')(transformer_outputs, train=True)
+        rng, v_dropout_rng, q_dropout_rng = jax.random.split(rng, 3)
+        v = self.network.select('value_head')(
+            transformer_outputs, 
+            train=True,
+            rngs={'dropout': v_dropout_rng},
+        )
+        q1, q2 = self.network.select('critic_head')(
+            transformer_outputs,
+            train=True,
+            rngs={'dropout': q_dropout_rng},
+        )
         q = jnp.minimum(q1, q2)
         adv = q - v
         adv = jax.lax.stop_gradient(adv)
@@ -179,9 +207,14 @@ class IQLAgent(flax.struct.PyTreeNode):
         exp_a = jnp.exp(adv * self.config['alpha'])
         exp_a = jnp.minimum(exp_a, 100.0)
 
+        rng, actor_dropout_rng = jax.random.split(rng)
         dist = self.network.select('actor_head')(
-            transformer_outputs, train=True, params=grad_params)
-        log_prob = dist.log_probs(actions)
+            transformer_outputs, 
+            train=True,
+            rngs={'dropout': actor_dropout_rng},
+            params=grad_params,
+        )
+        log_prob = dist.log_prob(actions)
 
         actor_loss = -(exp_a * log_prob).mean()
 
@@ -287,22 +320,40 @@ class IQLAgent(flax.struct.PyTreeNode):
     def sample_actions(
         self,
         observations,
+        tasks,
+        timestep_pad_masks=None,
         seed=None,
         temperature=1.0,
+        train=False,
     ):
         """Sample actions from the actor."""
-        dist = self.network.select('actor')(observations, temperature=temperature)
-        actions = dist.sample(seed=seed)
-        actions = jnp.clip(actions, -1, 1)
-        return actions
+        if timestep_pad_masks is None:
+            timestep_pad_masks = observations["timestep_pad_mask"]
+        if len(timestep_pad_masks.shape) == 1:
+            observations = jax.tree_map(lambda x: x[None], observations)
+            timestep_pad_masks = timestep_pad_masks[None]
+
+        transformer_outputs = self.network.select('octo_transformer')(
+            observations=observations, tasks=tasks,
+            timestep_pad_mask=timestep_pad_masks,
+            train=train,
+        )
+        dist = self.network.select('actor_head')(
+            transformer_outputs,
+            temperature=temperature,
+            train=train,
+        )
+
+        # only get the last timestep in the window
+        actions = dist.sample(seed=seed)[:, -1].squeeze()
+
+        return actions, transformer_outputs, dist
 
     @classmethod
     def create(
         cls,
         seed,
         example_batch,
-        text_processor,
-        dataset_statistics,
         config,
         octo_config,
         verbose=True,
@@ -446,8 +497,7 @@ class IQLAgent(flax.struct.PyTreeNode):
         params['modules_target_octo_transformer'] = params['modules_octo_transformer']
         params['modules_target_critic_head'] = params['modules_critic_head']
 
-        return cls(rng, dataset_statistics=dataset_statistics,
-                   network=network, config=flax.core.FrozenDict(**config))
+        return cls(rng, network=network, config=flax.core.FrozenDict(**config))
 
 
 def get_config():

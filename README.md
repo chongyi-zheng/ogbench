@@ -181,7 +181,7 @@ and do not want to modify the environments.
 
 ### Installation
 
-Our reference implementations require Python 3.9+ and additional dependencies, including `jax >= 0.4.26`.
+Our reference implementations require Python 3.10.16+ and additional dependencies, including `jax >= 0.4.26`.
 To install these dependencies, run:
 
 ```shell

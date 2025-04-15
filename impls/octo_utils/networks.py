@@ -548,11 +548,12 @@ class ContinuousGaussianActorHead(nn.Module):
 
         distribution = distrax.MultivariateNormalDiag(
             loc=means, scale_diag=jnp.exp(log_stds) * temperature)
+        # chain of bijectors are applied in the reversed order.
         distribution = TransformedWithMode(
             distribution,
-            distrax.Chain([distrax.Block(distrax.ScalarAffine(0.0, 1.0 / self.max_action), ndims=1),
+            distrax.Chain([distrax.Block(distrax.ScalarAffine(0.0, self.max_action), ndims=1),
                            distrax.Block(distrax.Tanh(), ndims=1),
-                           distrax.Block(distrax.ScalarAffine(0.0, self.max_action), ndims=1)])
+                           distrax.Block(distrax.ScalarAffine(0.0, 1.0 / self.max_action), ndims=1)]),
         )
 
         return distribution
