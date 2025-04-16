@@ -246,45 +246,55 @@ def main(_):
         config,
         octo_config,
     )
-    agent.pretrain = partial(
-        jax.jit,
-        # state is replicated, batch is data-parallel
-        in_shardings=(replicated_sharding, dp_sharding),
-        out_shardings=(replicated_sharding, replicated_sharding),
-        # allows jax to modify `state` in-place, saving a lot of memory
-        donate_argnums=0,
-    )(agent.pretrain)
-    agent.finetune = partial(
+    # pretrain_fn = partial(
+    #     jax.jit,
+    #     # state is replicated, batch is data-parallel
+    #     in_shardings=(dp_sharding, ),
+    #     out_shardings=( replicated_sharding, ),
+    #     # allows jax to modify `state` in-place, saving a lot of memory
+    #     donate_argnums=0,
+    # )(agent.pretrain)
+    # finetune_fn = partial(
+    #     jax.jit, static_argnames=('full_update',),
+    #     in_shardings=(dp_sharding, ),
+    #     out_shardings=(replicated_sharding, ),
+    #     donate_argnums=0,
+    # )(agent.finetune)
+    # pretraining_loss_fn = partial(
+    #     jax.jit,
+    #     in_shardings=(dp_sharding, replicated_sharding),
+    #     out_shardings=(replicated_sharding, replicated_sharding),
+    #     donate_argnums=0,
+    # )(agent.pretraining_loss)
+    # total_loss_fn = partial(
+    #     jax.jit, static_argnames=('full_update',),
+    #     in_shardings=(dp_sharding, replicated_sharding, replicated_sharding),
+    #     out_shardings=(replicated_sharding, replicated_sharding, replicated_sharding),
+    #     donate_argnums=0,
+    # )(agent.total_loss)
+    # agent.sample_actions = partial(
+    #     jax.jit,
+    #     in_shardings=(replicated_sharding, dp_sharding),
+    #     out_shardings=(replicated_sharding, replicated_sharding),
+    #     donate_argnums=0,
+    # )(agent.sample_actions)
+
+    pretrain_fn = jax.jit(agent.pretrain)
+    finetune_fn = partial(
         jax.jit, static_argnames=('full_update',),
-        in_shardings=(replicated_sharding, dp_sharding),
-        out_shardings=(replicated_sharding, replicated_sharding),
-        donate_argnums=0,
     )(agent.finetune)
-    agent.pretraining_loss = partial(
-        jax.jit,
-        in_shardings=(replicated_sharding, dp_sharding),
-        out_shardings=(replicated_sharding, replicated_sharding),
-        donate_argnums=0,
-    )(agent.pretraining_loss)
-    agent.total_loss = partial(
+    pretraining_loss_fn = jax.jit(agent.pretraining_loss)
+    total_loss_fn = partial(
         jax.jit, static_argnames=('full_update',),
-        in_shardings=(replicated_sharding, dp_sharding),
-        out_shardings=(replicated_sharding, replicated_sharding),
-        donate_argnums=0,
     )(agent.total_loss)
-    agent.sample_actions = partial(
-        jax.jit,
-        in_shardings=(replicated_sharding, dp_sharding),
-        out_shardings=(replicated_sharding, replicated_sharding),
-        donate_argnums=0,
-    )(agent.sample_actions)
+    sample_actions_fn = jax.jit(agent.sample_actions)
 
     # Restore agent.
     if FLAGS.restore_path is not None:
         agent = restore_agent(agent, FLAGS.restore_path, FLAGS.restore_epoch)
 
     # refreshes the train state so it doesn't crash w/ certain pre-trained loaders
-    agent = jax.device_get(agent)
+    # agent = jax.device_get(agent)
 
     # Train agent.
     pretraining_train_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'pretraining_train.csv'))
@@ -303,14 +313,14 @@ def main(_):
             train_logger = pretraining_train_logger
             eval_logger = pretraining_eval_logger
 
-            agent, update_info = agent.pretrain(batch)
+            agent, update_info = pretrain_fn(batch)
         else:
             # Offline fine-tuning.
             batch = next(finetuning_train_data_iter)
             train_logger = finetuning_train_logger
             eval_logger = finetuning_eval_logger
 
-            agent, update_info = agent.finetune(batch, full_update=(i % config['actor_freq'] == 0))
+            agent, update_info = finetune_fn(batch, full_update=(i % config['actor_freq'] == 0))
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
@@ -318,10 +328,10 @@ def main(_):
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
             if i <= FLAGS.pretraining_steps:
                 val_data_iter = pretraining_val_data_iter
-                loss_fn = agent.pretraining_loss
+                loss_fn = pretraining_loss_fn
             else:
                 val_data_iter = finetuning_val_data_iter
-                loss_fn = agent.total_loss
+                loss_fn = total_loss_fn
             val_batch = next(val_data_iter)
             _, val_info = loss_fn(val_batch, grad_params=None)
             val_info = jax.device_get(val_info)
@@ -346,7 +356,7 @@ def main(_):
             renders = []
             eval_metrics = {}
             eval_info, trajs, cur_renders = evaluate_octo(
-                agent=agent,
+                sample_actions_fn=sample_actions_fn,
                 env=eval_env,
                 num_eval_episodes=FLAGS.eval_episodes,
                 num_video_episodes=FLAGS.video_episodes,
