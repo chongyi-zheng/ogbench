@@ -480,6 +480,7 @@ class ContinuousGaussianActorHead(nn.Module):
     max_action: float = 5.0
     log_std_min: Optional[float] = -5
     log_std_max: Optional[float] = 2
+    tanh_squash: bool = False
     state_dependent_std: bool = False
     const_std: bool = True
     final_fc_init_scale: float = 1e-2
@@ -548,13 +549,14 @@ class ContinuousGaussianActorHead(nn.Module):
 
         distribution = distrax.MultivariateNormalDiag(
             loc=means, scale_diag=jnp.exp(log_stds) * temperature)
-        # chain of bijectors are applied in the reversed order.
-        distribution = TransformedWithMode(
-            distribution,
-            distrax.Chain([distrax.Block(distrax.ScalarAffine(0.0, self.max_action), ndims=1),
-                           distrax.Block(distrax.Tanh(), ndims=1),
-                           distrax.Block(distrax.ScalarAffine(0.0, 1.0 / self.max_action), ndims=1)]),
-        )
+        if self.tanh_squash:
+            # chain of bijectors are applied in the reversed order.
+            distribution = TransformedWithMode(
+                distribution,
+                distrax.Chain([distrax.Block(distrax.ScalarAffine(0.0, self.max_action), ndims=1),
+                               distrax.Block(distrax.Tanh(), ndims=1),
+                               distrax.Block(distrax.ScalarAffine(0.0, 1.0 / self.max_action), ndims=1)]),
+            )
 
         return distribution
 

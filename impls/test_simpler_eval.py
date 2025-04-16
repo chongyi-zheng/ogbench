@@ -1,10 +1,11 @@
 from collections import defaultdict
-from tqdm import trange
 
 import jax
 import numpy as np
-
 import simpler_env
+from octo.model.octo_model import OctoModel
+from tqdm import trange
+
 from octo_utils.wrappers import SimplerOctoWrapper
 from utils.env_utils import EpisodeMonitor
 from utils.evaluation import add_to, flatten
@@ -17,8 +18,20 @@ def main():
     num_video_episodes = 1
     video_frame_skip = 3
 
+    model_type = f"hf://rail-berkeley/octo-small"
+    model = OctoModel.load_pretrained(model_type)
+
     env = simpler_env.make(env_name)
-    env = SimplerOctoWrapper(env, window_size=window_size, pred_action_horizon=4)
+    env = SimplerOctoWrapper(
+        env,
+        example_batch=model.example_batch,
+        # TODO (chongyiz): avoid hardcoding the dataset name.
+        unnormalization_statistics=model.dataset_statistics['fractal20220817_data']['action'],
+        text_processor=model.text_processor,
+        window_size=window_size,
+        pred_action_horizon=4,
+    )
+
     env = EpisodeMonitor(env)
 
     rng = jax.random.PRNGKey(np.random.randint(0, 2 ** 32))
@@ -36,7 +49,7 @@ def main():
         while not done:
             rng, action_rng = jax.random.split(rng)
             observation = jax.tree_map(lambda obs: obs[None], observation)
-            action = env.model.sample_actions(
+            action = model.sample_actions(
                 observation,
                 env.task,
                 rng=action_rng,

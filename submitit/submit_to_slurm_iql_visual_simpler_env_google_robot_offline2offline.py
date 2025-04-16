@@ -47,9 +47,9 @@ def main():
         for env_name in [
             "google_robot_pick_coke_can",
         ]:
-            for batch_size in [256]:
-                for alpha in [100.0, 10.0, 1.0, 0.1]:
-                    for expectile in [0.9, 0.95, 0.99]:
+            for batch_size in [32]:
+                for alpha in [1.0, 0.1]:
+                    for expectile in [0.9]:
                         for actor_freq in [4]:
                             for seed in [10, 20]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_iql_{env_name}_batch_size={batch_size}_alpha={alpha}_expectile={expectile}_actor_freq={actor_freq}"
@@ -95,14 +95,14 @@ def main():
                                         --eval_episodes=50 \
                                         --pretraining_steps=300_000 \
                                         --finetuning_steps=100_000 \
+                                        --eval_interval=20_000 \
                                         --octo=octo_utils/octo_pretrain_config.py:vit_s \
                                         --octo.dataset_kwargs.oxe_kwargs.data_dir={log_root_dir}/datasets/octo_datasets \
                                         --octo.dataset_kwargs.oxe_kwargs.data_mix=google_robot \
-                                        --octo.dataset_kwargs.batch_size={batch_size} \ 
+                                        --octo.dataset_kwargs.batch_size={batch_size} \
                                         --agent=impls/octo_agents/iql.py \
                                         --agent.discount=0.99 \
                                         --agent.expectile={expectile} \
-                                        --agent.actor_loss=awr \
                                         --agent.alpha={alpha} \
                                         --agent.actor_freq={actor_freq} \
                                         --seed={seed} \

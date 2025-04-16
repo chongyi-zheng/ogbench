@@ -5,7 +5,7 @@ import jax
 import tensorflow as tf
 import numpy as np
 
-from octo.model.octo_model import OctoModel, _verify_shapes
+from octo.model.octo_model import _verify_shapes
 from transforms3d.euler import euler2axangle
 
 from simpler_env.utils.env.observation_utils import get_image_from_maniskill2_obs_dict
@@ -77,7 +77,7 @@ class SimplerOctoWrapper(gymnasium.Wrapper):
         images = np.stack(self.image_history, axis=0)
         horizon = len(self.image_history)
         pad_mask = np.ones(horizon, dtype=bool)
-        pad_mask[: horizon - min(horizon, self.num_image_history)] = 0
+        pad_mask[:horizon - min(horizon, self.num_image_history)] = False
         return images, pad_mask
 
     def _create_tasks(
@@ -142,16 +142,24 @@ class SimplerOctoWrapper(gymnasium.Wrapper):
         self.sticky_gripper_action = 0.0
         self.previous_gripper_action = None
 
-    def _process_observation(self, observation):
+    def _process_observation(self, observation, first_obs=False):
         image = get_image_from_maniskill2_obs_dict(self.env, observation)
         assert image.dtype == np.uint8
         image = self._resize_image(image)
-        self._add_image_to_history(image)
+        if first_obs:
+            self.num_image_history += 1
+            self.image_history.extend([image] * self.window_size)
+        else:
+            self._add_image_to_history(image)
         images, timestep_pad_mask = self._obtain_image_history_and_mask()
+        assert len(images) == self.window_size
 
         processed_observation = dict(
             image_primary=images,
             timestep_pad_mask=timestep_pad_mask,
+            pad_mask_dict=dict(
+                image_primary=np.ones_like(timestep_pad_mask, dtype=bool),
+            )
         )
 
         return processed_observation
@@ -209,18 +217,20 @@ class SimplerOctoWrapper(gymnasium.Wrapper):
         if instruction != self.task_description:
             # task description has changed; reset the policy state
             self._reset_model(instruction)
+            first_obs = True
+        else:
+            first_obs = False
         processed_action = self._process_action(action)
 
         observation, reward, terminated, truncated, info = self.env.step(processed_action)
-        processed_observation = self._process_observation(observation)
+        processed_observation = self._process_observation(observation, first_obs=first_obs)
 
         return processed_observation, reward, terminated, truncated, info
 
     def reset(self, *args, **kwargs):
         observation, info = self.env.reset(*args, **kwargs)
-        processed_observation = self._process_observation(observation)
-
         instruction = self.env.get_language_instruction()
         self._reset_model(instruction)
+        processed_observation = self._process_observation(observation, first_obs=True)
 
         return processed_observation, info

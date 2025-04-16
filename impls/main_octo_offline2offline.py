@@ -1,11 +1,13 @@
 import os
-import platform
+from functools import partial
 
 import json
 import random
 import time
 
 import jax
+from jax.experimental import multihost_utils
+from jax.sharding import Mesh, NamedSharding, PartitionSpec
 import simpler_env
 import tensorflow as tf
 import numpy as np
@@ -14,6 +16,7 @@ import wandb
 from absl import app, flags
 from ml_collections import config_flags
 
+from octo.utils import jax_utils
 from octo.utils.spec import ModuleSpec
 from octo.data.dataset import make_interleaved_dataset
 from octo.data.oxe import make_oxe_dataset_kwargs_and_weights
@@ -78,6 +81,7 @@ config_flags.DEFINE_config_file(
     lock_config=False,
 )
 
+
 def main(_):
     # Set up logger.
     exp_name = get_exp_name(FLAGS.seed)
@@ -90,8 +94,9 @@ def main(_):
             mode=FLAGS.wandb_mode
         )
 
-        codebase_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        wandb.run.log_code(codebase_directory)
+        if jax.process_index() == 0:
+            codebase_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            wandb.run.log_code(codebase_directory)
     flag_dict = get_flag_dict()
     with open(os.path.join(FLAGS.save_dir, 'flags.json'), 'w') as f:
         json.dump(flag_dict, f)
@@ -106,11 +111,31 @@ def main(_):
     #     FLAGS.env_name, frame_stack=FLAGS.frame_stack, action_clip_eps=None)
     # eval_env = simpler_env_utils.make_env_and_datasets(FLAGS.env_name, env_only=True)
 
+    jax_utils.initialize_compilation_cache()
+
+    assert octo_config.dataset_kwargs.batch_size % jax.device_count() == 0
+    assert octo_config.viz_kwargs.eval_batch_size % jax.device_count() == 0
+    assert octo_config.dataset_kwargs.batch_size % jax.process_count() == 0
+    assert octo_config.viz_kwargs.eval_batch_size % jax.process_count() == 0
+
+    # create a 1D mesh with a single axis named "batch"
+    mesh = Mesh(jax.devices(), axis_names="batch")
+    # replicated sharding -- does not shard arrays
+    replicated_sharding = NamedSharding(mesh, PartitionSpec())
+    # data-parallel sharding -- shards arrays along the first axis
+    dp_sharding = NamedSharding(mesh, PartitionSpec("batch"))
+
+    def shard(batch):
+        return multihost_utils.host_local_array_to_global_array(
+            batch, mesh, PartitionSpec("batch")
+        )
+
     # Initialize agent.
     octo_config.seed = FLAGS.seed
     random.seed(FLAGS.seed)
     np.random.seed(FLAGS.seed)
-    tf.random.set_seed(FLAGS.seed)
+    # make sure each process loads different data
+    tf.random.set_seed(FLAGS.seed + jax.process_index())
 
     # set up text tokenization (this needs to happen after batching but before sharding)
     if octo_config.text_processor is None:
@@ -137,13 +162,19 @@ def main(_):
     # TODO (chongyi): use different datasets for pretraining and finetuning.
     pretraining_train_data = make_interleaved_dataset(**octo_config.dataset_kwargs, train=True)
     pretraining_train_data_iter = map(
-        process_batch,
-        pretraining_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
+        shard,
+        map(
+            process_batch,
+            pretraining_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
+        )
     )
     finetuning_train_data = make_interleaved_dataset(**octo_config.dataset_kwargs, train=True)
     finetuning_train_data_iter = map(
-        process_batch,
-        finetuning_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
+        shard,
+        map(
+            process_batch,
+            finetuning_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
+        )
     )
 
     val_datasets_kwargs_list, _ = filter_eval_datasets(
@@ -166,7 +197,13 @@ def main(_):
         .batch(octo_config.dataset_kwargs['batch_size'])
         .iterator(prefetch=0)
     )
-    pretraining_val_data_iter = map(process_batch, pretraining_val_iterator)
+    pretraining_val_data_iter = map(
+        shard,
+        map(
+            process_batch,
+            pretraining_val_iterator,
+        )
+    )
     finetuning_val_data = create_validation_dataset(
         val_dataset_kwargs,
         octo_config.dataset_kwargs['traj_transform_kwargs'],
@@ -179,7 +216,13 @@ def main(_):
         .batch(octo_config.dataset_kwargs['batch_size'])
         .iterator(prefetch=0)
     )
-    finetuning_val_data_iter = map(process_batch, finetuning_val_iterator)
+    finetuning_val_data_iter = map(
+        shard,
+        map(
+            process_batch,
+            finetuning_val_iterator,
+        )
+    )
 
     example_batch = next(pretraining_train_data_iter)
 
@@ -203,10 +246,45 @@ def main(_):
         config,
         octo_config,
     )
+    agent.pretrain = partial(
+        jax.jit,
+        # state is replicated, batch is data-parallel
+        in_shardings=(replicated_sharding, dp_sharding),
+        out_shardings=(replicated_sharding, replicated_sharding),
+        # allows jax to modify `state` in-place, saving a lot of memory
+        donate_argnums=0,
+    )(agent.pretrain)
+    agent.finetune = partial(
+        jax.jit, static_argnames=('full_update',),
+        in_shardings=(replicated_sharding, dp_sharding),
+        out_shardings=(replicated_sharding, replicated_sharding),
+        donate_argnums=0,
+    )(agent.finetune)
+    agent.pretraining_loss = partial(
+        jax.jit,
+        in_shardings=(replicated_sharding, dp_sharding),
+        out_shardings=(replicated_sharding, replicated_sharding),
+        donate_argnums=0,
+    )(agent.pretraining_loss)
+    agent.total_loss = partial(
+        jax.jit, static_argnames=('full_update',),
+        in_shardings=(replicated_sharding, dp_sharding),
+        out_shardings=(replicated_sharding, replicated_sharding),
+        donate_argnums=0,
+    )(agent.total_loss)
+    agent.sample_actions = partial(
+        jax.jit,
+        in_shardings=(replicated_sharding, dp_sharding),
+        out_shardings=(replicated_sharding, replicated_sharding),
+        donate_argnums=0,
+    )(agent.sample_actions)
 
     # Restore agent.
     if FLAGS.restore_path is not None:
         agent = restore_agent(agent, FLAGS.restore_path, FLAGS.restore_epoch)
+
+    # refreshes the train state so it doesn't crash w/ certain pre-trained loaders
+    agent = jax.device_get(agent)
 
     # Train agent.
     pretraining_train_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'pretraining_train.csv'))
@@ -236,6 +314,7 @@ def main(_):
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
+            update_info = jax.device_get(update_info)
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
             if i <= FLAGS.pretraining_steps:
                 val_data_iter = pretraining_val_data_iter
@@ -245,6 +324,7 @@ def main(_):
                 loss_fn = agent.total_loss
             val_batch = next(val_data_iter)
             _, val_info = loss_fn(val_batch, grad_params=None)
+            val_info = jax.device_get(val_info)
             train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
 
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval

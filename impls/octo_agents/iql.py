@@ -103,16 +103,16 @@ class IQLAgent(flax.struct.PyTreeNode):
         transformer_outputs = self.network.select('octo_transformer')(
             observations=observations, tasks=tasks,
             timestep_pad_mask=timestep_pad_masks,
-            actions=actions, action_pad_masks=action_pad_masks,
+            actions=actions, action_pad_mask=action_pad_masks,
             train=True,
             params=grad_params,
-            key={'dropout': transformer_dropout_rng},
+            rngs={'dropout': transformer_dropout_rng},
         )
         next_transformer_outputs = self.network.select('octo_transformer')(
             observations=next_observations, tasks=tasks,
             timestep_pad_mask=next_timestep_pad_masks,
             train=True,
-            key={'dropout': next_transformer_dropout_rng}
+            rngs={'dropout': next_transformer_dropout_rng}
         )
 
         rng, next_v_dropout_rng, q_dropout_rng = jax.random.split(rng, 3)
@@ -121,7 +121,7 @@ class IQLAgent(flax.struct.PyTreeNode):
             train=True,
             rngs={'dropout': next_v_dropout_rng},
         )
-        q = rewards + self.config['discount'] * masks * next_v
+        q = rewards[:, None] + self.config['discount'] * masks[:, None] * next_v
 
         q1, q2 = self.network.select('critic_head')(
             transformer_outputs,
@@ -216,13 +216,13 @@ class IQLAgent(flax.struct.PyTreeNode):
         )
         log_prob = dist.log_prob(actions)
 
-        actor_loss = -(exp_a * log_prob).mean()
+        actor_loss = -(exp_a[..., None] * log_prob).mean()
 
         actor_info = {
             'actor_loss': actor_loss,
             'adv': adv.mean(),
             'bc_log_prob': log_prob.mean(),
-            'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+            'mse': jnp.mean((dist.mode() - actions) ** 2),
             'std': jnp.mean(dist.scale_diag),
         }
 
@@ -298,7 +298,7 @@ class IQLAgent(flax.struct.PyTreeNode):
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
         self.target_update(new_network, 'octo_transformer')
-        self.target_update(new_network, 'critic')
+        self.target_update(new_network, 'critic_head')
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -312,7 +312,7 @@ class IQLAgent(flax.struct.PyTreeNode):
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
         self.target_update(new_network, 'octo_transformer')
-        self.target_update(new_network, 'critic')
+        self.target_update(new_network, 'critic_head')
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -345,9 +345,11 @@ class IQLAgent(flax.struct.PyTreeNode):
         )
 
         # only get the last timestep in the window
+        max_action = self.network.model_def.modules['actor_head'].max_action
         actions = dist.sample(seed=seed)[:, -1].squeeze()
+        actions = jnp.clip(actions, -max_action, max_action)
 
-        return actions, transformer_outputs, dist
+        return actions
 
     @classmethod
     def create(
@@ -383,27 +385,27 @@ class IQLAgent(flax.struct.PyTreeNode):
         }
 
         octo_model_config['readouts'] = {'action': 1, 'value': 1, 'critic': 1}
-        octo_model_config['heads']['action'] = ModuleSpec.create(
-            ContinuousGaussianActorHead,
-            readout_key='readout_action',
-            use_map=True,
-            action_horizon=4,
-            action_dim=example_batch['action'].shape[-1],
-            state_dependent_std=False,
-            const_std=config['const_std'],
-        )
-        octo_model_config['heads']['value'] = ModuleSpec.create(
-            ValueHead,
-            readout_key='readout_value',
-            use_map=True,
-            num_ensembles=1,
-        )
-        octo_model_config['heads']['critic'] = ModuleSpec.create(
-            ValueHead,
-            readout_key='readout_critic',
-            use_map=True,
-            num_ensembles=2,
-        )
+        # octo_model_config['heads']['action'] = ModuleSpec.create(
+        #     ContinuousGaussianActorHead,
+        #     readout_key='readout_action',
+        #     use_map=True,
+        #     action_horizon=4,
+        #     action_dim=example_batch['action'].shape[-1],
+        #     state_dependent_std=False,
+        #     const_std=config['const_std'],
+        # )
+        # octo_model_config['heads']['value'] = ModuleSpec.create(
+        #     ValueHead,
+        #     readout_key='readout_value',
+        #     use_map=True,
+        #     num_ensembles=1,
+        # )
+        # octo_model_config['heads']['critic'] = ModuleSpec.create(
+        #     ValueHead,
+        #     readout_key='readout_critic',
+        #     use_map=True,
+        #     num_ensembles=2,
+        # )
 
         observation_tokenizer_defs = {
             k: ModuleSpec.instantiate(spec)()
