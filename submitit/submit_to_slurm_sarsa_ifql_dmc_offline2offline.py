@@ -54,11 +54,11 @@ def main():
             # "cube-single-play-singletask-task2-v0",
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
-            # "puzzle-3x3-play-singletask-task4-v0"
-            "cheetah_run",
-            "cheetah_run_backward",
-            "cheetah_walk",
-            "cheetah_walk_backward",
+            "puzzle-3x3-play-singletask-task1-v0"
+            # "cheetah_run",
+            # "cheetah_run_backward",
+            # "cheetah_walk",
+            # "cheetah_walk_backward",
             # "walker_walk",
             # "cheetah_run_backward",
             # "walker_flip",
@@ -72,16 +72,16 @@ def main():
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [0.3]:
+                        for alpha in [0.3, 0.03, 0.003]:
                             for num_flow_goals in [16]:
                                 for actor_freq in [4]:
                                     for expectile in [0.75]:
                                         for q_agg in ['min']:
                                             for clip_flow_goals in [True]:
                                                 for use_mixup in [True]:
-                                                    for mixup_bw in [0.25, 0.5]:
+                                                    for mixup_bw in [0.05, 0.1, 0.25]:
                                                         for reward_type in ['state']:
-                                                            for seed in [20, 30, 40, 50]:
+                                                            for seed in [20, 30]:
                                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_bw={mixup_bw}_reward={reward_type}_bc_pretrain"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
