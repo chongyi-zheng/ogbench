@@ -43,6 +43,7 @@ def evaluate(
     num_video_episodes=0,
     video_frame_skip=3,
     eval_temperature=0,
+    chosen_skill=None,
 ):
     """Evaluate the agent in the environment.
 
@@ -54,6 +55,7 @@ def evaluate(
         num_video_episodes: Number of episodes to render. These episodes are not included in the statistics.
         video_frame_skip: Number of frames to skip between renders.
         eval_temperature: Action sampling temperature.
+        chosen_skill: Skill to be used for evaluation (only for HILP).
 
     Returns:
         A tuple containing the statistics, trajectories, and rendered videos.
@@ -74,7 +76,10 @@ def evaluate(
         step = 0
         render = []
         while not done:
-            action = actor_fn(observations=observation, temperature=eval_temperature)
+            if chosen_skill is not None:
+                action = actor_fn(observations=observation, skills=chosen_skill, temperature=eval_temperature)
+            else:
+                action = actor_fn(observations=observation, temperature=eval_temperature)
             action = np.array(action)
             action = np.clip(action, -1, 1)
 

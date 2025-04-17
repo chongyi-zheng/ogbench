@@ -60,7 +60,7 @@ def main(_):
     if FLAGS.enable_wandb:
         _, trigger_sync = setup_wandb(
             wandb_output_dir=FLAGS.save_dir,
-            project='ogbench', group=FLAGS.wandb_run_group, name=exp_name,
+            project='fac', group=FLAGS.wandb_run_group, name=exp_name,
             mode=FLAGS.wandb_mode
         )
     flag_dict = get_flag_dict()
@@ -107,7 +107,8 @@ def main(_):
         config['p_aug'] = FLAGS.p_aug
         config['frame_stack'] = FLAGS.frame_stack
         pretraining_train_dataset = GCDataset(pretraining_train_dataset, config)
-        finetuning_train_dataset = GCDataset(finetuning_train_dataset, config)
+        # TODO: added "relabel_reward=False", and need to check if this doesn't break anything.
+        finetuning_train_dataset = GCDataset(finetuning_train_dataset, dict(config, relabel_reward=False))
         if pretraining_val_dataset is not None:
             pretraining_val_dataset = GCDataset(pretraining_val_dataset, config)
             finetuning_val_dataset = GCDataset(finetuning_val_dataset, config)
@@ -158,6 +159,7 @@ def main(_):
     first_time = time.time()
     last_time = time.time()
 
+    chosen_skill = None  # Only for HILP.
     expl_metrics = dict()
     for i in tqdm.tqdm(range(1, FLAGS.pretraining_steps + FLAGS.finetuning_steps + 1), smoothing=0.1, dynamic_ncols=True):
         if i <= FLAGS.pretraining_steps:
@@ -168,6 +170,24 @@ def main(_):
 
             agent, update_info = agent.pretrain(batch)
         else:
+            if i == (FLAGS.pretraining_steps + 1) and 'hilp' in config['agent_name']:
+                # Infer the skill vector.
+                num_steps = 0
+                phis = []
+                rewards = []
+                # TODO: Make num_steps configurable.
+                while num_steps < 10000:
+                    batch = dataset.sample(config['batch_size'])
+                    phi = agent.get_phis(batch['next_observations']) - agent.get_phis(batch['observations'])
+                    phis.append(phi)
+                    rewards.append(batch['rewards'])
+                    num_steps += config['batch_size']
+
+                phi = np.concatenate(phis, axis=0)
+                reward = np.concatenate(rewards, axis=0)
+                z = np.linalg.lstsq(phi, reward, rcond=None)[0]
+                chosen_skill = z / np.linalg.norm(z) * np.sqrt(config['latent_dim'])
+
             # for OfflineObservationNormalizer
             # if i == (FLAGS.pretraining_steps + 1):
             #     agent = agent.update_dataset(finetuning_train_dataset)
@@ -176,6 +196,9 @@ def main(_):
             batch = finetuning_train_dataset.sample(config['batch_size'])
             train_logger = finetuning_train_logger
             eval_logger = finetuning_eval_logger
+
+            if 'hilp' in config['agent_name']:
+                batch['chosen_skills'] = jnp.tile(chosen_skill, (batch['observations'].shape[0], 1))
 
             agent, update_info = agent.finetune(batch, full_update=(i % config['actor_freq'] == 0))
 
@@ -217,6 +240,7 @@ def main(_):
                 num_eval_episodes=FLAGS.eval_episodes,
                 num_video_episodes=FLAGS.video_episodes,
                 video_frame_skip=FLAGS.video_frame_skip,
+                chosen_skill=chosen_skill,
             )
             renders.extend(cur_renders)
             for k, v in eval_info.items():

@@ -565,6 +565,58 @@ class GCDiscreteBilinearCritic(GCBilinearValue):
         return super().__call__(observations, goals, actions, info)
 
 
+class GCMetricValue(nn.Module):
+    """Metric value function.
+
+    This module computes the value function as ||\phi(s) - \phi(g)||_2.
+
+    Attributes:
+        hidden_dims: Hidden layer dimensions.
+        latent_dim: Latent dimension.
+        layer_norm: Whether to apply layer normalization.
+        encoder: Optional state/goal encoder.
+    """
+
+    hidden_dims: Sequence[int]
+    latent_dim: int
+    layer_norm: bool = True
+    encoder: nn.Module = None
+    num_ensembles: int = 1
+
+    def setup(self) -> None:
+        network_module = MLP
+        if self.num_ensembles > 1:
+            network_module = ensemblize(network_module,  self.num_ensembles)
+        self.phi = network_module((*self.hidden_dims, self.latent_dim), activate_final=False, layer_norm=self.layer_norm)
+
+    def __call__(self, observations, goals, is_phi=False, info=False):
+        """Return the metric value function.
+
+        Args:
+            observations: Observations.
+            goals: Goals.
+            is_phi: Whether the inputs are already encoded by phi.
+            info: Whether to additionally return the representations phi_s and phi_g.
+        """
+        if is_phi:
+            phi_s = observations
+            phi_g = goals
+        else:
+            if self.encoder is not None:
+                observations = self.encoder(observations)
+                goals = self.encoder(goals)
+            phi_s = self.phi(observations)
+            phi_g = self.phi(goals)
+
+        squared_dist = ((phi_s - phi_g) ** 2).sum(axis=-1)
+        v = -jnp.sqrt(jnp.maximum(squared_dist, 1e-12))
+
+        if info:
+            return v, phi_s, phi_g
+        else:
+            return v
+
+
 class GCMRNValue(nn.Module):
     """Metric residual network (MRN) value function.
 
