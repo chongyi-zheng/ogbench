@@ -316,7 +316,7 @@ class IQLAgent(flax.struct.PyTreeNode):
 
         return self.replace(network=new_network, rng=new_rng), info
 
-    # @jax.jit
+    @jax.jit
     def sample_actions(
         self,
         observations,

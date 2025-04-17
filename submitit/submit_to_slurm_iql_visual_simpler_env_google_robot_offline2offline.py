@@ -12,19 +12,25 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
+        nodelist = None
     elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
+        nodelist = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        # account = 'allcs'
+        # nodelist = "node205,node206,node207"
+        account = 'pnlp'
+        nodelist = "node210,node211"
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
+        nodelist = None
     else:
         raise NotImplementedError
 
@@ -37,8 +43,9 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="150G",
-        slurm_gpus_per_node=1,
+        slurm_mem="160G",
+        slurm_gpus_per_node=4,
+        slurm_nodelist=nodelist,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=20,
     )
@@ -77,7 +84,7 @@ def main():
                                     export PROJECT_DIR=$PWD;
                                     export PYTHONPATH=$HOME/research/ogbench/impls:$HOME/research/SimplerEnv;
                                     export PATH="$PATH":"$CONDA_PREFIX"/bin;
-                                    export CUDA_VISIBLE_DEVICES=0;
+                                    export CUDA_VISIBLE_DEVICES=0,1;
                                     export MUJOCO_GL=egl;
                                     export PYOPENGL_PLATFORM=egl;
                                     export EGL_DEVICE_ID=0;
@@ -86,6 +93,7 @@ def main():
                                     export D4RL_SUPPRESS_IMPORT_ERROR=1;
                                     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
                                     export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
+                                    export XLA_PYTHON_CLIENT_PREALLOCATE=false;
 
                                     rm -rf {log_dir};
                                     mkdir -p {log_dir};

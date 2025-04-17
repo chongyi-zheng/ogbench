@@ -265,7 +265,7 @@ class OctoTransformer(nn.Module):
             )
         if self.repeat_task_tokens:
             logging.info(
-                "repeating task tokens at each timestep to perform cross-modal attention"
+                "repeating task tokens at each observation timestep to perform cross-modal attention"
             )
             # get task tokens
             for tasks in all_prefix_groups:
@@ -330,7 +330,7 @@ class OctoTransformer(nn.Module):
             )
         if self.repeat_task_tokens:
             logging.info(
-                "repeating task tokens at each timestep to perform cross-modal attention"
+                "repeating task tokens at each action timestep to perform cross-modal attention"
             )
             # get task tokens
             for tasks in all_prefix_groups:
