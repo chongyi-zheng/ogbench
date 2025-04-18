@@ -1,43 +1,32 @@
-import os
-from functools import partial
-
 import json
+import os
 import random
 import time
 
 import jax
-from jax.experimental import multihost_utils
-from jax.sharding import Mesh, NamedSharding, PartitionSpec
+import numpy as np
 import simpler_env
 import tensorflow as tf
-import numpy as np
 import tqdm
 import wandb
 from absl import app, flags
+from jax.experimental import multihost_utils
+from jax.sharding import Mesh, NamedSharding, PartitionSpec
 from ml_collections import config_flags
-
-from octo.utils import jax_utils
-from octo.utils.spec import ModuleSpec
 from octo.data.dataset import make_interleaved_dataset
 from octo.data.oxe import make_oxe_dataset_kwargs_and_weights
-from octo.model.octo_model import OctoModel
-from octo.utils.train_utils import (
-    create_optimizer,
-    filter_eval_datasets,
-    format_name_with_config,
-    process_text,
-    Timer,
-    TrainState,
-)
+from octo.utils import jax_utils
+from octo.utils.spec import ModuleSpec
 from octo.utils.train_callbacks import (
     create_validation_dataset
+)
+from octo.utils.train_utils import (
+    filter_eval_datasets,
+    process_text,
 )
 
 from octo_agents import agents
 from octo_utils.wrappers import SimplerOctoWrapper
-
-from utils.env_utils import make_env_and_datasets
-from utils.datasets import augment
 from utils.env_utils import EpisodeMonitor
 from utils.evaluation import evaluate_octo
 from utils.flax_utils import restore_agent, save_agent
@@ -65,7 +54,6 @@ flags.DEFINE_integer('save_interval', 1_500_000, 'Saving interval.')
 flags.DEFINE_integer('eval_episodes', 50, 'Number of evaluation episodes.')
 flags.DEFINE_integer('video_episodes', 0, 'Number of video episodes for each task.')
 flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
-
 
 config_flags.DEFINE_config_file(
     'octo',
@@ -247,6 +235,7 @@ def main(_):
         config,
         octo_config,
     )
+
     # pretrain_fn = partial(
     #     jax.jit,
     #     # state is replicated, batch is data-parallel
@@ -271,12 +260,14 @@ def main(_):
         new_network, info = agent.network.apply_loss_fn(loss_fn=loss_fn)
 
         return agent.replace(network=new_network, rng=new_rng), info
+
     pretrain_fn = jax.jit(
         pretrain_fn,
         in_shardings=(replicated_sharding, dp_sharding),
         out_shardings=(replicated_sharding, replicated_sharding),
         donate_argnums=(0,),  # tuple required
     )
+
     # finetune_fn = partial(
     #     jax.jit, static_argnames=('full_update',),
     #     in_shardings=(dp_sharding, ),
@@ -301,13 +292,15 @@ def main(_):
         agent.target_update(new_network, 'critic_head')
 
         return agent.replace(network=new_network, rng=new_rng), info
+
     finetune_fn = jax.jit(
         finetune_fn,
-        static_argnames=('full_update', ),
+        static_argnames=('full_update',),
         in_shardings=(replicated_sharding, dp_sharding),
         out_shardings=(replicated_sharding, replicated_sharding),
         donate_argnums=0,
     )
+
     # pretraining_loss_fn = partial(
     #     jax.jit,
     #     in_shardings=(dp_sharding, replicated_sharding),
@@ -330,12 +323,14 @@ def main(_):
 
         loss = bc_loss
         return loss, info
+
     pretraining_loss_fn = jax.jit(
         pretraining_loss_fn,
         in_shardings=(replicated_sharding, dp_sharding),
         out_shardings=(replicated_sharding, replicated_sharding),
         donate_argnums=0,
     )
+
     # total_loss_fn = partial(
     #     jax.jit, static_argnames=('full_update',),
     #     in_shardings=(dp_sharding, replicated_sharding),
@@ -368,6 +363,7 @@ def main(_):
 
         loss = value_loss + critic_loss + actor_loss
         return loss, info
+
     total_loss_fn = jax.jit(
         total_loss_fn,
         in_shardings=(replicated_sharding, dp_sharding),
@@ -399,6 +395,15 @@ def main(_):
     # refreshes the train state so it doesn't crash w/ certain pre-trained loaders
     agent = jax.device_get(agent)
 
+    # compile jitted functions to avoid recompiling.
+    compilation_train_batch = next(pretraining_train_data_iter)
+    compilation_val_batch = next(pretraining_val_data_iter)
+    pretrain_fn(agent, compilation_train_batch)
+    finetune_fn(agent, compilation_train_batch, True)
+    finetune_fn(agent, compilation_train_batch, False)
+    pretraining_loss_fn(agent, compilation_val_batch)
+    total_loss_fn(agent, compilation_val_batch)
+
     # Train agent.
     pretraining_train_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'pretraining_train.csv'))
     pretraining_eval_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'pretraining_eval.csv'))
@@ -409,7 +414,8 @@ def main(_):
 
     # Offline RL.
     expl_metrics = dict()
-    for i in tqdm.tqdm(range(1, FLAGS.pretraining_steps + FLAGS.finetuning_steps + 1), smoothing=0.1, dynamic_ncols=True):
+    for i in tqdm.tqdm(range(1, FLAGS.pretraining_steps + FLAGS.finetuning_steps + 1), smoothing=0.1,
+                       dynamic_ncols=True):
         if i <= FLAGS.pretraining_steps:
             # Offline pre-training.
             batch = next(pretraining_train_data_iter)
