@@ -10,3 +10,24 @@ tensorflow-datasets==4.9.2
 gsutil==5.33
 gcsfs==2025.3.2
 tensorflow==2.18.0
+tensorflow_probability==0.25.0
+# packages below are for octo
+jax[cuda12]==0.4.38
+chex==0.1.89
+einops==0.8.1
+flax==0.10.2
+gym==0.23.1
+huggingface-hub==0.30.2
+ml_dtypes==0.5.1
+moviepy==1.0.3
+narwhals==1.34.1
+numpy==1.26.4
+optax==0.2.4
+orbax-checkpoint==0.4.4
+plotly==6.0.1
+regex==2024.11.6
+safetensors==0.5.3
+tensorstore==0.1.73
+tf-keras==2.18.0
+tokenizers==0.21.1
+transformers==4.51.1
