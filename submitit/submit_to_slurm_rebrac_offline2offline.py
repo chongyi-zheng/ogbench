@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=25,
+        slurm_array_parallelism=24,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -49,20 +49,21 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            "scene-play-singletask-task2-v0",
+            # "scene-play-singletask-task2-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
-            # "walker_walk",
-            # "cheetah_run_backward",
-            # "walker_flip",
+            "walker_walk",
+            "walker_flip",
+            "walker_stand",
+            "walker_run",
             # "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha_actor in [0.1]:
-                    for alpha_critic in [0.1]:
+                for alpha_actor in [10.0, 0.1]:
+                    for alpha_critic in [10.0, 0.1]:
                         for actor_freq in [4]:
                             for seed in [20, 30, 40, 50]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_actor_freq={actor_freq}"

@@ -43,10 +43,19 @@ def parse_args() -> argparse.Namespace:
             ("iql_offline2offline", "cheetah_run", "20250405_iql_offline2offline_cheetah_run_obs_norm_type=normal_alpha=1.0_actor_freq=4"), 
             ("rebrac_offline2offline", "cheetah_run", "20250416_rebrac_offline2offline_cheetah_run_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"), 
             # cheetah_run_backward
-            ("sarsa_ifql_offline2offline", "cheetah_run_backward", ""), 
-            ("iql_offline2offline", "cheetah_run_backward", ""), 
-            ("rebrac_offline2offline", "cheetah_run_backward", ""), 
-            # cheetah_run_backward
+            ("sarsa_ifql_offline2offline", "cheetah_run_backward", "20250416_sarsa_ifql_offline2offline_cheetah_run_backward_obs_norm=normal_lr=0.0003_tau=0.005_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.75_q_agg=min_clip_fgs=True_mixup=True_mixup_bw=0.25_reward=state_bc_pretrain"), 
+            ("iql_offline2offline", "cheetah_run_backward", "20250416_iql_offline2offline_cheetah_run_backward_obs_norm_type=normal_alpha=10.0_expectile=0.99_actor_freq=4"), 
+            ("rebrac_offline2offline", "cheetah_run_backward", "20250416_rebrac_offline2offline_cheetah_run_backward_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"), 
+            # cheetah_walk
+            ("sarsa_ifql_offline2offline", "cheetah_walk", "20250416_sarsa_ifql_offline2offline_cheetah_walk_obs_norm=normal_lr=0.0003_tau=0.005_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.75_q_agg=min_clip_fgs=True_mixup=True_mixup_bw=0.25_reward=state_bc_pretrain"), 
+            ("iql_offline2offline", "cheetah_walk", "20250416_iql_offline2offline_cheetah_walk_obs_norm_type=normal_alpha=10.0_expectile=0.99_actor_freq=4"), 
+            ("rebrac_offline2offline", "cheetah_walk", "20250416_rebrac_offline2offline_cheetah_walk_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"), 
+            # cheetah_walk_backward
+            ("sarsa_ifql_offline2offline", "cheetah_walk_backward", "20250416_sarsa_ifql_offline2offline_cheetah_walk_backward_obs_norm=normal_lr=0.0003_tau=0.005_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.75_q_agg=min_clip_fgs=True_mixup=True_mixup_bw=0.05_reward=state_bc_pretrain"), 
+            ("iql_offline2offline", "cheetah_walk_backward", "20250416_iql_offline2offline_cheetah_walk_backward_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"), 
+            ("rebrac_offline2offline", "cheetah_walk_backward", "20250416_rebrac_offline2offline_cheetah_walk_backward_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
+            # walker_walk
+            # walker_walk_backward
         ]
     )
     p.add_argument(
@@ -75,10 +84,10 @@ def find_csv_files(log_dir, algos, filename) -> list[Path]:
     for algo, env_name, exp_log_dir in algos:
         pattern = os.path.join(log_dir, algo, exp_log_dir, "*", "debug", "**", filename)
         files = [p for p in glob.glob(pattern, recursive=True)]
-        if algo not in csv_files:
-            csv_files[algo] = {env_name: files}
+        if env_name not in csv_files:
+            csv_files[env_name] = {algo: files}
         else:
-            csv_files[algo][env_name] = files 
+            csv_files[env_name][algo] = files 
     return csv_files
 
 

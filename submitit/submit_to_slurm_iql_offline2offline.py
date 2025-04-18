@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -49,14 +49,15 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            "scene-play-singletask-task2-v0",
+            # "scene-play-singletask-task2-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
-            # "walker_walk",
-            # "cheetah_run_backward",
-            # "walker_flip",
+            "walker_walk",
+            "walker_flip",
+            "walker_stand",
+            "walker_run",
             # "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
