@@ -55,7 +55,21 @@ def parse_args() -> argparse.Namespace:
             ("iql_offline2offline", "cheetah_walk_backward", "20250416_iql_offline2offline_cheetah_walk_backward_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"), 
             ("rebrac_offline2offline", "cheetah_walk_backward", "20250416_rebrac_offline2offline_cheetah_walk_backward_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
             # walker_walk
-            # walker_walk_backward
+            ("sarsa_ifql_offline2offline", "walker_walk", "20250418_sarsa_ifql_offline2offline_walker_walk_obs_norm=normal_lr=0.0003_tau=0.005_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.85_q_agg=min_clip_fgs=True_mixup=True_mixup_bw=0.25_reward=state_bc_pretrain"),
+            ("iql_offline2offline", "walker_walk", "20250418_iql_offline2offline_walker_walk_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"), 
+            ("rebrac_offline2offline", "walker_walk", "20250418_rebrac_offline2offline_walker_walk_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=10.0_actor_freq=4"), 
+            # walker_run
+            ("sarsa_ifql_offline2offline", "walker_run", "20250418_sarsa_ifql_offline2offline_walker_run_obs_norm=normal_lr=0.0003_tau=0.005_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.85_q_agg=min_clip_fgs=True_mixup=True_mixup_bw=0.5_reward=state_bc_pretrain"),
+            ("iql_offline2offline", "walker_run", "20250418_iql_offline2offline_walker_run_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"), 
+            ("rebrac_offline2offline", "walker_run", "20250418_rebrac_offline2offline_walker_run_obs_norm_type=normal_alpha_actor=10.0_alpha_critic=0.1_actor_freq=4"), 
+            # walker_stand
+            ("sarsa_ifql_offline2offline", "walker_stand", "20250418_sarsa_ifql_offline2offline_walker_stand_obs_norm=normal_lr=0.0003_tau=0.005_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.85_q_agg=min_clip_fgs=True_mixup=True_mixup_bw=0.25_reward=state_bc_pretrain"),
+            ("iql_offline2offline", "walker_stand", "20250418_iql_offline2offline_walker_stand_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"), 
+            ("rebrac_offline2offline", "walker_stand", "20250418_rebrac_offline2offline_walker_stand_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"), 
+            # walker_flip
+            ("sarsa_ifql_offline2offline", "walker_flip", "20250418_sarsa_ifql_offline2offline_walker_flip_obs_norm=normal_lr=0.0003_tau=0.005_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.85_q_agg=min_clip_fgs=True_mixup=True_mixup_bw=0.5_reward=state_bc_pretrain"),
+            ("iql_offline2offline", "walker_flip", "20250418_iql_offline2offline_walker_flip_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
+            ("rebrac_offline2offline", "walker_flip", "20250418_rebrac_offline2offline_walker_flip_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
         ]
     )
     p.add_argument(
@@ -120,7 +134,7 @@ def main():
             mean = np.mean(seed_data)
             std = np.std(seed_data, ddof=1)  # sample std (N ‑ 1 in the denominator)
 
-            print(f"env = {algo}, algo {env_name}, steps = {args.steps}: mean = {mean:.6f}, std = {std:.6f}")
+            print(f"env = {algo}, {env_name}, steps = {args.steps}: mean = {mean:.4f}, std = {std:.4f}")
 
     # if not all_means:
     #     print("No usable data found.")
