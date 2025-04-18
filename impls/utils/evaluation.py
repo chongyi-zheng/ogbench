@@ -194,7 +194,7 @@ def evaluate_gc(
 
 
 def evaluate_octo(
-    sample_actions_fn,
+    agent,
     env,
     num_eval_episodes=50,
     num_video_episodes=0,
@@ -242,7 +242,7 @@ def evaluate_octo(
     # episode_stats = info.get("episode_stats", {})
     # print(f"Episode success: {success}")
 
-    actor_fn = supply_rng(sample_actions_fn, rng=jax.random.PRNGKey(np.random.randint(0, 2**32)))
+    actor_fn = supply_rng(agent.sample_actions, rng=jax.random.PRNGKey(np.random.randint(0, 2**32)))
     trajs = []
     stats = defaultdict(list)
 
@@ -261,7 +261,6 @@ def evaluate_octo(
                 tasks=env.task,
                 temperature=eval_temperature,
             )
-            action = jax.device_get(action)
             action = np.array(action)
 
             next_observation, reward, terminated, truncated, info = env.step(action)

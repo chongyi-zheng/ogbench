@@ -15,8 +15,8 @@ def main():
         nodelist = None
     elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
-        partition = 'gpu-test'
-        account = None
+        partition = 'pli'
+        account = 'rlchongyiz'
         nodelist = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
@@ -37,17 +37,17 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="iql_offline2offline",
-        slurm_time=int(20 * 60),  # minute
+        slurm_time=int(16 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
-        slurm_cpus_per_task=8,
-        slurm_mem="160G",
-        slurm_gpus_per_node=2,
+        slurm_cpus_per_task=10,
+        slurm_mem="180G",
+        slurm_gpus_per_node=1,
         slurm_nodelist=nodelist,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=4,
     )
 
     with executor.batch():  # job array
@@ -93,7 +93,7 @@ def main():
                                     export D4RL_SUPPRESS_IMPORT_ERROR=1;
                                     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
                                     export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-                                    export XLA_PYTHON_CLIENT_PREALLOCATE=false;
+                                    export XLA_PYTHON_CLIENT_PREALLOCATE=true;
 
                                     rm -rf {log_dir};
                                     mkdir -p {log_dir};

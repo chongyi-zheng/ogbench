@@ -3,19 +3,15 @@ import os
 import random
 import time
 
-import jax
 import numpy as np
 import simpler_env
 import tensorflow as tf
 import tqdm
 import wandb
 from absl import app, flags
-from jax.experimental import multihost_utils
-from jax.sharding import Mesh, NamedSharding, PartitionSpec
 from ml_collections import config_flags
 from octo.data.dataset import make_interleaved_dataset
 from octo.data.oxe import make_oxe_dataset_kwargs_and_weights
-from octo.utils import jax_utils
 from octo.utils.spec import ModuleSpec
 from octo.utils.train_callbacks import (
     create_validation_dataset
@@ -82,9 +78,8 @@ def main(_):
             mode=FLAGS.wandb_mode
         )
 
-        if jax.process_index() == 0:
-            codebase_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-            wandb.run.log_code(codebase_directory)
+        codebase_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        wandb.run.log_code(codebase_directory)
     flag_dict = get_flag_dict()
     with open(os.path.join(FLAGS.save_dir, 'flags.json'), 'w') as f:
         json.dump(flag_dict, f)
@@ -99,31 +94,11 @@ def main(_):
     #     FLAGS.env_name, frame_stack=FLAGS.frame_stack, action_clip_eps=None)
     # eval_env = simpler_env_utils.make_env_and_datasets(FLAGS.env_name, env_only=True)
 
-    jax_utils.initialize_compilation_cache()
-
-    assert octo_config.dataset_kwargs.batch_size % jax.device_count() == 0
-    assert octo_config.viz_kwargs.eval_batch_size % jax.device_count() == 0
-    assert octo_config.dataset_kwargs.batch_size % jax.process_count() == 0
-    assert octo_config.viz_kwargs.eval_batch_size % jax.process_count() == 0
-
-    # create a 1D mesh with a single axis named "batch"
-    mesh = Mesh(jax.devices(), axis_names="batch")
-    # replicated sharding -- does not shard arrays
-    replicated_sharding = NamedSharding(mesh, PartitionSpec())
-    # data-parallel sharding -- shards arrays along the first axis
-    dp_sharding = NamedSharding(mesh, PartitionSpec("batch"))
-
-    def shard(batch):
-        return multihost_utils.host_local_array_to_global_array(
-            batch, mesh, PartitionSpec("batch")
-        )
-
     # Initialize agent.
     octo_config.seed = FLAGS.seed
     random.seed(FLAGS.seed)
     np.random.seed(FLAGS.seed)
-    # make sure each process loads different data
-    tf.random.set_seed(FLAGS.seed + jax.process_index())
+    tf.random.set_seed(FLAGS.seed)
 
     # set up text tokenization (this needs to happen after batching but before sharding)
     if octo_config.text_processor is None:
@@ -148,22 +123,15 @@ def main(_):
     del octo_config.dataset_kwargs['oxe_kwargs']
 
     # TODO (chongyi): use different datasets for pretraining and finetuning.
-    octo_config.dataset_kwargs.batch_size //= jax.process_count()
     pretraining_train_data = make_interleaved_dataset(**octo_config.dataset_kwargs, train=True)
     pretraining_train_data_iter = map(
-        shard,
-        map(
-            process_batch,
-            pretraining_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
-        )
+        process_batch,
+        pretraining_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
     )
     finetuning_train_data = make_interleaved_dataset(**octo_config.dataset_kwargs, train=True)
     finetuning_train_data_iter = map(
-        shard,
-        map(
-            process_batch,
-            finetuning_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
-        )
+        process_batch,
+        finetuning_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
     )
 
     val_datasets_kwargs_list, _ = filter_eval_datasets(
@@ -186,13 +154,7 @@ def main(_):
         .batch(octo_config.dataset_kwargs['batch_size'])
         .iterator(prefetch=0)
     )
-    pretraining_val_data_iter = map(
-        shard,
-        map(
-            process_batch,
-            pretraining_val_iterator,
-        )
-    )
+    pretraining_val_data_iter = map(process_batch, pretraining_val_iterator)
     finetuning_val_data = create_validation_dataset(
         val_dataset_kwargs,
         octo_config.dataset_kwargs['traj_transform_kwargs'],
@@ -205,13 +167,7 @@ def main(_):
         .batch(octo_config.dataset_kwargs['batch_size'])
         .iterator(prefetch=0)
     )
-    finetuning_val_data_iter = map(
-        shard,
-        map(
-            process_batch,
-            finetuning_val_iterator,
-        )
-    )
+    finetuning_val_data_iter = map(process_batch, finetuning_val_iterator)
 
     example_batch = next(pretraining_train_data_iter)
 
@@ -236,173 +192,9 @@ def main(_):
         octo_config,
     )
 
-    # pretrain_fn = partial(
-    #     jax.jit,
-    #     # state is replicated, batch is data-parallel
-    #     in_shardings=(dp_sharding, ),
-    #     out_shardings=(replicated_sharding, ),
-    #     # allows jax to modify `state` in-place, saving a lot of memory
-    #     donate_argnums=0,
-    # )(agent.pretrain)
-    # partial(
-    #     jax.jit,
-    #     in_shardings=(replicated_sharding, dp_sharding),
-    #     out_shardings=(replicated_sharding, replicated_sharding),
-    #     donate_argnums=0,
-    # )
-    def pretrain_fn(agent, batch):
-        """Pre-train the agent and return a new agent with information dictionary."""
-        new_rng, rng = jax.random.split(agent.rng)
-
-        def loss_fn(grad_params):
-            return agent.pretraining_loss(batch, grad_params, rng=rng)
-
-        new_network, info = agent.network.apply_loss_fn(loss_fn=loss_fn)
-
-        return agent.replace(network=new_network, rng=new_rng), info
-
-    pretrain_fn = jax.jit(
-        pretrain_fn,
-        in_shardings=(replicated_sharding, dp_sharding),
-        out_shardings=(replicated_sharding, replicated_sharding),
-        donate_argnums=(0,),  # tuple required
-    )
-
-    # finetune_fn = partial(
-    #     jax.jit, static_argnames=('full_update',),
-    #     in_shardings=(dp_sharding, ),
-    #     out_shardings=(replicated_sharding, ),
-    #     donate_argnums=0,
-    # )(agent.finetune)
-    # partial(
-    #     jax.jit, static_argnames=('full_update',),
-    #     in_shardings=(replicated_sharding, dp_sharding),
-    #     out_shardings=(replicated_sharding, replicated_sharding),
-    #     donate_argnums=0,
-    # )
-    def finetune_fn(agent, batch, full_update=True):
-        """Update the agent and return a new agent with information dictionary."""
-        new_rng, rng = jax.random.split(agent.rng)
-
-        def loss_fn(grad_params):
-            return agent.total_loss(batch, grad_params, full_update, rng=rng)
-
-        new_network, info = agent.network.apply_loss_fn(loss_fn=loss_fn)
-        agent.target_update(new_network, 'octo_transformer')
-        agent.target_update(new_network, 'critic_head')
-
-        return agent.replace(network=new_network, rng=new_rng), info
-
-    finetune_fn = jax.jit(
-        finetune_fn,
-        static_argnames=('full_update',),
-        in_shardings=(replicated_sharding, dp_sharding),
-        out_shardings=(replicated_sharding, replicated_sharding),
-        donate_argnums=0,
-    )
-
-    # pretraining_loss_fn = partial(
-    #     jax.jit,
-    #     in_shardings=(dp_sharding, replicated_sharding),
-    #     out_shardings=(replicated_sharding, replicated_sharding),
-    #     donate_argnums=0,
-    # )(agent.pretraining_loss)
-    # partial(
-    #     jax.jit,
-    #     in_shardings=(replicated_sharding, dp_sharding),
-    #     out_shardings=(replicated_sharding, replicated_sharding),
-    #     donate_argnums=0,
-    # )
-    def pretraining_loss_fn(agent, batch):
-        info = {}
-
-        rng, bc_rng = jax.random.split(agent.rng)
-        bc_loss, bc_info = agent.behavioral_cloning_loss(batch, grad_params=None, rng=bc_rng)
-        for k, v in bc_info.items():
-            info[f'bc/{k}'] = v
-
-        loss = bc_loss
-        return loss, info
-
-    pretraining_loss_fn = jax.jit(
-        pretraining_loss_fn,
-        in_shardings=(replicated_sharding, dp_sharding),
-        out_shardings=(replicated_sharding, replicated_sharding),
-        donate_argnums=0,
-    )
-
-    # total_loss_fn = partial(
-    #     jax.jit, static_argnames=('full_update',),
-    #     in_shardings=(dp_sharding, replicated_sharding),
-    #     out_shardings=(replicated_sharding, replicated_sharding),
-    #     donate_argnums=0,
-    # )(agent.total_loss)
-    # partial(
-    #     jax.jit,
-    #     in_shardings=(replicated_sharding, dp_sharding),
-    #     out_shardings=(replicated_sharding, replicated_sharding),
-    #     donate_argnums=0,
-    # )
-    def total_loss_fn(agent, batch):
-        """Compute the total loss."""
-        info = {}
-        grad_params = None
-
-        rng, value_rng, critic_rng, actor_rng = jax.random.split(agent.rng, 4)
-        value_loss, value_info = agent.value_loss(batch, grad_params, value_rng)
-        for k, v in value_info.items():
-            info[f'value/{k}'] = v
-
-        critic_loss, critic_info = agent.critic_loss(batch, grad_params, critic_rng)
-        for k, v in critic_info.items():
-            info[f'critic/{k}'] = v
-
-        actor_loss, actor_info = agent.actor_loss(batch, grad_params, actor_rng)
-        for k, v in actor_info.items():
-            info[f'actor/{k}'] = v
-
-        loss = value_loss + critic_loss + actor_loss
-        return loss, info
-
-    total_loss_fn = jax.jit(
-        total_loss_fn,
-        in_shardings=(replicated_sharding, dp_sharding),
-        out_shardings=(replicated_sharding, replicated_sharding),
-        donate_argnums=0,
-    )
-    # sample_actions_fn = partial(
-    #     jax.jit, static_argnames=('temperature', 'train'),
-    #     in_shardings=(replicated_sharding, dp_sharding),
-    #     out_shardings=(replicated_sharding, replicated_sharding),
-    #     donate_argnums=0,
-    # )(agent.sample_actions)
-    sample_actions_fn = agent.sample_actions
-
-    # pretrain_fn = jax.jit(agent.pretrain)
-    # finetune_fn = partial(
-    #     jax.jit, static_argnames=('full_update',),
-    # )(agent.finetune)
-    # pretraining_loss_fn = jax.jit(agent.pretraining_loss)
-    # total_loss_fn = partial(
-    #     jax.jit, static_argnames=('full_update',),
-    # )(agent.total_loss)
-    # sample_actions_fn = jax.jit(agent.sample_actions)
-
     # Restore agent.
     if FLAGS.restore_path is not None:
         agent = restore_agent(agent, FLAGS.restore_path, FLAGS.restore_epoch)
-
-    # refreshes the train state so it doesn't crash w/ certain pre-trained loaders
-    agent = jax.device_get(agent)
-
-    # compile jitted functions to avoid recompiling.
-    compilation_train_batch = next(pretraining_train_data_iter)
-    compilation_val_batch = next(pretraining_val_data_iter)
-    pretrain_fn(agent, compilation_train_batch)
-    finetune_fn(agent, compilation_train_batch, True)
-    finetune_fn(agent, compilation_train_batch, False)
-    pretraining_loss_fn(agent, compilation_val_batch)
-    total_loss_fn(agent, compilation_val_batch)
 
     # Train agent.
     pretraining_train_logger = CsvLogger(os.path.join(FLAGS.save_dir, 'pretraining_train.csv'))
@@ -422,29 +214,26 @@ def main(_):
             train_logger = pretraining_train_logger
             eval_logger = pretraining_eval_logger
 
-            agent, update_info = pretrain_fn(agent, batch)
+            agent, update_info = agent.pretrain(batch)
         else:
             # Offline fine-tuning.
             batch = next(finetuning_train_data_iter)
             train_logger = finetuning_train_logger
             eval_logger = finetuning_eval_logger
 
-            agent, update_info = finetune_fn(
-                agent, batch, (i % config['actor_freq'] == 0))
+            agent, update_info = agent.finetune(batch, full_update=(i % config['actor_freq'] == 0))
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
-            update_info = jax.device_get(update_info)
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
             if i <= FLAGS.pretraining_steps:
                 val_data_iter = pretraining_val_data_iter
-                loss_fn = pretraining_loss_fn
+                loss_fn = agent.pretraining_loss
             else:
                 val_data_iter = finetuning_val_data_iter
-                loss_fn = total_loss_fn
+                loss_fn = agent.total_loss
             val_batch = next(val_data_iter)
-            _, val_info = loss_fn(agent, val_batch)
-            val_info = jax.device_get(val_info)
+            _, val_info = loss_fn(val_batch, grad_params=None)
             train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
 
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval
@@ -466,7 +255,7 @@ def main(_):
             renders = []
             eval_metrics = {}
             eval_info, trajs, cur_renders = evaluate_octo(
-                sample_actions_fn=sample_actions_fn,
+                agent=agent,
                 env=eval_env,
                 num_eval_episodes=FLAGS.eval_episodes,
                 num_video_episodes=FLAGS.video_episodes,

@@ -228,9 +228,10 @@ class IQLAgent(flax.struct.PyTreeNode):
 
         return actor_loss, actor_info
 
-    # @jax.jit
+    @jax.jit
     def pretraining_loss(self, batch, grad_params, rng=None):
         info = {}
+        rng = rng if rng is not None else self.rng
 
         bc_loss, bc_info = self.behavioral_cloning_loss(batch, grad_params, rng)
         for k, v in bc_info.items():
@@ -239,7 +240,7 @@ class IQLAgent(flax.struct.PyTreeNode):
         loss = bc_loss
         return loss, info
 
-    # @partial(jax.jit, static_argnames=('full_update',))
+    @partial(jax.jit, static_argnames=('full_update',))
     def total_loss(self, batch, grad_params, full_update=True, rng=None):
         """Compute the total loss."""
         info = {}
@@ -276,7 +277,7 @@ class IQLAgent(flax.struct.PyTreeNode):
         )
         network.params[f'modules_target_{module_name}'] = new_target_params
 
-    # @jax.jit
+    @jax.jit
     def pretrain(self, batch):
         """Pre-train the agent and return a new agent with information dictionary."""
         new_rng, rng = jax.random.split(self.rng)
@@ -288,7 +289,7 @@ class IQLAgent(flax.struct.PyTreeNode):
 
         return self.replace(network=new_network, rng=new_rng), info
 
-    # @partial(jax.jit, static_argnames=('full_update',))
+    @partial(jax.jit, static_argnames=('full_update',))
     def finetune(self, batch, full_update=True):
         """Update the agent and return a new agent with information dictionary."""
         new_rng, rng = jax.random.split(self.rng)
@@ -302,7 +303,7 @@ class IQLAgent(flax.struct.PyTreeNode):
 
         return self.replace(network=new_network, rng=new_rng), info
 
-    # @jax.jit
+    @jax.jit
     def update(self, batch):
         """Update the agent and return a new agent with information dictionary."""
         new_rng, rng = jax.random.split(self.rng)
