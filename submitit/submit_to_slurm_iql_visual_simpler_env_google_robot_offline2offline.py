@@ -25,7 +25,7 @@ def main():
         # account = 'allcs'
         # nodelist = "node205,node206,node207"
         account = 'pnlp'
-        nodelist = "node210,node211"
+        nodelist = "node211"
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
