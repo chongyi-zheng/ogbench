@@ -48,7 +48,7 @@ def main():
         render = []
         while not done:
             rng, action_rng = jax.random.split(rng)
-            observation = jax.tree_map(lambda obs: obs[None], observation)
+            observation = jax.tree.map(lambda obs: obs[None], observation)
             action = model.sample_actions(
                 observation,
                 env.task,

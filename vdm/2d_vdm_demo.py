@@ -348,7 +348,7 @@ def main():
         return z_t
 
     # loss_diff, loss_klz, loss_recon = vdm.apply(unreplicate(pstore.params), ims, 0 * lbs, rngs={"sample": rng})
-    # losses = jax.tree_map(lambda x: np.mean(x) / (onp.prod(ims.shape[1:]) * np.log(2)),
+    # losses = jax.tree.map(lambda x: np.mean(x) / (onp.prod(ims.shape[1:]) * np.log(2)),
     #                       {"loss_diff": loss_diff, "loss_klz": loss_klz, "loss_recon": loss_recon})
     # print(losses, "\n", sum(losses.values()))
 

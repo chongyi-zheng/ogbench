@@ -85,6 +85,7 @@ def main():
                                             export EGL_DEVICE_ID=0;
                                             source $HOME/env_vars.sh
                                             export D4RL_SUPPRESS_IMPORT_ERROR=1;
+                                            export LD_PRELOAD=/usr/lib64/libtcmalloc_minimal.so.4;
                                             export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
                                             export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
     

@@ -331,7 +331,7 @@ class IQLAgent(flax.struct.PyTreeNode):
         if timestep_pad_masks is None:
             timestep_pad_masks = observations["timestep_pad_mask"]
         if len(timestep_pad_masks.shape) == 1:
-            observations = jax.tree_map(lambda x: x[None], observations)
+            observations = jax.tree.map(lambda x: x[None], observations)
             timestep_pad_masks = timestep_pad_masks[None]
 
         transformer_outputs = self.network.select('octo_transformer')(

@@ -14,8 +14,8 @@ def main():
         account = None
     elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
-        partition = 'gpu-test'
-        account = None
+        partition = 'pli'
+        account = 'rlchongyiz'
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
@@ -30,14 +30,14 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="fql",
-        slurm_time=int(20 * 60),  # minute
+        slurm_name="iql_offline2offline",
+        slurm_time=int(16 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
-        slurm_cpus_per_task=8,
-        slurm_mem="40G",
+        slurm_cpus_per_task=16,
+        slurm_mem="160G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=20,
@@ -47,15 +47,15 @@ def main():
         for env_name in [
             "widowx_spoon_on_towel",
         ]:
-            for alpha in [1000, 300, 100, 30]:
-                for distill_type in ['fwd_sample']:
-                    for q_agg in ['mean']:
-                        for normalize_q_loss in [False]:
-                            for encoder in ['impala_small', 'impala_large', 'resnet_34']:
-                                for seed in [20]:
-                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_alpha={alpha}_distill_type={distill_type}_q_agg={q_agg}_normalize_q_loss={normalize_q_loss}_encoder={encoder}"
+            for alpha in [10.0, 0.1, 1.0]:
+                for frame_stack in [3]:
+                    for expectile in [0.9]:
+                        for actor_freq in [4]:
+                            for encoder in ['impala_large', 'resnet_34']:
+                                for seed in [10]:
+                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_iql_{env_name}_alpha={alpha}_frame_stack={frame_stack}_expectile={expectile}_actor_freq={actor_freq}_encoder={encoder}"
                                     log_dir = os.path.expanduser(
-                                        f"{log_root_dir}/exp_logs/ogbench_logs/fql/{exp_name}/{seed}")
+                                        f"{log_root_dir}/exp_logs/ogbench_logs/iql_simpler_offline2offline/{exp_name}/{seed}")
 
                                     # change the log folder of slurm executor
                                     submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -90,22 +90,24 @@ def main():
 
                                         rm -rf {log_dir};
                                         mkdir -p {log_dir};
-                                        python $PROJECT_DIR/impls/main_simpler_env.py \
+                                        python $PROJECT_DIR/impls/main_simpler_env_offline2offline.py \
                                             --enable_wandb=1 \
                                             --env_name={env_name} \
                                             --eval_episodes=50 \
                                             --p_aug=0.5 \
-                                            --frame_stack=3 \
-                                            --offline_steps=500_000 \
-                                            --agent=impls/agents/fql.py \
+                                            --frame_stack={frame_stack} \
+                                            --pretraining_steps=200_000 \
+                                            --finetuning_steps=100_000 \
+                                            --log_interval=1_000 \
+                                            --eval_interval=5_000 \
+                                            --save_interval=300_000 \
+                                            --agent=impls/agents/iql.py \
                                             --agent.discount=0.99 \
                                             --agent.alpha={alpha} \
-                                            --agent.num_flow_steps=10 \
-                                            --agent.distill_type={distill_type} \
-                                            --agent.q_agg={q_agg} \
-                                            --agent.actor_layer_norm=False \
-                                            --agent.vf_q_loss=False \
-                                            --agent.normalize_q_loss={normalize_q_loss} \
+                                            --agent.expectile={expectile} \
+                                            --agent.actor_loss=awr \
+                                            --agent.alpha={alpha} \
+                                            --agent.actor_freq={actor_freq} \
                                             --agent.encoder={encoder} \
                                             --seed={seed} \
                                             --save_dir={log_dir} \

@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import ml_collections
 import optax
 
-from utils.encoders import encoder_modules
+from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import GCActor, Value
 
@@ -253,7 +253,7 @@ class IQLAgent(flax.struct.PyTreeNode):
             encoder_module = encoder_modules[config['encoder']]
             encoders['value'] = encoder_module()
             encoders['critic'] = encoder_module()
-            encoders['actor'] = encoder_module()
+            encoders['actor'] = GCEncoder(state_encoder=encoder_module())
 
         # Define networks.
         value_def = Value(

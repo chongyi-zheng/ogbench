@@ -9,17 +9,28 @@ import gymnasium
 import numpy as np
 import reverb
 import rlds
-import simpler_env
+import jax
 import tensorflow as tf
 import tensorflow_datasets as tfds
+import torch
 import tree
 from rlds import rlds_types
 from rlds import transformations
 from transforms3d.euler import euler2axangle
 
+from simpler_env.utils.env.observation_utils import get_image_from_maniskill3_obs_dict
+from mani_skill.envs.tasks.digital_twins.bridge_dataset_eval import *
+
 StepFnMapType = Callable[[rlds_types.Step, rlds_types.Step], None]
 
 DEFAULT_DATASET_DIR = '~/tensorflow_datasets/dataset_dir_name/0.1.0'
+
+ENVIRONMENT_MAP = {
+    "widowx_spoon_on_towel": "PutSpoonOnTableClothInScene-v1",
+    "widowx_carrot_on_plate": "PutCarrotOnPlateInScene-v1",
+    "widowx_stack_cube": "StackGreenCubeOnYellowCubeBakedTexInScene-v1",
+    "widowx_put_eggplant_in_basket": "PutEggplantInBasketScene-v1",
+}
 
 """
 The following dataset construction code is adapted from: 
@@ -551,16 +562,16 @@ class SimplerEnvWrapper(gymnasium.Wrapper):
         self.width = width
         self.height = height
 
-        if 'google_robot' in self.robot_uid:
+        if 'google_robot' in self.env.unwrapped.robot_uids.uid:
             self.camera_name = 'overhead_camera'
-        elif 'widowx' in self.robot_uid:
+        elif 'widowx' in self.env.unwrapped.robot_uids.uid:
             self.camera_name = '3rd_view_camera'
         else:
-            raise NotImplementedError("Unknown robot_uid: {}".format(self.robot_uid))
+            raise NotImplementedError("Unknown robot_uid: {}".format(self.env.unwrapped.robot_uids.uid))
 
-        image_obs_space = self.observation_space['image'][self.camera_name]['rgb']
+        image_obs_space = self.observation_space['sensor_data'][self.camera_name]['rgb']
         self.observation_space = gymnasium.spaces.Box(
-            low=image_obs_space.low[0, 0, 0], high=image_obs_space.high[0, 0, 0],
+            low=image_obs_space.low[0, 0, 0, 0], high=image_obs_space.high[0, 0, 0, 0],
             shape=(self.width, self.height, 3),
             dtype=image_obs_space.dtype,
         )
@@ -575,7 +586,7 @@ class SimplerEnvWrapper(gymnasium.Wrapper):
         """
 
         processed_action = action.copy().astype(np.float64)
-        if 'google_robot' in self.robot_uid:
+        if 'google_robot' in self.env.unwrapped.robot_uids.uid:
             processed_action[-1] = np.where(
                 np.abs(processed_action[-1]) < 1e-2,
                 0.0,
@@ -594,7 +605,7 @@ class SimplerEnvWrapper(gymnasium.Wrapper):
                 else np.array([0.0, 1.0, 0.0])
             )
             processed_action[3:6] = action_rotation_ax * action_rotation_angle
-        elif 'widowx' in self.robot_uid:
+        elif 'widowx' in self.env.unwrapped.robot_uids.uid:
             processed_action[0:3] = rescale_action_with_bound(
                 processed_action[0:3],
                 low=-1.0, high=1.0,
@@ -617,13 +628,14 @@ class SimplerEnvWrapper(gymnasium.Wrapper):
             # binarize gripper action to be -1 or 1
             processed_action[-1] = 2.0 * (processed_action[-1] > 0.0) - 1.0
         else:
-            raise NotImplementedError("Unknown robot_uid: {}".format(self.robot_uid))
+            raise NotImplementedError("Unknown robot_uid: {}".format(self.env.unwrapped.robot_uids.uid))
 
         return processed_action
 
     def reset(self, **kwargs):
         observation, info = self.env.reset(**kwargs)
-        observation = observation['image'][self.camera_name]['rgb']
+        observation = observation['sensor_data'][self.camera_name]['rgb'][0].cpu().detach().numpy()
+        info = jax.tree.map(lambda x: x.item() if isinstance(x, torch.Tensor) else x, info)
         observation = cv.resize(observation, (self.width, self.height))
 
         return observation, info
@@ -631,7 +643,11 @@ class SimplerEnvWrapper(gymnasium.Wrapper):
     def step(self, action):
         action = self.process_action(action)
         observation, reward, terminated, truncated, info = self.env.step(action)
-        observation = observation['image'][self.camera_name]['rgb']
+        observation = observation['sensor_data'][self.camera_name]['rgb'][0].cpu().detach().numpy()
+        reward = reward.item()
+        terminated = terminated.item()
+        truncated = truncated.item()
+        info = jax.tree.map(lambda x: x.item() if isinstance(x, torch.Tensor) else x, info)
         observation = cv.resize(observation, (self.width, self.height))
 
         return observation, reward, terminated, truncated, info
@@ -653,7 +669,12 @@ def make_env_and_datasets(
         raise NotImplementedError("Unknown dataset_name: {}".format(dataset_name))
 
     dataset_dir = os.path.expanduser(dataset_dir.replace('dataset_dir_name', dataset_dir_name))
-    env = simpler_env.make(dataset_name)
+    # env = simpler_env.make(dataset_name)
+    env = gymnasium.make(
+        ENVIRONMENT_MAP[dataset_name],
+        obs_mode='rgb+segmentation',
+        num_envs=1,  # if num_envs > 1, GPU simulation backend is used.
+    )
     env = SimplerEnvWrapper(env, width=width, height=height)
 
     if env_only:
@@ -685,10 +706,10 @@ def make_env_and_datasets(
         reward_info=ds_builder.info.features['steps']['reward'],
     )
 
-    if 'google_robot' in env.unwrapped.robot_uid:
+    if 'google_robot' in env.unwrapped.robot_uids.uid:
         step_map_fn = functools.partial(base_step_map_fn,
                                         map_action=google_robot_map_action)
-    elif 'widowx' in env.unwrapped.robot_uid:
+    elif 'widowx' in env.unwrapped.robot_uids.uid:
         step_map_fn = functools.partial(base_step_map_fn,
                                         map_action=bridge_map_action)
     else:
@@ -706,11 +727,9 @@ def make_env_and_datasets(
         train_ds)
     train_dataset = train_dataset.map(
         stacked_step_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    train_dataset = train_dataset.repeat()  # ensure that data never runs out
     val_dataset = trajectory_transform.transform_episodic_rlds_dataset(
         val_ds)
     val_dataset = val_dataset.map(
         stacked_step_map_fn, num_parallel_calls=tf.data.AUTOTUNE)
-    val_dataset = val_dataset.repeat()
 
     return env, train_dataset, val_dataset
