@@ -53,13 +53,13 @@ def main():
     )
 
     for env_name in [
-        "google_robot_pick_coke_can",
+        "widowx_spoon_on_towel",
     ]:
         for batch_size in [32]:
-            for alpha in [10.0, 1.0, 0.1]:
+            for alpha in [1.0, 0.1]:
                 for expectile in [0.9]:
                     for actor_freq in [4]:
-                        for seed in [10]:
+                        for seed in [10, 20]:
                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_iql_{env_name}_batch_size={batch_size}_alpha={alpha}_expectile={expectile}_actor_freq={actor_freq}"
                             log_dir = os.path.expanduser(
                                 f"{log_root_dir}/exp_logs/ogbench_logs/iql_octo/{exp_name}/{seed}")

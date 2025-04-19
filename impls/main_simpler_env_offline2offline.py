@@ -180,8 +180,9 @@ def main(_):
             train_logger.log(train_metrics, step=i)
 
         # Evaluate agent.
-        if (FLAGS.eval_interval != 0 and (i > FLAGS.pretraining_steps)
-            and (i == (FLAGS.pretraining_steps + 1) or i % FLAGS.eval_interval == 0)):
+        # if (FLAGS.eval_interval != 0 and (i > FLAGS.pretraining_steps)
+        #     and (i == (FLAGS.pretraining_steps + 1) or i % FLAGS.eval_interval == 0)):
+        if FLAGS.eval_interval != 0 and (i == 1 or i % FLAGS.eval_interval == 0):
             renders = []
             eval_metrics = {}
             eval_info, trajs, cur_renders = evaluate(

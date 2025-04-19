@@ -345,7 +345,7 @@ class IQLAgent(flax.struct.PyTreeNode):
             train=train,
         )
 
-        # only get the last timestep in the window
+        # only get the last timestep in the history window
         max_action = self.network.model_def.modules['actor_head'].max_action
         actions = dist.sample(seed=seed)[:, -1].squeeze()
         actions = jnp.clip(actions, -max_action, max_action)

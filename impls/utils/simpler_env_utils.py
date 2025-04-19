@@ -673,7 +673,7 @@ def make_env_and_datasets(
     env = gymnasium.make(
         ENVIRONMENT_MAP[dataset_name],
         obs_mode='rgb+segmentation',
-        num_envs=1,  # if num_envs > 1, GPU simulation backend is used.
+        num_envs=1,
     )
     env = SimplerEnvWrapper(env, width=width, height=height)
 

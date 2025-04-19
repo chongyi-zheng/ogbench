@@ -2,11 +2,9 @@ import json
 import os
 import random
 import time
-import psutil
-import gc
 
+import gymnasium
 import numpy as np
-import simpler_env
 import tensorflow as tf
 import tqdm
 import wandb
@@ -25,6 +23,7 @@ from octo.utils.train_utils import (
 
 from octo_agents import agents
 from octo_utils.wrappers import SimplerOctoWrapper
+from utils.simpler_env_utils import ENVIRONMENT_MAP
 from utils.env_utils import EpisodeMonitor
 from utils.evaluation import evaluate_octo
 from utils.flax_utils import restore_agent, save_agent
@@ -173,12 +172,18 @@ def main(_):
 
     example_batch = next(pretraining_train_data_iter)
 
-    eval_env = simpler_env.make(FLAGS.env_name)
+    # eval_env = simpler_env.make(FLAGS.env_name)
+    eval_env = gymnasium.make(
+        ENVIRONMENT_MAP[FLAGS.env_name],
+        obs_mode='rgb+segmentation',
+        num_envs=1,
+    )
+
     eval_env = SimplerOctoWrapper(
         eval_env,
         example_batch=example_batch,
         # TODO (chongyiz): avoid hardcoding the dataset name.
-        unnormalization_statistics=pretraining_train_data.dataset_statistics['fractal20220817_data']['action'],
+        unnormalization_statistics=pretraining_train_data.dataset_statistics['bridge_dataset']['action'],
         text_processor=text_processor,
         window_size=octo_config['window_size'],
         pred_action_horizon=4,
@@ -211,20 +216,13 @@ def main(_):
     print("Start learning.")
     for i in tqdm.tqdm(range(1, FLAGS.pretraining_steps + FLAGS.finetuning_steps + 1), smoothing=0.1,
                        dynamic_ncols=True):
-        used_mem = psutil.virtual_memory().used
-        print("used memory at beginning: {} Mb".format(used_mem / 1024 / 1024))
-
         if i <= FLAGS.pretraining_steps:
             # Offline pre-training.
             batch = next(pretraining_train_data_iter)
             train_logger = pretraining_train_logger
             eval_logger = pretraining_eval_logger
 
-            used_mem = psutil.virtual_memory().used
-            print("used memory before pretrain: {} Mb".format(used_mem / 1024 / 1024))
             agent, update_info = agent.pretrain(batch)
-            used_mem = psutil.virtual_memory().used
-            print("used memory after pretrain: {} Mb".format(used_mem / 1024 / 1024))
         else:
             # Offline fine-tuning.
             batch = next(finetuning_train_data_iter)
@@ -235,8 +233,6 @@ def main(_):
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
-            used_mem = psutil.virtual_memory().used
-            print("used memory before val_loss: {} Mb".format(used_mem / 1024 / 1024))
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
             if i <= FLAGS.pretraining_steps:
                 val_data_iter = pretraining_val_data_iter
@@ -258,19 +254,14 @@ def main(_):
                     trigger_sync()
 
             train_logger.log(train_metrics, step=i)
-            used_mem = psutil.virtual_memory().used
-            print("used memory after val_loss: {} Mb".format(used_mem / 1024 / 1024))
 
         # Evaluate agent.
         # if (FLAGS.eval_interval != 0 and (i > FLAGS.pretraining_steps)
         #         and (i == (FLAGS.pretraining_steps + 1) or i % FLAGS.eval_interval == 0)):
         if FLAGS.eval_interval != 0 and (i == 1 or i % FLAGS.eval_interval == 0):
-            used_mem = psutil.virtual_memory().used
-            print("used memory before eval: {} Mb".format(used_mem / 1024 / 1024))
-
             renders = []
             eval_metrics = {}
-            eval_info, cur_renders = evaluate_octo(
+            eval_info, trajs, cur_renders = evaluate_octo(
                 agent=agent,
                 env=eval_env,
                 num_eval_episodes=FLAGS.eval_episodes,
@@ -292,14 +283,9 @@ def main(_):
                     trigger_sync()
             eval_logger.log(eval_metrics, step=i)
 
-            used_mem = psutil.virtual_memory().used
-            print("used memory after eval: {} Mb".format(used_mem / 1024 / 1024))
-
         # Save agent.
         if i % FLAGS.save_interval == 0:
             save_agent(agent, FLAGS.save_dir, i)
-
-        gc.collect()
 
     pretraining_train_logger.close()
     pretraining_eval_logger.close()

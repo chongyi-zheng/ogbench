@@ -216,39 +216,13 @@ def evaluate_octo(
     Returns:
         A tuple containing the statistics, trajectories, and rendered videos.
     """
-
-    # obs, reset_info = env.reset()
-    # instruction = env.get_language_instruction()
-    # model.reset(instruction)
-    # print(instruction)
-    #
-    # image = get_image_from_maniskill2_obs_dict(env, obs)  # np.ndarray of shape (H, W, 3), uint8
-    # images = [image]
-    # predicted_terminated, success, truncated = False, False, False
-    # timestep = 0
-    # while not (predicted_terminated or truncated):
-    #     # step the model; "raw_action" is raw model action output; "action" is the processed action to be sent into maniskill env
-    #     raw_action, action = model.step(image)
-    #     predicted_terminated = bool(action["terminate_episode"][0] > 0)
-    #     obs, reward, success, truncated, info = env.step(
-    #         np.concatenate([action["world_vector"], action["rot_axangle"], action["gripper"]])
-    #     )
-    #     print(timestep, info)
-    #     # update image observation
-    #     image = get_image_from_maniskill2_obs_dict(env, obs)
-    #     images.append(image)
-    #     timestep += 1
-    #
-    # episode_stats = info.get("episode_stats", {})
-    # print(f"Episode success: {success}")
-
     actor_fn = supply_rng(agent.sample_actions, rng=jax.random.PRNGKey(np.random.randint(0, 2**32)))
-    # trajs = []
+    trajs = []
     stats = defaultdict(list)
 
     renders = []
     for i in trange(num_eval_episodes + num_video_episodes):
-        # traj = defaultdict(list)
+        traj = defaultdict(list)
         should_render = i >= num_eval_episodes
 
         observation, info = env.reset()
@@ -279,18 +253,18 @@ def evaluate_octo(
                 done=done,
                 info=info,
             )
-            # add_to(traj, transition)
+            add_to(traj, transition)
             observation = next_observation
         if i < num_eval_episodes:
             add_to(stats, flatten(info))
-            # trajs.append(traj)
+            trajs.append(traj)
         else:
             renders.append(np.array(render))
 
     for k, v in stats.items():
         stats[k] = np.mean(v)
 
-    return stats, renders
+    return stats, trajs, renders
 
 
 def evaluate_policy_evaluation(

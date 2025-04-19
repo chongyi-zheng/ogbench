@@ -37,7 +37,7 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=16,
-        slurm_mem="160G",
+        slurm_mem="80G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=20,
@@ -47,7 +47,7 @@ def main():
         for env_name in [
             "widowx_spoon_on_towel",
         ]:
-            for alpha in [10.0, 0.1, 1.0]:
+            for alpha in [0.1, 1.0]:
                 for frame_stack in [3]:
                     for expectile in [0.9]:
                         for actor_freq in [4]:
@@ -96,11 +96,11 @@ def main():
                                             --eval_episodes=50 \
                                             --p_aug=0.5 \
                                             --frame_stack={frame_stack} \
-                                            --pretraining_steps=200_000 \
-                                            --finetuning_steps=100_000 \
-                                            --log_interval=1_000 \
+                                            --pretraining_steps=100_000 \
+                                            --finetuning_steps=50_000 \
+                                            --log_interval=500 \
                                             --eval_interval=5_000 \
-                                            --save_interval=300_000 \
+                                            --save_interval=150_000 \
                                             --agent=impls/agents/iql.py \
                                             --agent.discount=0.99 \
                                             --agent.alpha={alpha} \

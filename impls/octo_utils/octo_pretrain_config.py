@@ -151,7 +151,7 @@ def get_config(config_string=None):
                 hf_model="t5-base",
             ),
         ),
-        eval_datasets=["fractal20220817_data"],
+        eval_datasets=["bridge_dataset"],
     )
 
     return config

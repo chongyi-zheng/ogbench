@@ -1,8 +1,8 @@
 from collections import defaultdict
 
+import gymnasium
 import jax
 import numpy as np
-import simpler_env
 from octo.model.octo_model import OctoModel
 from tqdm import trange
 
@@ -26,7 +26,7 @@ def main():
         env,
         example_batch=model.example_batch,
         # TODO (chongyiz): avoid hardcoding the dataset name.
-        unnormalization_statistics=model.dataset_statistics['fractal20220817_data']['action'],
+        unnormalization_statistics=model.dataset_statistics['bridge']['action'],
         text_processor=model.text_processor,
         window_size=window_size,
         pred_action_horizon=4,
