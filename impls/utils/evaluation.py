@@ -243,12 +243,12 @@ def evaluate_octo(
     # print(f"Episode success: {success}")
 
     actor_fn = supply_rng(agent.sample_actions, rng=jax.random.PRNGKey(np.random.randint(0, 2**32)))
-    trajs = []
+    # trajs = []
     stats = defaultdict(list)
 
     renders = []
     for i in trange(num_eval_episodes + num_video_episodes):
-        traj = defaultdict(list)
+        # traj = defaultdict(list)
         should_render = i >= num_eval_episodes
 
         observation, info = env.reset()
@@ -279,18 +279,18 @@ def evaluate_octo(
                 done=done,
                 info=info,
             )
-            add_to(traj, transition)
+            # add_to(traj, transition)
             observation = next_observation
         if i < num_eval_episodes:
             add_to(stats, flatten(info))
-            trajs.append(traj)
+            # trajs.append(traj)
         else:
             renders.append(np.array(render))
 
     for k, v in stats.items():
         stats[k] = np.mean(v)
 
-    return stats, trajs, renders
+    return stats, renders
 
 
 def evaluate_policy_evaluation(

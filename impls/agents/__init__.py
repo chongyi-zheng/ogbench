@@ -1,5 +1,6 @@
 from agents.crl import CRLAgent
 from agents.crl_infonce import CRLInfoNCEAgent
+from agents.dino_rebrac import DINOReBRACAgent
 from agents.fac import FACAgent
 from agents.fmrl import FMRLAgent
 from agents.fql import FQLAgent
@@ -28,6 +29,7 @@ from agents.td_infonce import TDInfoNCEAgent
 agents = dict(
     crl=CRLAgent,
     crl_infonce=CRLInfoNCEAgent,
+    dino_rebrac=DINOReBRACAgent,
     fac=FACAgent,
     fmrl=FMRLAgent,
     fql=FQLAgent,

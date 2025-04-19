@@ -664,7 +664,7 @@ def make_env_and_datasets(
     # 47873 / 5319 episodes for bridge_v2 dataset
     # TODO (chongyiz): bridge_v2 already contains 'train' and 'test' splits.
     train_ds, val_ds = ds_builder.as_dataset(
-        split=['train[:90%]', 'train[90%:]'])
+        split=['train[:95%]', 'train[95%:]'])
 
     # We need pad_initial_zero_episode because reverb.PatternDataset will skip
     # constructing trajectories where the first trajectory_length - 1 steps are

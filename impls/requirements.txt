@@ -9,8 +9,8 @@ wandb==0.19.3
 tensorflow-datasets==4.9.2
 gsutil==5.33
 gcsfs==2025.3.2
-tensorflow==2.18.0
-tensorflow_probability==0.25.0
+tensorflow==2.15.0
+tensorflow_probability==0.23.0
 # packages below are for octo
 jax[cuda12]==0.4.38
 chex==0.1.89

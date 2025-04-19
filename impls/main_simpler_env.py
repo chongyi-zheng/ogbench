@@ -41,7 +41,6 @@ flags.DEFINE_integer('eval_episodes', 50, 'Number of evaluation episodes.')
 flags.DEFINE_integer('video_episodes', 0, 'Number of video episodes for each task.')
 flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
 
-flags.DEFINE_string('obs_norm_type', 'none', 'Type of observation normalization. (none, normal, bounded)')
 flags.DEFINE_float('p_aug', None, 'Probability of applying image augmentation.')
 flags.DEFINE_integer('num_aug', 1, 'Number of image augmentations.')
 flags.DEFINE_integer('inplace_aug', 1, 'Whether to replace the original image after applying augmentations.')
@@ -76,6 +75,7 @@ def main(_):
     # Initialize agent.
     random.seed(FLAGS.seed)
     np.random.seed(FLAGS.seed)
+    tf.random.set_seed(FLAGS.seed)
 
     # Set up datasets.
     train_dataset = train_dataset.shuffle(4 * config['batch_size'])

@@ -2,6 +2,8 @@ import json
 import os
 import random
 import time
+import psutil
+import gc
 
 import numpy as np
 import simpler_env
@@ -98,7 +100,7 @@ def main(_):
     octo_config.seed = FLAGS.seed
     random.seed(FLAGS.seed)
     np.random.seed(FLAGS.seed)
-    tf.random.set_seed(FLAGS.seed)
+    # tf.random.set_seed(FLAGS.seed)
 
     # set up text tokenization (this needs to happen after batching but before sharding)
     if octo_config.text_processor is None:
@@ -152,7 +154,7 @@ def main(_):
         .shuffle(octo_config.val_kwargs['val_shuffle_buffer_size'])
         .repeat()
         .batch(octo_config.dataset_kwargs['batch_size'])
-        .iterator(prefetch=0)
+        .iterator(prefetch=octo_config.prefetch_num_batches)
     )
     pretraining_val_data_iter = map(process_batch, pretraining_val_iterator)
     finetuning_val_data = create_validation_dataset(
@@ -165,7 +167,7 @@ def main(_):
         .shuffle(octo_config.val_kwargs['val_shuffle_buffer_size'])
         .repeat()
         .batch(octo_config.dataset_kwargs['batch_size'])
-        .iterator(prefetch=0)
+        .iterator(prefetch=octo_config.prefetch_num_batches)
     )
     finetuning_val_data_iter = map(process_batch, finetuning_val_iterator)
 
@@ -193,6 +195,7 @@ def main(_):
     )
 
     # Restore agent.
+    print("Restore agent.")
     if FLAGS.restore_path is not None:
         agent = restore_agent(agent, FLAGS.restore_path, FLAGS.restore_epoch)
 
@@ -205,16 +208,23 @@ def main(_):
     last_time = time.time()
 
     # Offline RL.
-    expl_metrics = dict()
+    print("Start learning.")
     for i in tqdm.tqdm(range(1, FLAGS.pretraining_steps + FLAGS.finetuning_steps + 1), smoothing=0.1,
                        dynamic_ncols=True):
+        used_mem = psutil.virtual_memory().used
+        print("used memory at beginning: {} Mb".format(used_mem / 1024 / 1024))
+
         if i <= FLAGS.pretraining_steps:
             # Offline pre-training.
             batch = next(pretraining_train_data_iter)
             train_logger = pretraining_train_logger
             eval_logger = pretraining_eval_logger
 
+            used_mem = psutil.virtual_memory().used
+            print("used memory before pretrain: {} Mb".format(used_mem / 1024 / 1024))
             agent, update_info = agent.pretrain(batch)
+            used_mem = psutil.virtual_memory().used
+            print("used memory after pretrain: {} Mb".format(used_mem / 1024 / 1024))
         else:
             # Offline fine-tuning.
             batch = next(finetuning_train_data_iter)
@@ -225,6 +235,8 @@ def main(_):
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
+            used_mem = psutil.virtual_memory().used
+            print("used memory before val_loss: {} Mb".format(used_mem / 1024 / 1024))
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
             if i <= FLAGS.pretraining_steps:
                 val_data_iter = pretraining_val_data_iter
@@ -238,7 +250,6 @@ def main(_):
 
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval
             train_metrics['time/total_time'] = time.time() - first_time
-            train_metrics.update(expl_metrics)
             last_time = time.time()
             if FLAGS.enable_wandb:
                 wandb.log(train_metrics, step=i)
@@ -247,14 +258,19 @@ def main(_):
                     trigger_sync()
 
             train_logger.log(train_metrics, step=i)
+            used_mem = psutil.virtual_memory().used
+            print("used memory after val_loss: {} Mb".format(used_mem / 1024 / 1024))
 
         # Evaluate agent.
         # if (FLAGS.eval_interval != 0 and (i > FLAGS.pretraining_steps)
         #         and (i == (FLAGS.pretraining_steps + 1) or i % FLAGS.eval_interval == 0)):
         if FLAGS.eval_interval != 0 and (i == 1 or i % FLAGS.eval_interval == 0):
+            used_mem = psutil.virtual_memory().used
+            print("used memory before eval: {} Mb".format(used_mem / 1024 / 1024))
+
             renders = []
             eval_metrics = {}
-            eval_info, trajs, cur_renders = evaluate_octo(
+            eval_info, cur_renders = evaluate_octo(
                 agent=agent,
                 env=eval_env,
                 num_eval_episodes=FLAGS.eval_episodes,
@@ -263,7 +279,7 @@ def main(_):
             )
             renders.extend(cur_renders)
             for k, v in eval_info.items():
-                eval_metrics[f'evaluation/{k}'] = v
+                eval_metrics[f'evaluation/{k}'] = np.asarray(v)
 
             if FLAGS.video_episodes > 0:
                 video = get_wandb_video(renders=renders)
@@ -276,9 +292,14 @@ def main(_):
                     trigger_sync()
             eval_logger.log(eval_metrics, step=i)
 
+            used_mem = psutil.virtual_memory().used
+            print("used memory after eval: {} Mb".format(used_mem / 1024 / 1024))
+
         # Save agent.
         if i % FLAGS.save_interval == 0:
             save_agent(agent, FLAGS.save_dir, i)
+
+        gc.collect()
 
     pretraining_train_logger.close()
     pretraining_eval_logger.close()

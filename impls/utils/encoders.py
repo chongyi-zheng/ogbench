@@ -253,6 +253,11 @@ class GCEncoder(nn.Module):
 
 
 encoder_modules = {
+    'mlp': functools.partial(
+        MLP,
+        hidden_size=(512, 512, 512, 512),
+        layer_norm=True,
+    ),
     'impala': ImpalaEncoder,
     'impala_debug': functools.partial(
         ImpalaEncoder,
