@@ -107,7 +107,7 @@ def main():
                                     --eval_interval=20_000 \
                                     --octo=impls/octo_utils/octo_pretrain_config.py:vit_s \
                                     --octo.dataset_kwargs.oxe_kwargs.data_dir={log_root_dir}/datasets/octo_datasets \
-                                    --octo.dataset_kwargs.oxe_kwargs.data_mix=google_robot \
+                                    --octo.dataset_kwargs.oxe_kwargs.data_mix=bridge \
                                     --octo.dataset_kwargs.batch_size={batch_size} \
                                     --agent=impls/octo_agents/iql.py \
                                     --agent.discount=0.99 \
