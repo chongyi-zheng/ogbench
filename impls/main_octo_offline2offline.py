@@ -129,11 +129,12 @@ def main(_):
         process_batch,
         pretraining_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
     )
-    finetuning_train_data = make_interleaved_dataset(**octo_config.dataset_kwargs, train=True)
-    finetuning_train_data_iter = map(
-        process_batch,
-        finetuning_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
-    )
+    finetuning_train_data_iter = pretraining_train_data_iter
+    # finetuning_train_data = make_interleaved_dataset(**octo_config.dataset_kwargs, train=True)
+    # finetuning_train_data_iter = map(
+    #     process_batch,
+    #     finetuning_train_data.iterator(prefetch=octo_config.prefetch_num_batches),
+    # )
 
     val_datasets_kwargs_list, _ = filter_eval_datasets(
         octo_config.dataset_kwargs['dataset_kwargs_list'],
@@ -156,19 +157,20 @@ def main(_):
         .iterator(prefetch=octo_config.prefetch_num_batches)
     )
     pretraining_val_data_iter = map(process_batch, pretraining_val_iterator)
-    finetuning_val_data = create_validation_dataset(
-        val_dataset_kwargs,
-        octo_config.dataset_kwargs['traj_transform_kwargs'],
-        octo_config.dataset_kwargs['frame_transform_kwargs'],
-    )
-    finetuning_val_iterator = (
-        finetuning_val_data.unbatch()
-        .shuffle(octo_config.val_kwargs['val_shuffle_buffer_size'])
-        .repeat()
-        .batch(octo_config.dataset_kwargs['batch_size'])
-        .iterator(prefetch=octo_config.prefetch_num_batches)
-    )
-    finetuning_val_data_iter = map(process_batch, finetuning_val_iterator)
+    finetuning_val_data_iter = pretraining_val_iterator
+    # finetuning_val_data = create_validation_dataset(
+    #     val_dataset_kwargs,
+    #     octo_config.dataset_kwargs['traj_transform_kwargs'],
+    #     octo_config.dataset_kwargs['frame_transform_kwargs'],
+    # )
+    # finetuning_val_iterator = (
+    #     finetuning_val_data.unbatch()
+    #     .shuffle(octo_config.val_kwargs['val_shuffle_buffer_size'])
+    #     .repeat()
+    #     .batch(octo_config.dataset_kwargs['batch_size'])
+    #     .iterator(prefetch=octo_config.prefetch_num_batches)
+    # )
+    # finetuning_val_data_iter = map(process_batch, finetuning_val_iterator)
 
     example_batch = next(pretraining_train_data_iter)
 

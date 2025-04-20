@@ -14,11 +14,11 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 import torch
 import tree
+import simpler_env
 from rlds import rlds_types
 from rlds import transformations
 from transforms3d.euler import euler2axangle
 
-from simpler_env.utils.env.observation_utils import get_image_from_maniskill3_obs_dict
 from mani_skill.envs.tasks.digital_twins.bridge_dataset_eval import *
 
 StepFnMapType = Callable[[rlds_types.Step, rlds_types.Step], None]
@@ -654,12 +654,12 @@ class SimplerEnvWrapper(gymnasium.Wrapper):
 
 
 def make_env_and_datasets(
-        dataset_name,
-        frame_stack=None,
-        dataset_dir=DEFAULT_DATASET_DIR,
-        env_only=False,
-        width=64,
-        height=64,
+    dataset_name,
+    frame_stack=None,
+    dataset_dir=DEFAULT_DATASET_DIR,
+    env_only=False,
+    width=64,
+    height=64,
 ):
     if 'google_robot' in dataset_name:
         dataset_dir_name = 'fractal20220817_data'
@@ -669,12 +669,14 @@ def make_env_and_datasets(
         raise NotImplementedError("Unknown dataset_name: {}".format(dataset_name))
 
     dataset_dir = os.path.expanduser(dataset_dir.replace('dataset_dir_name', dataset_dir_name))
-    # env = simpler_env.make(dataset_name)
-    env = gymnasium.make(
-        ENVIRONMENT_MAP[dataset_name],
-        obs_mode='rgb+segmentation',
-        num_envs=1,
-    )
+    if 'google_robot' in dataset_name:
+        env = simpler_env.make(dataset_name)
+    elif 'widowx' in dataset_name:
+        env = gymnasium.make(
+            ENVIRONMENT_MAP[dataset_name],
+            obs_mode='rgb+segmentation',
+            num_envs=1,
+        )
     env = SimplerEnvWrapper(env, width=width, height=height)
 
     if env_only:

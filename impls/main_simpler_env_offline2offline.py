@@ -86,13 +86,37 @@ def main(_):
     # Important:
     #   https://github.com/tensorflow/tensorflow/issues/44176#issuecomment-783768033)
     #   remember to set environment variable LD_PRELOAD=/usr/lib64/libtcmalloc_minimal.so.4 to prevent cpu mem leak.
-    pretraining_train_dataset = pretraining_train_dataset.shuffle(100_000).repeat().batch(config['batch_size'])
+    pretraining_train_dataset = (
+        pretraining_train_dataset
+        .shuffle(100_000)
+        .repeat()
+        .batch(config['batch_size'])
+        .prefetch(5)
+    )
     pretraining_train_dataset_iter = pretraining_train_dataset.as_numpy_iterator()
-    pretraining_val_dataset = pretraining_val_dataset.shuffle(100_000).repeat().batch(config['batch_size'])
+    pretraining_val_dataset = (
+        pretraining_val_dataset
+        .shuffle(100_000)
+        .repeat()
+        .batch(config['batch_size'])
+        .prefetch(5)
+    )
     pretraining_val_dataset_iter = pretraining_val_dataset.as_numpy_iterator()
-    finetuning_train_dataset = finetuning_train_dataset.shuffle(20_000).repeat().batch(config['batch_size'])
+    finetuning_train_dataset = (
+        finetuning_train_dataset
+        .shuffle(20_000)
+        .repeat()
+        .batch(config['batch_size'])
+        .prefetch(5)
+    )
     finetuning_train_dataset_iter = finetuning_train_dataset.as_numpy_iterator()
-    finetuning_val_dataset = finetuning_val_dataset.shuffle(20_000).repeat().batch(config['batch_size'])
+    finetuning_val_dataset = (
+        finetuning_val_dataset
+        .shuffle(20_000)
+        .repeat()
+        .batch(config['batch_size'])
+        .prefetch(5)
+    )
     finetuning_val_dataset_iter = finetuning_val_dataset.as_numpy_iterator()
 
     assert config['agent_name'] not in ['mcfac']
