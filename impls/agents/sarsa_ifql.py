@@ -15,7 +15,7 @@ import optax
 # )
 
 from utils.env_utils import compute_reward
-from utils.encoders import encoder_modules
+from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import GCFMVectorField, GCActor, Value
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
@@ -283,7 +283,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             #     current_noises = jax.random.permutation(
             #         current_noise_rng, goals, axis=0)
             current_path_sample = self.cond_prob_path(
-                x_0=current_noises, x_1=jax.lax.stop_gradient(observations), t=times)
+                x_0=current_noises, x_1=observations, t=times)
             current_vf_pred = self.network.select('critic_vf')(
                 current_path_sample.x_t,
                 times,
@@ -292,7 +292,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             )
             # stop gradient for the image encoder
             current_flow_matching_loss = jnp.square(
-                current_path_sample.dx_t - current_vf_pred).mean(axis=-1)
+                jax.lax.stop_gradient(current_path_sample.dx_t) - current_vf_pred).mean(axis=-1)
 
             # if self.config['critic_noise_type'] == 'normal':
             #     future_noises = jax.random.normal(
@@ -315,7 +315,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             #                                         batch['observation_min'] + 1e-5,
             #                                         batch['observation_max'] - 1e-5)
             future_path_sample = self.cond_prob_path(
-                x_0=future_noises, x_1=jax.lax.stop_gradient(flow_future_observations), t=times)
+                x_0=future_noises, x_1=flow_future_observations, t=times)
             future_vf_target = self.network.select('target_critic_vf')(
                 future_path_sample.x_t,
                 times,
@@ -324,7 +324,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             future_vf_pred = self.network.select('critic_vf')(
                 future_path_sample.x_t,
                 times,
-                observations, actions,
+                jax.lax.stop_gradient(observations), actions,
                 params=grad_params,
             )
             future_flow_matching_loss = jnp.square(future_vf_target - future_vf_pred).mean(axis=-1)
@@ -755,7 +755,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
 
             encoders['critic'] = encoder_module()
             encoders['critic_vf'] = encoder_module()
-            encoders['actor'] = encoder_module()
+            encoders['actor'] = GCEncoder(state_encoder=encoder_module())
 
         # Define value and actor networks.
         critic_def = Value(
