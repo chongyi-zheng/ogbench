@@ -56,18 +56,24 @@ def main():
             # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
-            "walker_walk",
-            "walker_flip",
-            "walker_stand",
-            "walker_run",
-            # "quadruped_jump",
-            # "jaco_reach_top_left",
+            # "walker_walk",
+            # "walker_flip",
+            # "walker_stand",
+            # "walker_run",
+            "quadruped_run",
+            "quadruped_jump",
+            "quadruped_stand",
+            "quadruped_walk",
+            "jaco_reach_top_left",
+            "jaco_reach_top_right",
+            "jaco_reach_bottom_left",
+            "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
                 for alpha in [0.03, 0.003]:
                     for reward_type in ['state']:
                         for actor_freq in [4]:
-                            for seed in [10, 20, 30, 40, 50]:
+                            for seed in [20, 30, 40, 50, 60]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_crl_infonce_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_reward_type={reward_type}_actor_freq={actor_freq}"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/ogbench_logs/crl_infonce_offline2offline/{exp_name}/{seed}")

@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=40,
+        slurm_array_parallelism=20,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -51,16 +51,22 @@ def main():
             # "antsoccer-arena-navigate-singletask-v0"
             # "cube-single-play-singletask-task2-v0",
             # "cube-double-play-singletask-task2-v0",
-            "cheetah_run",
-            "cheetah_run_backward",
-            "cheetah_walk",
-            "cheetah_walk_backward",
-            "walker_walk",
-            "walker_flip",
-            "walker_stand",
-            "walker_run",
-            # "quadruped_jump",
-            # "jaco_reach_top_left",
+            # "cheetah_run",
+            # "cheetah_run_backward",
+            # "cheetah_walk",
+            # "cheetah_walk_backward",
+            # "walker_walk",
+            # "walker_flip",
+            # "walker_stand",
+            # "walker_run",
+            "quadruped_run",
+            "quadruped_jump",
+            "quadruped_stand", 
+            "quadruped_walk",
+            "jaco_reach_top_left",
+            "jaco_reach_top_right",
+            "jaco_reach_bottom_left",
+            "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
                 for alpha in [0.03, 0.003]:

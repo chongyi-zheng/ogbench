@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=24,
+        slurm_array_parallelism=20,
     )
 
     with executor.batch():  # job array
@@ -60,25 +60,31 @@ def main():
             # "cheetah_walk",
             # "cheetah_walk_backward",
             # "walker_walk",
-            "walker_flip",
+            # "walker_flip",
             # "walker_stand",
             # "walker_run",
-            # "quadruped_jump",
+            "quadruped_run",
+            "quadruped_jump",
+            "quadruped_stand",
+            "quadruped_walk",
             # "jaco_reach_top_left",
+            # "jaco_reach_top_right",
+            # "jaco_reach_bottom_left",
+            # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [0.3]:
+                        for alpha in [3.0]:
                             for num_flow_goals in [16]:
                                 for actor_freq in [4]:
-                                    for expectile in [0.7]:
+                                    for expectile in [0.75]:
                                         for q_agg in ['min']:
                                             for clip_flow_goals in [True]:
                                                 for use_mixup in [True]:
-                                                    for mixup_bw in [0.05, 0.2, 0.25, 0.5]:
+                                                    for mixup_bw in [0.05, 0.1, 0.15]:
                                                         for reward_type in ['state']:
-                                                            for seed in [20, 30, 40, 50]:
+                                                            for seed in [20, 30, 40, 50, 60]:
                                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_bw={mixup_bw}_reward={reward_type}_bc_pretrain"
                                                                 log_dir = os.path.expanduser(
                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
