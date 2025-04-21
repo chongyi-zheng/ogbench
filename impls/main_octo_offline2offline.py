@@ -3,7 +3,7 @@ import os
 import random
 import time
 
-import gymnasium
+import simpler_env
 import numpy as np
 import tensorflow as tf
 import tqdm
@@ -23,7 +23,7 @@ from octo.utils.train_utils import (
 
 from octo_agents import agents
 from octo_utils.wrappers import SimplerOctoWrapper
-from utils.simpler_env_utils import ENVIRONMENT_MAP
+# from utils.simpler_env_utils import ENVIRONMENT_MAP
 from utils.env_utils import EpisodeMonitor
 from utils.evaluation import evaluate_octo
 from utils.flax_utils import restore_agent, save_agent
@@ -157,7 +157,7 @@ def main(_):
         .iterator(prefetch=octo_config.prefetch_num_batches)
     )
     pretraining_val_data_iter = map(process_batch, pretraining_val_iterator)
-    finetuning_val_data_iter = pretraining_val_iterator
+    finetuning_val_data_iter = pretraining_val_data_iter
     # finetuning_val_data = create_validation_dataset(
     #     val_dataset_kwargs,
     #     octo_config.dataset_kwargs['traj_transform_kwargs'],
@@ -174,18 +174,18 @@ def main(_):
 
     example_batch = next(pretraining_train_data_iter)
 
-    # eval_env = simpler_env.make(FLAGS.env_name)
-    eval_env = gymnasium.make(
-        ENVIRONMENT_MAP[FLAGS.env_name],
-        obs_mode='rgb+segmentation',
-        num_envs=1,
-    )
+    eval_env = simpler_env.make(FLAGS.env_name)
+    # eval_env = gymnasium.make(
+    #     ENVIRONMENT_MAP[FLAGS.env_name],
+    #     obs_mode='rgb+segmentation',
+    #     num_envs=1,
+    # )
 
     eval_env = SimplerOctoWrapper(
         eval_env,
         example_batch=example_batch,
         # TODO (chongyiz): avoid hardcoding the dataset name.
-        unnormalization_statistics=pretraining_train_data.dataset_statistics['bridge_dataset']['action'],
+        unnormalization_statistics=pretraining_train_data.dataset_statistics['fractal20220817_data']['action'],
         text_processor=text_processor,
         window_size=octo_config['window_size'],
         pred_action_horizon=4,

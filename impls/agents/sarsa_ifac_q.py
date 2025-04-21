@@ -362,12 +362,13 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
                 current_flow_matching_loss = jnp.square(
                     current_path_sample.dx_t - current_vf_pred).mean(axis=-1)
 
-                if self.config['critic_noise_type'] == 'normal':
-                    future_noises = jax.random.normal(
-                        future_noise_rng, shape=observations.shape, dtype=observations.dtype)
-                elif self.config['critic_noise_type'] == 'marginal_state':
-                    future_noises = jax.random.permutation(
-                        future_noise_rng, observations, axis=0)
+                # if self.config['critic_noise_type'] == 'normal':
+                #     future_noises = jax.random.normal(
+                #         future_noise_rng, shape=observations.shape, dtype=observations.dtype)
+                # elif self.config['critic_noise_type'] == 'marginal_state':
+                #     future_noises = jax.random.permutation(
+                #         future_noise_rng, observations, axis=0)
+                future_noises = current_noises
                 # elif self.config['critic_noise_type'] == 'marginal_goal':
                 #     future_noises = jax.random.permutation(
                 #         future_noise_rng, goals, axis=0)
@@ -430,12 +431,13 @@ class SARSAIFACQAgent(flax.struct.PyTreeNode):
             current_flow_matching_loss = jnp.square(
                 current_path_sample.dx_t - current_vf_pred).mean(axis=-1)
 
-            if self.config['critic_noise_type'] == 'normal':
-                future_noises = jax.random.normal(
-                    future_noise_rng, shape=observations.shape, dtype=observations.dtype)
-            elif self.config['critic_noise_type'] == 'marginal_state':
-                future_noises = jax.random.permutation(
-                    future_noise_rng, observations, axis=0)
+            # if self.config['critic_noise_type'] == 'normal':
+            #     future_noises = jax.random.normal(
+            #         future_noise_rng, shape=observations.shape, dtype=observations.dtype)
+            # elif self.config['critic_noise_type'] == 'marginal_state':
+            #     future_noises = jax.random.permutation(
+            #         future_noise_rng, observations, axis=0)
+            future_noises = current_noises
             # elif self.config['critic_noise_type'] == 'marginal_goal':
             #     future_noises = jax.random.permutation(
             #         future_noise_rng, goals, axis=0)

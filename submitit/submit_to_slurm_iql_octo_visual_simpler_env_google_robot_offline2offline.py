@@ -38,7 +38,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="iql_offline2offline",
+        slurm_name="iql_octo",
         slurm_time=int(16 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
@@ -57,11 +57,11 @@ def main():
             "google_robot_pick_coke_can",
         ]:
             for batch_size in [32]:
-                for alpha in [10.0, 1.0, 0.1]:
+                for alpha in [1.0]:
                     for expectile in [0.9]:
                         for actor_freq in [4]:
-                            for seed in [10]:
-                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_iql_{env_name}_batch_size={batch_size}_alpha={alpha}_expectile={expectile}_actor_freq={actor_freq}"
+                            for seed in [10, 20]:
+                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_iql_{env_name}_batch_size={batch_size}_alpha={alpha}_expectile={expectile}_actor_freq={actor_freq}_actor_head=gaussian"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/ogbench_logs/iql_octo/{exp_name}/{seed}")
 
@@ -110,9 +110,9 @@ def main():
                                         --octo.dataset_kwargs.oxe_kwargs.data_dir={log_root_dir}/datasets/octo_datasets \
                                         --octo.dataset_kwargs.oxe_kwargs.data_mix=google_robot \
                                         --octo.dataset_kwargs.batch_size={batch_size} \
-                                        --octo.dataset_kwargs.shuffle_buffer_size=300_000 \
+                                        --octo.dataset_kwargs.shuffle_buffer_size=500_000 \
                                         --agent=impls/octo_agents/iql.py \
-                                        --agent.actor_head=diffusion \
+                                        --agent.actor_head=gaussian \
                                         --agent.discount=0.99 \
                                         --agent.expectile={expectile} \
                                         --agent.alpha={alpha} \

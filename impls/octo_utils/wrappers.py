@@ -1,14 +1,13 @@
+import gymnasium
 from collections import deque
 
-import gymnasium
 import jax
-import numpy as np
 import tensorflow as tf
-import torch
+import numpy as np
 
-from mani_skill.utils.geometry import rotation_conversions
-from mani_skill.utils import common
 from octo.model.octo_model import _verify_shapes
+from transforms3d.euler import euler2axangle
+
 from simpler_env.utils.action.action_ensemble import ActionEnsembler
 
 
@@ -38,7 +37,7 @@ class SimplerOctoWrapper(gymnasium.Wrapper):
         self.image_size = image_size
         self.action_ensemble_temp = action_ensemble_temp
 
-        # dataset_id = "bridge_dataset" if dataset_id is None else dataset_id
+        # dataset_id = "fractal20220817_data" if dataset_id is None else dataset_id
         # released huggingface octo models
         # self.model_type = f"hf://rail-berkeley/octo-small"
         # self.tokenizer, self.tokenizer_kwargs = None, None
@@ -48,14 +47,14 @@ class SimplerOctoWrapper(gymnasium.Wrapper):
         self.action_ensembler = ActionEnsembler(
             self.pred_action_horizon, self.action_ensemble_temp)
 
-        if "google_robot" in env.unwrapped.robot_uids.uid:
+        if "google_robot" in env.robot_uid:
             self.sticky_gripper_num_repeat = 15
             self.camera_name = "overhead_camera"
-        elif "widowx" in env.unwrapped.robot_uids.uid:
+        elif "widowx" in env.robot_uid:
             self.sticky_gripper_num_repeat = 1
             self.camera_name = "3rd_view_camera"
         else:
-            raise NotImplementedError("Unknown robot uid: {}".format(env.unwrapped.robot_uids.uid))
+            raise NotImplementedError("Unknown robot uid: {}".format(env.robot_uid))
         self.sticky_action_is_on = False
         self.gripper_action_repeat = 0
         self.sticky_gripper_action = 0.0
@@ -150,7 +149,7 @@ class SimplerOctoWrapper(gymnasium.Wrapper):
         self.previous_gripper_action = None
 
     def _process_observation(self, observation, first_obs=False):
-        image = observation["sensor_data"][self.camera_name]["rgb"]
+        image = observation["image"][self.camera_name]["rgb"]
         assert image.dtype == np.uint8
         image = self._resize_image(image)
         if first_obs:
@@ -172,22 +171,28 @@ class SimplerOctoWrapper(gymnasium.Wrapper):
         return processed_observation
 
     def _process_action(self, action):
-        action = (action.copy()[None] * self.unnormalization_statistics["std"][None, None] +
-                  self.unnormalization_statistics["mean"][None, None])
+        # maniskill 3
+        # action = (action.copy()[None] * self.unnormalization_statistics["std"][None, None] +
+        #           self.unnormalization_statistics["mean"][None, None])
+        # maniskill 2
+        action = (action.copy() * self.unnormalization_statistics["std"][None] +
+                  self.unnormalization_statistics["mean"][None])
 
-        assert action.shape == (1, self.pred_action_horizon, 7)
-        action = self.action_ensembler.ensemble_action(action).squeeze()
+        assert action.shape == (self.pred_action_horizon, 7)
+        action = self.action_ensembler.ensemble_action(action)
 
-        # process action to obtain the processed_action to be sent to the maniskill3 environment
+        # process action to obtain the processed_action to be sent to the maniskill2 environment
         processed_action = dict()
         processed_action["world_vector"] = np.asarray(action[:3], dtype=np.float64)
 
-        rot_axangle = rotation_conversions.matrix_to_axis_angle(
-            rotation_conversions.euler_angles_to_matrix(
-                common.to_tensor(np.asarray(action[3:6])), "XYZ"))
-        processed_action["rot_axangle"] = common.to_numpy(rot_axangle, dtype=np.float64)
+        action_rotation_delta = np.asarray(action[3:6], dtype=np.float64)
+        roll, pitch, yaw = action_rotation_delta
+        action_rotation_ax, action_rotation_angle = euler2axangle(roll, pitch, yaw)
+        action_rotation_axangle = action_rotation_ax * action_rotation_angle
+        processed_action["rot_axangle"] = action_rotation_axangle
+
         current_gripper_action = np.asarray(action[6:7], dtype=np.float64)
-        if "google_robot" in self.env.unwrapped.robot_uids.uid:
+        if "google_robot" in self.env.robot_uid:
             # action_rotation_delta = np.asarray(action[3:6], dtype=np.float64)
             # roll, pitch, yaw = action_rotation_delta
             # action_rotation_ax, action_rotation_angle = euler2axangle(roll, pitch, yaw)
@@ -214,12 +219,12 @@ class SimplerOctoWrapper(gymnasium.Wrapper):
                 self.sticky_action_is_on = False
                 self.gripper_action_repeat = 0
                 self.sticky_gripper_action = 0.0
-        elif "widowx" in self.env.unwrapped.robot_uids.uid:
+        elif "widowx" in self.env.robot_uid:
             relative_gripper_action = (
                 2.0 * (current_gripper_action > 0.5) - 1.0
             )  # binarize gripper action to 1 (open) and -1 (close)
         else:
-            raise NotImplementedError("Unknown robot uid: {}".format(self.env.unwrapped.robot_uids.uid))
+            raise NotImplementedError("Unknown robot uid: {}".format(self.env.robot_uid))
 
         processed_action["gripper"] = relative_gripper_action
         processed_action = np.concatenate([
@@ -231,7 +236,7 @@ class SimplerOctoWrapper(gymnasium.Wrapper):
         return processed_action
 
     def step(self, action):
-        instruction = self.env.unwrapped.get_language_instruction()[0]
+        instruction = self.env.get_language_instruction()
         if instruction != self.task_description:
             # task description has changed; reset the policy state
             self._reset_model(instruction)
@@ -241,24 +246,13 @@ class SimplerOctoWrapper(gymnasium.Wrapper):
         processed_action = self._process_action(action)
 
         observation, reward, terminated, truncated, info = self.env.step(processed_action)
-        observation = jax.tree.map(
-            lambda x: x[0].cpu().detach().numpy() if isinstance(x, torch.Tensor) else x,
-            observation)
-        reward = reward.item()
-        terminated = terminated.item()
-        truncated = truncated.item()
-        info = jax.tree.map(lambda x: x.item() if isinstance(x, torch.Tensor) else x, info)
         processed_observation = self._process_observation(observation, first_obs=first_obs)
 
         return processed_observation, reward, terminated, truncated, info
 
     def reset(self, *args, **kwargs):
         observation, info = self.env.reset(*args, **kwargs)
-        observation = jax.tree.map(
-            lambda x: x[0].cpu().detach().numpy() if isinstance(x, torch.Tensor) else x,
-            observation)
-        info = jax.tree.map(lambda x: x.item() if isinstance(x, torch.Tensor) else x, info)
-        instruction = self.env.unwrapped.get_language_instruction()[0]
+        instruction = self.env.get_language_instruction()
         self._reset_model(instruction)
         processed_observation = self._process_observation(observation, first_obs=True)
 

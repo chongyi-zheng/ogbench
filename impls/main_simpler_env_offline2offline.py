@@ -91,7 +91,7 @@ def main(_):
         .shuffle(100_000)
         .repeat()
         .batch(config['batch_size'])
-        .prefetch(5)
+        .prefetch(10)
     )
     pretraining_train_dataset_iter = pretraining_train_dataset.as_numpy_iterator()
     pretraining_val_dataset = (
@@ -99,7 +99,7 @@ def main(_):
         .shuffle(100_000)
         .repeat()
         .batch(config['batch_size'])
-        .prefetch(5)
+        .prefetch(10)
     )
     pretraining_val_dataset_iter = pretraining_val_dataset.as_numpy_iterator()
     finetuning_train_dataset = (
@@ -107,7 +107,7 @@ def main(_):
         .shuffle(20_000)
         .repeat()
         .batch(config['batch_size'])
-        .prefetch(5)
+        .prefetch(10)
     )
     finetuning_train_dataset_iter = finetuning_train_dataset.as_numpy_iterator()
     finetuning_val_dataset = (
@@ -115,7 +115,7 @@ def main(_):
         .shuffle(20_000)
         .repeat()
         .batch(config['batch_size'])
-        .prefetch(5)
+        .prefetch(10)
     )
     finetuning_val_dataset_iter = finetuning_val_dataset.as_numpy_iterator()
 
