@@ -56,7 +56,7 @@ def main():
                                     for seed in [10]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_{env_name}_alpha={alpha}_num_fg={num_flow_goals}_frame_stack={frame_stack}_expectile={expectile}_actor_freq={actor_freq}_encoder={encoder}"
                                         log_dir = os.path.expanduser(
-                                            f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
+                                            f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_simpler_offline2offline/{exp_name}/{seed}")
 
                                         # change the log folder of slurm executor
                                         submitit_log_dir = os.path.join(os.path.dirname(log_dir),
