@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-import gymnasium
+import simpler_env
 import jax
 import numpy as np
 from octo.model.octo_model import OctoModel

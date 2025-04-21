@@ -319,18 +319,7 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
 
         train_dataset = Dataset.create(**train_dataset)
         val_dataset = Dataset.create(**val_dataset)
-    elif 'google_robot' in env_name:
-        from utils import simpler_env_utils
-        _, train_dataset, val_dataset = simpler_env_utils.make_env_and_datasets(
-            env_name, frame_stack=frame_stack)
-
-        env = simpler_env_utils.make_env_and_datasets(
-            env_name, frame_stack=frame_stack, env_only=True)
-        eval_env = simpler_env_utils.make_env_and_datasets(
-            env_name, frame_stack=frame_stack, env_only=True)
-        env = EpisodeMonitor(env)
-        eval_env = EpisodeMonitor(eval_env)
-    elif 'widowx' in env_name:
+    elif 'google_robot' in env_name or 'widowx' in env_name:
         from utils import simpler_env_utils
         _, train_dataset, val_dataset = simpler_env_utils.make_env_and_datasets(
             env_name, frame_stack=frame_stack)

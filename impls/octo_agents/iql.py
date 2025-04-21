@@ -2,6 +2,7 @@ import copy
 from functools import partial
 from typing import Any
 
+from einops import rearrange
 import flax
 # import flax.linen as nn
 import jax
@@ -10,6 +11,7 @@ import ml_collections
 # import optax
 
 from octo.utils.spec import ModuleSpec
+from octo.model.components.diffusion import cosine_beta_schedule
 # from octo.data.utils.data_utils import NormalizationType
 # from octo.model.components.action_heads import DiffusionActionHead
 # from octo.model.octo_model import OctoModel
@@ -21,6 +23,7 @@ from octo.utils.train_utils import (
 from octo_utils.networks import (
     LowdimActionTokenizer,
     OctoTransformer,
+    DiffusionActorHead,
     ContinuousGaussianActorHead,
     ValueHead,
 )
@@ -34,6 +37,85 @@ class IQLAgent(flax.struct.PyTreeNode):
     rng: Any
     network: Any
     config: Any = nonpytree_field()
+
+    def predict_diffusion_action(self, transformer_outputs, rng, train=True):
+        assert self.config['actor_head'] == 'diffusion'
+
+        readout_key = self.network.model_def.modules['actor_head'].readout_key
+        action_horizon = self.network.model_def.modules['actor_head'].action_horizon
+        action_dim = self.network.model_def.modules['actor_head'].action_dim
+        diffusion_steps = self.network.model_def.modules['actor_head'].diffusion_steps
+        max_action = self.network.model_def.modules['actor_head'].max_action
+        batch_size, window_size = transformer_outputs[readout_key].tokens.shape[:2]
+
+        # action_mask = jnp.ones(
+        #     (
+        #         batch_size,
+        #         window_size,
+        #         action_horizon,
+        #         action_dim,
+        #     ),
+        #     dtype=bool,
+        # )
+        # flat_action_mask = rearrange(action_mask, "b w h a -> b w (h a)")
+
+        betas = jnp.array(cosine_beta_schedule(diffusion_steps))
+        alphas = 1 - betas
+        alpha_hats = jnp.cumprod(alphas)
+        def scan_fn(carry, time):
+            current_x, rng = carry
+            input_time = jnp.broadcast_to(time, (*current_x.shape[:-1], 1))
+
+            rng, dropout_rng = jax.random.split(rng)
+            eps_pred = self.network.select('actor_head')(
+                transformer_outputs,
+                time=input_time,
+                noisy_actions=current_x,
+                train=train,
+                rngs={'dropout': dropout_rng},
+            )
+
+            alpha_1 = 1 / jnp.sqrt(alphas[time])
+            alpha_2 = (1 - alphas[time]) / (jnp.sqrt(1 - alpha_hats[time]))
+            current_x = alpha_1 * (current_x - alpha_2 * eps_pred)
+
+            rng, noise_rng = jax.random.split(rng)
+            z = jax.random.normal(noise_rng, shape=current_x.shape)
+            current_x = current_x + (time > 0) * (jnp.sqrt(betas[time]) * z)
+
+            current_x = jnp.clip(current_x, -max_action, max_action)
+
+            # set non-eval actions to the noise that would have been seen during training
+            # current_x = jnp.where(
+            #     flat_action_mask, current_x, jnp.sqrt(1 - alpha_hats[time]) * z
+            # )
+
+            return (current_x, rng), ()
+
+        rng, noise_rng = jax.random.split(rng)
+        noise = jax.random.normal(
+            noise_rng,
+            (
+                batch_size,
+                window_size,
+                action_horizon * action_dim,
+            ),
+        )
+
+        (actions_flat, _), () = jax.lax.scan(
+            scan_fn,
+            (noise, rng),
+            jnp.arange(diffusion_steps - 1, -1, -1),
+        )
+
+        actions = rearrange(
+            actions_flat,
+            "b w (h a) -> b w h a",
+            h=action_horizon,
+            a=action_dim,
+        )
+
+        return actions
 
     @staticmethod
     def expectile_loss(adv, diff, expectile):
@@ -144,6 +226,7 @@ class IQLAgent(flax.struct.PyTreeNode):
         tasks = batch['task']
         timestep_pad_masks = batch['observation']['timestep_pad_mask']
         actions = batch['action']
+        action_pad_masks = batch['action_pad_mask']
 
         rng, transformer_dropout_rng, actor_dropout_rng = jax.random.split(rng, 3)
         transformer_outputs = self.network.select('octo_transformer')(
@@ -153,22 +236,83 @@ class IQLAgent(flax.struct.PyTreeNode):
             rngs={'dropout': transformer_dropout_rng},
             params=grad_params,
         )
-        dist = self.network.select('actor_head')(
-            transformer_outputs,
-            train=True,
-            rngs={'dropout': actor_dropout_rng},
-            params=grad_params,
-        )
+        
+        if self.config['actor_head'] == 'gaussian':
+            dist = self.network.select('actor_head')(
+                transformer_outputs,
+                train=True,
+                rngs={'dropout': actor_dropout_rng},
+                params=grad_params,
+            )
 
-        log_prob = dist.log_prob(actions)
-        bc_loss = -log_prob.mean()
+            log_prob = dist.log_prob(actions)
+            bc_loss = -log_prob.mean()
 
-        return bc_loss, {
-            'bc_loss': bc_loss,
-            'bc_log_prob': log_prob.mean(),
-            'mse': jnp.mean((dist.mode() - actions) ** 2),
-            'std': jnp.mean(dist.scale_diag),
-        }
+            return bc_loss, {
+                'bc_loss': bc_loss,
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - actions) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+            }
+        elif self.config['actor_head'] == 'diffusion':
+            batch_size, window_size = timestep_pad_masks.shape
+
+            # fold action_dim and action_horizon into one dimension
+            actions_flat = rearrange(actions, "b w h a -> b w (h a)")
+            max_action = self.network.model_def.modules['actor_head'].max_action
+            actions_flat = jnp.clip(actions_flat, -max_action, max_action)
+
+            time_rng, noise_rng = jax.random.split(rng)
+            diffusion_steps = self.network.model_def.modules['actor_head'].diffusion_steps
+            time = jax.random.randint(
+                time_rng,
+                (batch_size, window_size, 1),
+                0,
+                diffusion_steps,
+            )
+            noise = jax.random.normal(
+                noise_rng, actions_flat.shape
+            )
+
+            # create beta schedule
+            betas = jnp.array(cosine_beta_schedule(diffusion_steps))
+            alphas = 1 - betas
+            alpha_hats = jnp.cumprod(alphas)
+            scale = jnp.sqrt(alpha_hats[time])
+            std = jnp.sqrt(1 - alpha_hats[time])
+            noisy_actions = scale * actions_flat + std * noise
+            pred_eps = self.network.select('actor_head')(
+                transformer_outputs,
+                time=time,
+                noisy_actions=noisy_actions,
+                train=True,
+                rngs={'dropout': actor_dropout_rng},
+                params=grad_params,
+            )
+
+            # combine the timestep pad mask with the action pad mask
+            mask = timestep_pad_masks[:, :, None, None] & action_pad_masks
+            # flatten the mask to match the flat actions
+            mask = rearrange(mask, "b w h a -> b w (h a)")
+
+            # masked mse loss
+            loss = jnp.square(pred_eps - noise)
+            mask = jnp.broadcast_to(mask, loss.shape)
+            loss = jnp.mean(loss * mask) / jnp.clip(jnp.mean(mask), a_min=1e-5, a_max=None)
+            # Sum over action dimension instead of averaging
+            diffusion_loss = loss * actions.shape[-1]
+
+            # for logging
+            rng, action_rng = jax.random.split(rng)
+            action_preds = self.predict_diffusion_action(transformer_outputs, action_rng, train=True)
+            action_preds = jnp.clip(action_preds, -max_action, max_action)
+
+            return diffusion_loss, {
+                'bc_diffusion_loss': diffusion_loss,
+                'mse': jnp.mean((action_preds - actions) ** 2),
+            }
+        else:
+            raise NotImplementedError
 
     def actor_loss(self, batch, grad_params, rng=None):
         """Compute the actor loss (AWR)."""
@@ -208,25 +352,88 @@ class IQLAgent(flax.struct.PyTreeNode):
         exp_a = jnp.minimum(exp_a, 100.0)
 
         rng, actor_dropout_rng = jax.random.split(rng)
-        dist = self.network.select('actor_head')(
-            transformer_outputs, 
-            train=True,
-            rngs={'dropout': actor_dropout_rng},
-            params=grad_params,
-        )
-        log_prob = dist.log_prob(actions)
+        if self.config['actor_head'] == 'gaussian':
+            dist = self.network.select('actor_head')(
+                transformer_outputs,
+                train=True,
+                rngs={'dropout': actor_dropout_rng},
+                params=grad_params,
+            )
+            log_prob = dist.log_prob(actions)
 
-        actor_loss = -(exp_a[..., None] * log_prob).mean()
+            actor_loss = -(exp_a[..., None] * log_prob).mean()
 
-        actor_info = {
-            'actor_loss': actor_loss,
-            'adv': adv.mean(),
-            'bc_log_prob': log_prob.mean(),
-            'mse': jnp.mean((dist.mode() - actions) ** 2),
-            'std': jnp.mean(dist.scale_diag),
-        }
+            actor_info = {
+                'actor_loss': actor_loss,
+                'adv': adv.mean(),
+                'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - actions) ** 2),
+                'std': jnp.mean(dist.scale_diag),
+            }
 
-        return actor_loss, actor_info
+            return actor_loss, actor_info
+        elif self.config['actor_head'] == 'diffusion':
+            batch_size, window_size = timestep_pad_masks.shape
+
+            # fold action_dim and action_horizon into one dimension
+            actions_flat = rearrange(actions, "b w h a -> b w (h a)")
+            max_action = self.network.model_def.modules['actor_head'].max_action
+            actions_flat = jnp.clip(actions_flat, -max_action, max_action)
+
+            time_rng, noise_rng = jax.random.split(rng)
+            diffusion_steps = self.network.model_def.modules['actor_head'].diffusion_steps
+            time = jax.random.randint(
+                time_rng,
+                (batch_size, window_size, 1),
+                0,
+                diffusion_steps,
+            )
+            noise = jax.random.normal(
+                noise_rng, actions_flat.shape
+            )
+
+            # create beta schedule
+            betas = jnp.array(cosine_beta_schedule(diffusion_steps))
+            alphas = 1 - betas
+            alpha_hats = jnp.cumprod(alphas)
+            scale = jnp.sqrt(alpha_hats[time])
+            std = jnp.sqrt(1 - alpha_hats[time])
+            noisy_actions = scale * actions_flat + std * noise
+            pred_eps = self.network.select('actor_head')(
+                transformer_outputs,
+                time=time,
+                noisy_actions=noisy_actions,
+                train=True,
+                rngs={'dropout': actor_dropout_rng},
+                params=grad_params,
+            )
+
+            # combine the timestep pad mask with the action pad mask
+            mask = timestep_pad_masks[:, :, None, None] & action_pad_masks
+            # flatten the mask to match the flat actions
+            mask = rearrange(mask, "b w h a -> b w (h a)")
+
+            # masked mse loss
+            loss = jnp.square(pred_eps - noise)
+            mask = jnp.broadcast_to(mask, loss.shape)
+            loss = jnp.mean(exp_a[..., None] * loss * mask) / jnp.clip(jnp.mean(mask), a_min=1e-5, a_max=None)
+            # Sum over action dimension instead of averaging
+            actor_loss = loss * actions.shape[-1]
+
+            # for logging
+            rng, action_rng = jax.random.split(rng)
+            action_preds = self.predict_diffusion_action(transformer_outputs, action_rng, train=True)
+            action_preds = jnp.clip(action_preds, -max_action, max_action)
+
+            actor_info = {
+                'actor_loss': actor_loss,
+                'adv': adv.mean(),
+                'mse': jnp.mean((action_preds - actions) ** 2),
+            }
+
+            return actor_loss, actor_info
+        else:
+            raise NotImplementedError
 
     @jax.jit
     def pretraining_loss(self, batch, grad_params, rng=None):
@@ -339,15 +546,23 @@ class IQLAgent(flax.struct.PyTreeNode):
             timestep_pad_mask=timestep_pad_masks,
             train=train,
         )
-        dist = self.network.select('actor_head')(
-            transformer_outputs,
-            temperature=temperature,
-            train=train,
-        )
-
-        # only get the last timestep in the history window
         max_action = self.network.model_def.modules['actor_head'].max_action
-        actions = dist.sample(seed=seed)[:, -1].squeeze()
+        if self.config['actor_head'] == 'gaussian':
+            dist = self.network.select('actor_head')(
+                transformer_outputs,
+                temperature=temperature,
+                train=train,
+            )
+
+            # only get the last timestep in the history window
+            actions = dist.sample(seed=seed)[:, -1].squeeze()
+        elif self.config['actor_head'] == 'diffusion':
+            actions = self.predict_diffusion_action(
+                transformer_outputs, seed, train=train)
+            # only get the last timestep in the history window
+            actions = actions[:, -1, :, :].squeeze()
+        else:
+            raise NotImplementedError
         actions = jnp.clip(actions, -max_action, max_action)
 
         return actions
@@ -359,7 +574,7 @@ class IQLAgent(flax.struct.PyTreeNode):
         example_batch,
         config,
         octo_config,
-        verbose=True,
+        verbose=False,
     ):
         """Create a new agent.
 
@@ -370,7 +585,7 @@ class IQLAgent(flax.struct.PyTreeNode):
             config: Configuration dictionary.
         """
         rng = jax.random.PRNGKey(seed)
-        rng, init_rng = jax.random.split(rng, 2)
+        rng, print_rng, init_with_output_rng, init_rng = jax.random.split(rng, 4)
 
         octo_model_config = octo_config['model']
         octo_model_config['action_tokenizers'] = {
@@ -421,14 +636,27 @@ class IQLAgent(flax.struct.PyTreeNode):
             for k, spec in octo_model_config['action_tokenizers'].items()
         }
 
-        actor_head_def = ContinuousGaussianActorHead(
-            readout_key='readout_action',
-            use_map=True,
-            action_horizon=4,
-            action_dim=example_batch['action'].shape[-1],
-            state_dependent_std=False,
-            const_std=config['const_std'],
-        )
+        if config['actor_head'] == 'gaussian':
+            actor_head_def = ContinuousGaussianActorHead(
+                readout_key='readout_action',
+                use_map=True,
+                action_horizon=4,
+                action_dim=example_batch['action'].shape[-1],
+                state_dependent_std=False,
+                const_std=config['const_std'],
+            )
+        elif config['actor_head'] == 'diffusion':
+            actor_head_def = DiffusionActorHead(
+                readout_key='readout_action',
+                use_map=False,
+                action_horizon=4,
+                action_dim=example_batch['action'].shape[-1],
+                dropout_rate=0.0,
+            )
+        elif config['actor_head'] == 'flow':
+            raise NotImplementedError()
+        else:
+            raise NotImplementedError()
         critic_head_def = ValueHead(
             readout_key='readout_value',
             use_map=True,
@@ -455,14 +683,14 @@ class IQLAgent(flax.struct.PyTreeNode):
         if verbose:
             print(
                 octo_transformer_def.tabulate(
-                    rng,
+                    print_rng,
                     observations=example_batch['observation'], tasks=example_batch['task'],
                     timestep_pad_mask=example_batch['observation']['timestep_pad_mask'],
                     actions=example_batch['action'], action_pad_mask=example_batch['action_pad_mask'],
                     train=False, verbose=True, depth=2)
             )  # Prints out the parameter count of our model, and tokenizer details
         example_transformer_outputs, _ = octo_transformer_def.init_with_output(
-            rng,
+            init_with_output_rng,
             observations=example_batch['observation'], tasks=example_batch['task'],
             timestep_pad_mask=example_batch['observation']['timestep_pad_mask'],
             actions=example_batch['action'], action_pad_mask=example_batch['action_pad_mask'],
@@ -480,11 +708,27 @@ class IQLAgent(flax.struct.PyTreeNode):
                 example_batch['observation']['timestep_pad_mask'],
                 example_batch['action'], example_batch['action_pad_mask']
             )),
-            actor_head=(actor_head_def, (example_transformer_outputs, )),
             critic_head=(critic_head_def, (example_transformer_outputs, )),
             target_critic_head=(copy.deepcopy(critic_head_def), (example_transformer_outputs, )),
             value_head=(value_head_def, (example_transformer_outputs, )),
         )
+
+        if config['actor_head'] == 'gaussian':
+            network_info['actor_head'] = (actor_head_def, (example_transformer_outputs,))
+        elif config['actor_head'] == 'diffusion':
+            rng, time_rng, noise_rng = jax.random.split(rng, 3)
+            example_time = jax.random.randint(
+                time_rng,
+                (*example_batch['action'].shape[:2], 1),
+                0,
+                20,
+            )
+            example_noise = jax.random.normal(
+                noise_rng,
+                rearrange(example_batch['action'], "b w h a -> b w (h a)").shape
+            )
+            network_info['actor_head'] = (actor_head_def, (example_transformer_outputs, example_time, example_noise))
+
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
 
@@ -508,11 +752,12 @@ def get_config():
         dict(
             agent_name='iql',  # Agent name.
             lr=3e-4,  # Learning rate.
-            batch_size=256,  # Batch size.
-            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
-            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
-            layer_norm=True,  # Whether to use layer normalization.
-            actor_layer_norm=False,  # Whether to use layer normalization for the actor.
+            # batch_size=256,  # Batch size.
+            # actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
+            # value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
+            # layer_norm=True,  # Whether to use layer normalization.
+            # actor_layer_norm=False,  # Whether to use layer normalization for the actor.
+            actor_head='diffusion',  # Type of actor head. ('gaussian', 'diffusion', 'flow')
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
             actor_freq=2,  # Actor update frequency.

@@ -5,9 +5,11 @@ import flax.linen as nn
 import distrax
 import jax
 import jax.numpy as jnp
+from jax.typing import ArrayLike
 from einops import rearrange
 
 from octo.model.components.base import TokenGroup
+from octo.model.components.diffusion import create_diffusion_model
 from octo.model.components.transformer import MAPHead
 from octo.model.components.tokenizers import BinTokenizer
 from octo.model.components.block_transformer import (
@@ -186,7 +188,7 @@ class OctoTransformer(nn.Module):
             "task_*": AttentionRule.CAUSAL,
             "obs_*": AttentionRule.CAUSAL,
         }
-        
+
         # Actions attend to all tasks and all other actions tokens causally,
         # e.g. at same timestep or before, but do not attend to readouts
         action_attention_rules = {
@@ -463,6 +465,59 @@ class OctoTransformer(nn.Module):
         return jnp.broadcast_to(embedding, tokens.shape)
 
 
+class DiffusionActorHead(nn.Module):
+    readout_key: str
+    use_map: bool = False
+    action_horizon: int = 1
+    action_dim: int = 7
+    max_action: float = 5.0
+
+    # diffusion-specific config with sane defaults
+    time_dim: int = 32
+    num_blocks: int = 3
+    dropout_rate: float = 0.0
+    hidden_dim: int = 256
+    use_layer_norm: bool = True
+    diffusion_steps: int = 20
+    n_diffusion_samples: int = 1
+
+    def setup(self):
+        if self.use_map:
+            self.map_head = MAPHead()
+
+        # create the diffusion model (score network)
+        self.diffusion_model = create_diffusion_model(
+            self.action_dim * self.action_horizon,
+            time_dim=self.time_dim,
+            num_blocks=self.num_blocks,
+            dropout_rate=self.dropout_rate,
+            hidden_dim=self.hidden_dim,
+            use_layer_norm=self.use_layer_norm,
+        )
+
+    def __call__(
+        self,
+        transformer_outputs: Dict[str, TokenGroup],
+        time: ArrayLike,
+        noisy_actions: ArrayLike,
+        train: bool = True,
+    ) -> jax.Array:
+        """Performs a single forward pass through the diffusion model."""
+        token_group = transformer_outputs[self.readout_key]
+        assert token_group.tokens.ndim == 4, (
+            f"Expected token_group.tokens to have shape (batch_size, window_size, num_tokens, embedding_size), "
+            f"but got shape {token_group.tokens.shape}"
+        )
+        if self.use_map:  # Multi-head attention pooling
+            embeddings = self.map_head(token_group, train=train)[:, :, 0]
+        else:  # mean pooling
+            embeddings = token_group.tokens.mean(axis=-2)
+        # Now, embeddings is (batch_size, window_size, embedding_size)
+
+        pred_eps = self.diffusion_model(embeddings, noisy_actions, time, train=train)
+        return pred_eps
+
+
 class ContinuousGaussianActorHead(nn.Module):
     """Predicts continuous actions (as opposed to discretized).
 
@@ -559,19 +614,6 @@ class ContinuousGaussianActorHead(nn.Module):
             )
 
         return distribution
-
-    # def predict_action(
-    #     self,
-    #     transformer_outputs: Dict[str, TokenGroup],
-    #     train: bool = True,
-    #     *args,
-    #     sample_shape: tuple = (),
-    #     **kwargs,
-    # ) -> jax.Array:
-    #     """Convenience methods for predicting actions for the final timestep in the window."""
-    #     # only get the last timestep in the window
-    #     mean = self(transformer_outputs, train=train)[:, -1]
-    #     return jnp.broadcast_to(mean, sample_shape + mean.shape)
 
 
 class ValueHead(nn.Module):

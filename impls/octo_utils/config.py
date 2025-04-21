@@ -117,7 +117,7 @@ def get_dataset_config(window_size=1):
         oxe_kwargs=dict(
             data_mix=placeholder(str),
             data_dir=placeholder(str),
-            load_camera_views=("primary", "wrist"),
+            load_camera_views=("primary", ),
             load_depth=False,
         ),
         traj_transform_kwargs=dict(
