@@ -161,8 +161,8 @@ def main(_):
             agent, update_info = agent.pretrain(batch)
         else:
             batch = next(finetuning_train_dataset_iter)
-            train_logger = pretraining_train_logger
-            eval_logger = pretraining_eval_logger
+            train_logger = finetuning_train_logger
+            eval_logger = finetuning_eval_logger
 
             # data augmentation
             if np.random.rand() < FLAGS.p_aug:

@@ -37,7 +37,7 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=16,
-        slurm_mem="100G",
+        slurm_mem="48G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=20,
@@ -47,13 +47,13 @@ def main():
         for env_name in [
             "google_robot_pick_coke_can",
         ]:
-            for alpha in [300.0, 30.0, 3.0]:
+            for alpha in [100.0, 30.0]:
                 for frame_stack in [3]:
                     for num_flow_goals in [16]:
                         for actor_freq in [4]:
-                            for expectile in [0.99]:
-                                for encoder in ['impala_large', 'resnet_34']:
-                                    for seed in [10]:
+                            for expectile in [0.65, 0.75, 0.85, 0.95]:
+                                for encoder in ['resnet_34']:
+                                    for seed in [20]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_{env_name}_alpha={alpha}_num_fg={num_flow_goals}_frame_stack={frame_stack}_expectile={expectile}_actor_freq={actor_freq}_encoder={encoder}"
                                         log_dir = os.path.expanduser(
                                             f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_simpler_offline2offline/{exp_name}/{seed}")
