@@ -737,7 +737,7 @@ class GCFMVectorField(nn.Module):
         self.velocity_field_net = network_module(**kwargs)
         self.time_embedding = SinusoidalPosEmb(emb_dim=self.time_dim)
 
-    def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None):
+    def __call__(self, noisy_goals, times, observations=None, actions=None, commanded_goals=None):
         """Return the value/critic velocity field.
 
         Args:
@@ -753,15 +753,19 @@ class GCFMVectorField(nn.Module):
             # This will be all nans if observations are all nan
             observations = self.state_encoder(observations)
 
-        conds = observations
+        times = self.time_embedding(times)
+        inputs = [noisy_goals, times]
+        if observations is None:
+            inputs.append(observations)
         if commanded_goals is not None:
-            conds = jnp.concatenate([conds, commanded_goals], axis=-1)
+            # conds = jnp.concatenate([conds, commanded_goals], axis=-1)
+            inputs.append(commanded_goals)
         if actions is not None:
             # This will be all nans if both observations and actions are all nan
-            conds = jnp.concatenate([conds, actions], axis=-1)
-
-        times = self.time_embedding(times)
-        inputs = jnp.concatenate([noisy_goals, times, conds], axis=-1)
+            # conds = jnp.concatenate([conds, actions], axis=-1)
+            inputs.append(actions)
+        # inputs = jnp.concatenate([noisy_goals, times, conds], axis=-1)
+        inputs = jnp.concatenate(inputs, axis=-1)
 
         # vf = self.velocity_field_net(h)
         vf = self.velocity_field_net(inputs)
