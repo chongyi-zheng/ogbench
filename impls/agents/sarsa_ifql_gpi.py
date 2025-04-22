@@ -158,7 +158,7 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             params=grad_params,
         )
         flow_matching_loss = jnp.square(
-            jax.lax.stop_gradient(path_sample.dx_t) - vf_pred).mean(axis=-1)
+            jax.lax.stop_gradient(path_sample.dx_t) - vf_pred).mean()
 
         info = dict(
             flow_matching_loss=flow_matching_loss,
@@ -716,7 +716,7 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             scheduler=scheduler_class[config['scheduler_class']]()
         )
 
-        config['obs_dims'] = obs_dim
+        config['obs_dims'] = obs_dims
         config['action_dim'] = action_dim
         config['action_dtype'] = action_dtype
 
@@ -751,7 +751,7 @@ def get_config():
             q_agg='mean',  # Aggregation method for target Q values.
             critic_noise_type='normal',  # Critic noise type. ('marginal_state', 'normal').
             critic_fm_loss_type='sarsa_squared', # Type of critic flow matching loss. ('naive_sarsa', 'coupled_sarsa', 'sarsa_squared')
-            num_flow_goals=1,  # Number of future flow goals for computing the target q.
+            num_flow_goals=4,  # Number of future flow goals for computing the target q.
             num_flow_latents=4,  # Number of flow latents for computing the target q.
             clip_flow_goals=False,  # Whether to clip the flow goals.
             use_terminal_masks=False,  # Whether to use the terminal masks.

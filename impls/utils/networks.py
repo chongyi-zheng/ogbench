@@ -755,7 +755,7 @@ class GCFMVectorField(nn.Module):
 
         times = self.time_embedding(times)
         inputs = [noisy_goals, times]
-        if observations is None:
+        if observations is not None:
             inputs.append(observations)
         if commanded_goals is not None:
             # conds = jnp.concatenate([conds, commanded_goals], axis=-1)

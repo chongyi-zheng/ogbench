@@ -103,7 +103,7 @@ def main(_):
             dataset.num_aug = FLAGS.num_aug
             dataset.inplace_aug = FLAGS.inplace_aug
             dataset.frame_stack = FLAGS.frame_stack
-            if config['agent_name'] in ['rebrac', 'sarsa_ifac_q', 'sarsa_ifql']:
+            if config['agent_name'] in ['rebrac', 'sarsa_ifac_q', 'sarsa_ifql', 'sarsa_ifql_gpi']:
                 dataset.return_next_actions = True
             dataset.normalize_observations()
     if FLAGS.dataset_class == 'GCDataset':
