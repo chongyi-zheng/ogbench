@@ -47,7 +47,7 @@ def main():
         for env_name in [
             "google_robot_pick_coke_can",
         ]:
-            for alpha in [30.0, 10.0]:
+            for alpha in [50.0]:
                 for p_aug in [1.0]:
                     for frame_stack in [3]:
                         for num_flow_goals in [16]:
