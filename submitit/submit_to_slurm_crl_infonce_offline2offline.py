@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -49,8 +49,21 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
+            "cube-single-play-singletask-task1-v0",
             # "cube-single-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task3-v0",
+            # "cube-single-play-singletask-task4-v0",
+            # "cube-single-play-singletask-task5-v0",
+            "cube-double-play-singletask-task1-v0",
             # "cube-double-play-singletask-task2-v0",
+            # "cube-double-play-singletask-task3-v0",
+            # "cube-double-play-singletask-task4-v0",
+            # "cube-double-play-singletask-task5-v0",
+            "scene-play-singletask-task1-v0",
+            # "scene-play-singletask-task2-v0",
+            # "scene-play-singletask-task3-v0",
+            # "scene-play-singletask-task4-v0",
+            # "scene-play-singletask-task5-v0",
             # "scene-play-singletask-task2-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
@@ -60,20 +73,20 @@ def main():
             # "walker_flip",
             # "walker_stand",
             # "walker_run",
-            "quadruped_run",
-            "quadruped_jump",
-            "quadruped_stand",
-            "quadruped_walk",
-            "jaco_reach_top_left",
-            "jaco_reach_top_right",
-            "jaco_reach_bottom_left",
-            "jaco_reach_bottom_right",
+            # "quadruped_run",
+            # "quadruped_jump",
+            # "quadruped_stand",
+            # "quadruped_walk",
+            # "jaco_reach_top_left",
+            # "jaco_reach_top_right",
+            # "jaco_reach_bottom_left",
+            # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [0.03, 0.003]:
+                for alpha in [30.0, 3.0, 0.3, 0.0003]:
                     for reward_type in ['state']:
                         for actor_freq in [4]:
-                            for seed in [20, 30, 40, 50, 60]:
+                            for seed in [20]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_crl_infonce_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_reward_type={reward_type}_actor_freq={actor_freq}"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/ogbench_logs/crl_infonce_offline2offline/{exp_name}/{seed}")
