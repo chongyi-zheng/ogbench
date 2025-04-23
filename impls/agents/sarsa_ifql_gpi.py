@@ -76,10 +76,10 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             raise NotImplementedError
         # TODO (chongyiz): add latents
         rng, latent_rng = jax.random.split(rng)
-        obs_action_dim = observations.shape[-1] + actions.shape[-1]
+        # obs_action_dim = observations.shape[-1] + actions.shape[-1]
         latents = jax.random.normal(
             latent_rng,
-            shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *observations.shape[:-1], obs_action_dim),
+            shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *actions.shape),
             dtype=observations.dtype,
         )
         flow_goals = self.compute_fwd_flow_goals(
@@ -191,8 +191,8 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         # obs_actions = jnp.concatenate([observations, actions], axis=-1)
         # obs_actions = jax.random.permutation(
         #     perm_rng, obs_actions, axis=0)
-        next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
-        latents = self.compute_rev_flow_transitions(next_obs_actions, observations, actions)
+        # next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
+        latents = self.compute_rev_flow_transitions(actions, observations)
 
         info = dict()
         # SARSA^2 flow matching for the occupancy
@@ -658,7 +658,7 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         transition_vf_def = GCFMVectorField(
             network_type=config['network_type'],
             num_residual_blocks=config['num_residual_blocks'],
-            vector_dim=obs_dim + action_dim,
+            vector_dim=action_dim,
             hidden_dims=config['transition_hidden_dims'],
             layer_norm=config['transition_hidden_dims'],
         )
@@ -688,11 +688,11 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             critic_vf=(critic_vf_def, (
                 ex_observations, ex_times,
                 ex_observations, ex_actions,
-                jnp.concatenate([ex_observations, ex_actions], axis=-1))),
+                ex_actions)),
             target_critic_vf=(copy.deepcopy(critic_vf_def), (
                 ex_observations, ex_times,
                 ex_observations, ex_actions,
-                jnp.concatenate([ex_observations, ex_actions], axis=-1))),
+                ex_actions)),
             transition_vf=(transition_vf_def, (
                 # jnp.concatenate([ex_observations, ex_actions], axis=-1), ex_times,
                 ex_actions, ex_times,

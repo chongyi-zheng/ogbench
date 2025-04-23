@@ -31,7 +31,7 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="sarsa_ifql_gpi_offline2offline",
-        slurm_time=int(8 * 60),  # minute
+        slurm_time=int(12 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
@@ -55,7 +55,7 @@ def main():
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task1-v0"
-            "cheetah_run",
+            # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
@@ -75,15 +75,15 @@ def main():
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [3.0, 0.3, 0.03, 0.003]:
+                        for alpha in [0.3, 0.03, 0.003]:
                             for num_flow_latents in [8, 16]:
                                 for num_flow_goals in [1, 16]:
                                     for actor_freq in [4]:
-                                        for expectile in [0.75]:
+                                        for expectile in [0.65, 0.75, 0.85, 0.95]:
                                             for q_agg in ['min']:
                                                 for clip_flow_goals in [True, False]:
                                                     for use_mixup in [True]:
-                                                        for mixup_bw in [0.05]:
+                                                        for mixup_bw in [0.1]:
                                                             for reward_type in ['state']:
                                                                 for critic_fm_loss_type in ['sarsa_squared']:
                                                                     for seed in [20]:
