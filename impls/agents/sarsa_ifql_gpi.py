@@ -134,31 +134,31 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         batch_size = batch['observations'].shape[0]
         observations = batch['observations']
         actions = batch['actions']
-        next_observations = batch['next_observations']
-        next_actions = batch['next_actions']
+        # next_observations = batch['next_observations']
+        # next_actions = batch['next_actions']
 
         if self.config['encoder'] is not None:
             observations = self.network.select('critic_vf_encoder')(
                 batch['observations'], params=grad_params)
 
         # obs_actions = jnp.concatenate([observations, actions], axis=-1)
-        next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
+        # next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
 
         # flow matching for the transition
         rng, time_rng, noise_rng = jax.random.split(rng, 3)
-        times = jax.random.uniform(time_rng, shape=(batch_size,), dtype=next_obs_actions.dtype)
+        times = jax.random.uniform(time_rng, shape=(batch_size,), dtype=actions.dtype)
         if self.config['critic_noise_type'] == 'normal':
             noises = jax.random.normal(
-                noise_rng, shape=next_obs_actions.shape, dtype=next_obs_actions.dtype)
+                noise_rng, shape=actions.shape, dtype=actions.dtype)
         elif self.config['critic_noise_type'] == 'marginal_state':
             noises = jax.random.permutation(
-                noise_rng, next_obs_actions, axis=0)
+                noise_rng, actions, axis=0)
         path_sample = self.cond_prob_path(
-            x_0=noises, x_1=next_obs_actions, t=times)
+            x_0=noises, x_1=actions, t=times)
         vf_pred = self.network.select('transition_vf')(
             path_sample.x_t,
             times,
-            observations, actions,
+            observations,
             params=grad_params,
         )
         flow_matching_loss = jnp.square(
@@ -395,7 +395,7 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
                 'std': jnp.mean(dist.scale_diag),
             }
 
-    def compute_rev_flow_transitions(self, next_observation_actions, observations, actions):
+    def compute_rev_flow_transitions(self, next_observation_actions, observations):
         noisy_obs_actions = next_observation_actions
         init_times = jnp.ones(noisy_obs_actions.shape[:-1], dtype=noisy_obs_actions.dtype)
         end_times = jnp.zeros(noisy_obs_actions.shape[:-1], dtype=noisy_obs_actions.dtype)
@@ -410,7 +410,7 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
 
             times = i * step_size + init_times
             vf = self.network.select('transition_vf')(
-                noisy_obs_actions, times, observations, actions)
+                noisy_obs_actions, times, observations)
             new_noisy_obs_actions = noisy_obs_actions + vf * jnp.expand_dims(step_size, axis=-1)
 
             return (new_noisy_obs_actions,), None
@@ -694,8 +694,9 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
                 ex_observations, ex_actions,
                 jnp.concatenate([ex_observations, ex_actions], axis=-1))),
             transition_vf=(transition_vf_def, (
-                jnp.concatenate([ex_observations, ex_actions], axis=-1), ex_times,
-                ex_observations, ex_actions
+                # jnp.concatenate([ex_observations, ex_actions], axis=-1), ex_times,
+                ex_actions, ex_times,
+                ex_observations,
             )),
             actor=(actor_def, (ex_orig_observations, )),
             reward=(reward_def, (ex_observations,)),
