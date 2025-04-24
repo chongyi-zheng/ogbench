@@ -132,33 +132,33 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         """Compute the flow transition loss."""
 
         batch_size = batch['observations'].shape[0]
-        observations = batch['observations']
-        actions = batch['actions']
-        # next_observations = batch['next_observations']
-        # next_actions = batch['next_actions']
+        # observations = batch['observations']
+        # actions = batch['actions']
+        next_observations = batch['next_observations']
+        next_actions = batch['next_actions']
 
         if self.config['encoder'] is not None:
-            observations = self.network.select('critic_vf_encoder')(
-                batch['observations'], params=grad_params)
+            next_observations = self.network.select('critic_vf_encoder')(
+                batch['next_observations'], params=grad_params)
 
         # obs_actions = jnp.concatenate([observations, actions], axis=-1)
         # next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
 
         # flow matching for the transition
         rng, time_rng, noise_rng = jax.random.split(rng, 3)
-        times = jax.random.uniform(time_rng, shape=(batch_size,), dtype=actions.dtype)
+        times = jax.random.uniform(time_rng, shape=(batch_size,), dtype=next_actions.dtype)
         if self.config['critic_noise_type'] == 'normal':
             noises = jax.random.normal(
-                noise_rng, shape=actions.shape, dtype=actions.dtype)
+                noise_rng, shape=next_actions.shape, dtype=next_actions.dtype)
         elif self.config['critic_noise_type'] == 'marginal_state':
             noises = jax.random.permutation(
-                noise_rng, actions, axis=0)
+                noise_rng, next_actions, axis=0)
         path_sample = self.cond_prob_path(
-            x_0=noises, x_1=actions, t=times)
+            x_0=noises, x_1=next_actions, t=times)
         vf_pred = self.network.select('transition_vf')(
             path_sample.x_t,
             times,
-            observations,
+            next_observations,
             params=grad_params,
         )
         flow_matching_loss = jnp.square(
@@ -192,7 +192,7 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         # obs_actions = jax.random.permutation(
         #     perm_rng, obs_actions, axis=0)
         # next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
-        latents = self.compute_rev_flow_transitions(actions, observations)
+        latents = self.compute_rev_flow_transitions(next_actions, next_observations)
 
         info = dict()
         # SARSA^2 flow matching for the occupancy

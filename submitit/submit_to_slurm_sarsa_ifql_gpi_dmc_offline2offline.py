@@ -57,11 +57,11 @@ def main():
             # "puzzle-3x3-play-singletask-task1-v0"
             "cheetah_run",
             # "cheetah_run_backward",
-            # "cheetah_walk",
+            "cheetah_walk",
             # "cheetah_walk_backward",
             "walker_walk",
             # "walker_flip",
-            # "walker_stand",
+            "walker_stand",
             # "walker_run",
             # "quadruped_run",
             # "quadruped_jump",
@@ -75,8 +75,8 @@ def main():
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [0.03]:
-                            for num_flow_latents in [4, 16]:
+                        for alpha in [0.3]:
+                            for num_flow_latents in [1, 16]:
                                 for num_flow_goals in [4, 16]:
                                     for actor_freq in [4]:
                                         for expectile in [0.75, 0.85]:
@@ -86,7 +86,7 @@ def main():
                                                         for mixup_bw in [0.1]:
                                                             for reward_type in ['state']:
                                                                 for critic_fm_loss_type in ['sarsa_squared']:
-                                                                    for seed in [10, 20, 30]:
+                                                                    for seed in [10, 20]:
                                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fl={num_flow_latents}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_bw={mixup_bw}_reward={reward_type}_critic_fm_loss={critic_fm_loss_type}_same_z"
                                                                         log_dir = os.path.expanduser(
                                                                             f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_gpi_offline2offline/{exp_name}/{seed}")
