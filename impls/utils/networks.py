@@ -713,6 +713,7 @@ class GCFMVectorField(nn.Module):
     vector_dim: int
     hidden_dims: Sequence[int]
     time_dim: int = 64
+    time_sin_embedding: bool = True
     network_type: str = 'mlp'
     layer_norm: bool = True
     num_residual_blocks: int = 1
@@ -753,7 +754,10 @@ class GCFMVectorField(nn.Module):
             # This will be all nans if observations are all nan
             observations = self.state_encoder(observations)
 
-        times = self.time_embedding(times)
+        if self.time_sin_embedding:
+            times = self.time_embedding(times)
+        else:
+            times = times[..., None]
         inputs = [noisy_goals, times]
         if observations is not None:
             inputs.append(observations)

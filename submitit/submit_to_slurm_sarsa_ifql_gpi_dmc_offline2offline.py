@@ -76,11 +76,11 @@ def main():
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
                         for alpha in [0.3]:
-                            for num_flow_latents in [8, 16]:
-                                for num_flow_goals in [8, 16]:
+                            for num_flow_latents in [1]:
+                                for num_flow_goals in [8, 16, 32]:
                                     for actor_freq in [4]:
-                                        for expectile in [0.5]:
-                                            for vector_field_type in ['bilinear']:
+                                        for expectile in [0.5, 0.8, 0.9, 0.99]:
+                                            for vector_field_type in ['mlp']:
                                                 for vector_field_time_sin_embedding in [True, False]:
                                                     for clip_flow_goals in [True, False]:
                                                         for use_mixup in [False]:

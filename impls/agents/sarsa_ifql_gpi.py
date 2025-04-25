@@ -177,20 +177,6 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
                 noise_rng, next_actions, axis=0)
         path_sample = self.cond_prob_path(
             x_0=noises, x_1=next_actions, t=times)
-        # if self.config['vector_field_type'] == 'mlp':
-        #     vf_pred = self.network.select('transition_vf')(
-        #         path_sample.x_t,
-        #         times,
-        #         next_observations,
-        #         params=grad_params,
-        #     )
-        # elif self.config['vector_field_type'] == 'bilinear':
-        #     vf_pred = self.network.select('transition_vf')(
-        #         jnp.repeat(path_sample.x_t, self.config['latent_dim'], axis=-1),
-        #         times,
-        #         next_observations,
-        #         params=grad_params,
-        #     )
         vf_pred = self.network.select('transition_vf')(
             path_sample.x_t,
             times,
@@ -244,20 +230,6 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
                 current_noise_rng, observations, axis=0)
         current_path_sample = self.cond_prob_path(
             x_0=current_noises, x_1=observations, t=times)
-        # if self.config['vector_field_type'] == 'mlp':
-        #     current_vf_pred = self.network.select('critic_vf')(
-        #         current_path_sample.x_t,
-        #         times,
-        #         observations, actions, latents,
-        #         params=grad_params,
-        #     )
-        # elif self.config['vector_field_type'] == 'bilinear':
-        #     current_vf_pred = self.network.select('critic_vf')(
-        #         jnp.repeat(current_path_sample.x_t, self.config['latent_dim'], axis=-1),
-        #         times,
-        #         observations, actions, latents,
-        #         params=grad_params,
-        #     )
         current_vf_pred = self.network.select('critic_vf')(
             current_path_sample.x_t,
             times,
@@ -268,15 +240,6 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         current_flow_matching_loss = jnp.square(
             jax.lax.stop_gradient(current_path_sample.dx_t) - current_vf_pred).mean(axis=-1)
 
-        # if self.config['critic_noise_type'] == 'normal':
-        #     future_noises = jax.random.normal(
-        #         future_noise_rng, shape=observations.shape, dtype=observati2ons.dtype)
-        # elif self.config['critic_noise_type'] == 'marginal_state':
-        #     future_noises = jax.random.permutation(
-        #         future_noise_rng, observations, axis=0)
-        # elif self.config['critic_noise_type'] == 'marginal_goal':
-        #     future_noises = jax.random.permutation(
-        #         future_noise_rng, goals, axis=0)
         future_noises = current_noises
         flow_future_observations = self.compute_fwd_flow_goals(
             future_noises, next_observations, next_actions, latents,
@@ -288,30 +251,6 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             flow_future_observations = jax.vmap(jnp.diag, -1, -1)(flow_future_observations)
         future_path_sample = self.cond_prob_path(
             x_0=future_noises, x_1=flow_future_observations, t=times)
-        # if self.config['vector_field_type'] == 'mlp':
-        #     future_vf_target = self.network.select('target_critic_vf')(
-        #         future_path_sample.x_t,
-        #         times,
-        #         next_observations, next_actions, latents,
-        #     )
-        #     future_vf_pred = self.network.select('critic_vf')(
-        #         future_path_sample.x_t,
-        #         times,
-        #         jax.lax.stop_gradient(observations), actions, latents,
-        #         params=grad_params,
-        #     )
-        # elif self.config['vector_field_type'] == 'bilinear':
-        #     future_vf_target = self.network.select('target_critic_vf')(
-        #         jnp.repeat(future_path_sample.x_t, self.config['latent_dim'], axis=-1),
-        #         times,
-        #         next_observations, next_actions, latents,
-        #     )
-        #     future_vf_pred = self.network.select('critic_vf')(
-        #         jnp.repeat(future_path_sample.x_t, self.config['latent_dim'], axis=-1),
-        #         times,
-        #         jax.lax.stop_gradient(observations), actions, latents,
-        #         params=grad_params,
-        #     )
         future_vf_target = self.network.select('target_critic_vf')(
             future_path_sample.x_t,
             times,
@@ -764,6 +703,7 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
                 network_type=config['network_type'],
                 num_residual_blocks=config['num_residual_blocks'],
                 vector_dim=obs_dim,
+                time_sin_embedding=config['vector_field_time_sin_embedding'],
                 hidden_dims=config['value_hidden_dims'],
                 layer_norm=config['value_layer_norm'],
                 # state_encoder=encoders.get('critic_vf'),
@@ -772,6 +712,7 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
                 network_type=config['network_type'],
                 num_residual_blocks=config['num_residual_blocks'],
                 vector_dim=action_dim,
+                time_sin_embedding=config['vector_field_time_sin_embedding'],
                 hidden_dims=config['transition_hidden_dims'],
                 layer_norm=config['transition_hidden_dims'],
             )
