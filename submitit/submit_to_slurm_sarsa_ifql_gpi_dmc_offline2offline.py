@@ -76,18 +76,18 @@ def main():
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
                         for alpha in [0.3]:
-                            for num_flow_latents in [1, 8, 16]:
-                                for num_flow_goals in [4, 16]:
+                            for num_flow_latents in [8, 16]:
+                                for num_flow_goals in [8, 16]:
                                     for actor_freq in [4]:
                                         for expectile in [0.5]:
-                                            for q_agg in ['min']:
-                                                for clip_flow_goals in [True]:
-                                                    for use_mixup in [True, False]:
-                                                        for mixup_bw in [0.1]:
-                                                            for reward_type in ['state']:
-                                                                for critic_fm_loss_type in ['sarsa_squared']:
-                                                                    for seed in [10, 20]:
-                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fl={num_flow_latents}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_q_agg={q_agg}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_bw={mixup_bw}_reward={reward_type}_critic_fm_loss={critic_fm_loss_type}_same_z"
+                                            for vector_field_type in ['bilinear']:
+                                                for vector_field_time_sin_embedding in [True, False]:
+                                                    for clip_flow_goals in [True, False]:
+                                                        for use_mixup in [False]:
+                                                            for mixup_bw in [0.1]:
+                                                                for reward_type in ['state']:
+                                                                    for seed in [20]:
+                                                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fl={num_flow_latents}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_vf_type={vector_field_type}_vf_time_emb={vector_field_time_sin_embedding}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_bw={mixup_bw}_reward={reward_type}"
                                                                         log_dir = os.path.expanduser(
                                                                             f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_gpi_offline2offline/{exp_name}/{seed}")
 
@@ -142,13 +142,15 @@ def main():
                                                                                 --agent.alpha={alpha} \
                                                                                 --agent.num_flow_steps=10 \
                                                                                 --agent.critic_noise_type=normal \
-                                                                                --agent.critic_fm_loss_type={critic_fm_loss_type} \
+                                                                                --agent.critic_fm_loss_type=sarsa_squared \
                                                                                 --agent.num_flow_latents={num_flow_latents} \
                                                                                 --agent.num_flow_goals={num_flow_goals} \
                                                                                 --agent.actor_freq={actor_freq} \
                                                                                 --agent.clip_flow_goals={clip_flow_goals} \
                                                                                 --agent.expectile={expectile} \
-                                                                                --agent.q_agg={q_agg} \
+                                                                                --agent.vector_field_type={vector_field_type} \
+                                                                                --agent.vector_field_time_sin_embedding={vector_field_time_sin_embedding} \
+                                                                                --agent.q_agg=min \
                                                                                 --agent.reward_layer_norm=True \
                                                                                 --agent.actor_layer_norm=False \
                                                                                 --agent.normalize_q_loss=False \

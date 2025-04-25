@@ -778,6 +778,7 @@ class GCFMBilinearVectorField(nn.Module):
     latent_dim: int
     hidden_dims: Sequence[int]
     time_dim: int = 64
+    time_sin_embedding: bool = True
     network_type: str = 'mlp'
     layer_norm: bool = True
     num_residual_blocks: int = 1
@@ -801,7 +802,7 @@ class GCFMBilinearVectorField(nn.Module):
                 layer_norm=self.layer_norm
             )
             self.psi = network_module(
-                (*self.hidden_dims, self.latent_dim * self.vector_dim),
+                (*self.hidden_dims, self.vector_dim * self.latent_dim),
                 activate_final=False,
                 layer_norm=self.layer_norm
             )
@@ -815,13 +816,13 @@ class GCFMBilinearVectorField(nn.Module):
             # This will be all nans if observations are all nan
             observations = self.state_encoder(observations)
 
-        conds = observations
+        inputs = [observations]
         if commanded_goals is not None:
-            conds = jnp.concatenate([conds, commanded_goals], axis=-1)
+            inputs.append(commanded_goals)
         if actions is not None:
-            conds = jnp.concatenate([conds, actions], axis=-1)
-
-        phi = self.phi(conds)
+            inputs.append(actions)
+        inputs = jnp.concatenate(inputs, axis=-1)
+        phi = self.phi(inputs)
 
         return phi
 
@@ -829,12 +830,16 @@ class GCFMBilinearVectorField(nn.Module):
         if self.goal_encoder is not None:
             noisy_goals = self.goal_encoder(noisy_goals)
 
-        times = self.time_embedding(times)
+        if self.time_sin_embedding:
+            times = self.time_embedding(times)
+        else:
+            times = times[..., None]
         psi = self.psi(jnp.concatenate([noisy_goals, times], axis=-1))
 
         return psi
 
-    def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None):
+    def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None,
+                 info=False):
         """Return the value/critic velocity field.
 
         Args:
@@ -843,34 +848,23 @@ class GCFMBilinearVectorField(nn.Module):
             observations: Observations.
             actions: Actions (Optional).
         """
-        # if self.goal_encoder is not None:
-        #     noisy_goals = self.goal_encoder(noisy_goals)
-        #
-        # if self.state_encoder is not None:
-        #     # This will be all nans if observations are all nan
-        #     observations = self.state_encoder(observations)
-        #
-        # conds = observations
-        # if commanded_goals is not None:
-        #     conds = jnp.concatenate([conds, commanded_goals], axis=-1)
-        # if actions is not None:
-        #     conds = jnp.concatenate([conds, actions], axis=-1)
-        # times = self.time_embedding(times)
-        #
-        # phi = self.phi(conds)
-        # psi = self.psi(jnp.concatenate([noisy_goals, times], axis=-1))
+        if noisy_goals.shape[-1] != self.vector_dim * self.latent_dim:
+            noisy_goals = jnp.repeat(noisy_goals, self.latent_dim, axis=-1)
 
         phi = self.sa_reprs(observations, actions, commanded_goals)
-        psi = self.ngt_reprs(noisy_goals, times)
+        flatten_psi = self.ngt_reprs(noisy_goals, times)
 
         if self.num_ensembles > 1:
-            psi = psi.reshape([self.num_ensembles, -1, self.latent_dim, self.vector_dim])
-            vf = jnp.einsum('eik,ejkl->eijl', phi, psi) / jnp.sqrt(self.latent_dim)
+            psi = flatten_psi.reshape([self.num_ensembles, -1, self.vector_dim, self.latent_dim])
+            vf = jnp.einsum('eik,ejlk->eijl', phi, psi) / jnp.sqrt(self.latent_dim)
         else:
-            psi = psi.reshape([-1, self.latent_dim, self.vector_dim])
-            vf = jnp.einsum('ik,jkl->ijl', phi, psi) / jnp.sqrt(self.latent_dim)
+            psi = flatten_psi.reshape([-1, self.vector_dim, self.latent_dim])
+            vf = jnp.einsum('ik,jlk->ijl', phi, psi) / jnp.sqrt(self.latent_dim)
 
-        return vf
+        if info:
+            return vf, phi, flatten_psi
+        else:
+            return vf
 
 
 class GCActorVectorField(nn.Module):

@@ -14,10 +14,10 @@ import optax
 #     Euler, Dopri5,
 # )
 
-from utils.env_utils import compute_reward
+# from utils.env_utils import compute_reward
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCFMVectorField, GCActor, Value
+from utils.networks import GCFMVectorField, GCFMBilinearVectorField, GCActor, Value
 from utils.flow_matching_utils import cond_prob_path_class, scheduler_class
 
 
@@ -61,51 +61,72 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         if self.config['encoder'] is not None:
             observations = self.network.select('critic_vf_encoder')(observations)
 
-        rng, noise_rng = jax.random.split(rng)
-        if self.config['critic_noise_type'] == 'normal':
-            noises = jax.random.normal(
-                noise_rng,
-                shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *observations.shape),
-                dtype=observations.dtype
+        if self.config['vector_field_type'] == 'mlp':
+            rng, noise_rng = jax.random.split(rng)
+            if self.config['critic_noise_type'] == 'normal':
+                noises = jax.random.normal(
+                    noise_rng,
+                    shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *observations.shape),
+                    dtype=observations.dtype
+                )
+            elif self.config['critic_noise_type'] == 'marginal_state':
+                # noises = jax.random.permutation(noise_rng, observations, axis=0)
+                # noise_rngs = jax.random.split(noise_rng, self.config['num_flow_goals'])
+                # noises = jax.vmap(jax.random.permutation, in_axes=(0, None), out_axes=0)(
+                #     noise_rngs, observations)
+                raise NotImplementedError
+            # TODO (chongyiz): add latents
+            rng, latent_rng = jax.random.split(rng)
+            # obs_action_dim = observations.shape[-1] + actions.shape[-1]
+            latents = jax.random.normal(
+                latent_rng,
+                shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *actions.shape),
+                dtype=observations.dtype,
             )
-        elif self.config['critic_noise_type'] == 'marginal_state':
-            # noises = jax.random.permutation(noise_rng, observations, axis=0)
-            # noise_rngs = jax.random.split(noise_rng, self.config['num_flow_goals'])
-            # noises = jax.vmap(jax.random.permutation, in_axes=(0, None), out_axes=0)(
-            #     noise_rngs, observations)
-            raise NotImplementedError
-        # TODO (chongyiz): add latents
-        rng, latent_rng = jax.random.split(rng)
-        # obs_action_dim = observations.shape[-1] + actions.shape[-1]
-        latents = jax.random.normal(
-            latent_rng,
-            shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *actions.shape),
-            dtype=observations.dtype,
-        )
-        flow_goals = self.compute_fwd_flow_goals(
-            noises,
-            jnp.repeat(
-                jnp.repeat(observations[None, None],
-                           self.config['num_flow_latents'],
-                           axis=0),
-                self.config['num_flow_goals'],
-                axis=1,
-            ),
-            jnp.repeat(
-                jnp.repeat(actions[None, None],
-                           self.config['num_flow_latents'],
-                           axis=0),
-                self.config['num_flow_goals'],
-                axis=1
-            ),
-            latents,
-            observation_min=batch.get('observation_min', None),
-            observation_max=batch.get('observation_max', None),
-        )
-        # if self.config['clip_flow_goals']:
-        #     flow_goals = jnp.clip(flow_goals,
-        #                           batch['observation_min'] + 1e-5,
-        #                           batch['observation_max'] - 1e-5)
+            flow_goals = self.compute_fwd_flow_goals(
+                noises,
+                jnp.repeat(
+                    jnp.repeat(observations[None, None],
+                               self.config['num_flow_latents'],
+                               axis=0),
+                    self.config['num_flow_goals'],
+                    axis=1,
+                ),
+                jnp.repeat(
+                    jnp.repeat(actions[None, None],
+                               self.config['num_flow_latents'],
+                               axis=0),
+                    self.config['num_flow_goals'],
+                    axis=1
+                ),
+                latents,
+                observation_min=batch.get('observation_min', None),
+                observation_max=batch.get('observation_max', None),
+            )
+        elif self.config['vector_field_type'] == 'bilinear':
+            rng, noise_rng = jax.random.split(rng)
+            if self.config['critic_noise_type'] == 'normal':
+                noises = jax.random.normal(
+                    noise_rng,
+                    shape=(self.config['num_flow_latents'] * self.config['num_flow_goals'], *observations.shape[1:]),
+                    dtype=observations.dtype
+                )
+            elif self.config['critic_noise_type'] == 'marginal_state':
+                raise NotImplementedError
+
+            rng, latent_rng = jax.random.split(rng)
+            latents = jax.random.normal(
+                latent_rng,
+                shape=actions.shape,
+                dtype=observations.dtype,
+            )
+            flow_goals = self.compute_fwd_flow_goals(
+                noises, observations, actions, latents,
+                observation_min=batch.get('observation_min', None),
+                observation_max=batch.get('observation_max', None),
+            )
+            flow_goals = flow_goals.reshape([self.config['num_flow_latents'], self.config['num_flow_goals'],
+                                             *observations.shape])
 
         assert self.config['reward_type'] == 'state'
         future_rewards = self.network.select('reward')(flow_goals)
@@ -156,6 +177,20 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
                 noise_rng, next_actions, axis=0)
         path_sample = self.cond_prob_path(
             x_0=noises, x_1=next_actions, t=times)
+        # if self.config['vector_field_type'] == 'mlp':
+        #     vf_pred = self.network.select('transition_vf')(
+        #         path_sample.x_t,
+        #         times,
+        #         next_observations,
+        #         params=grad_params,
+        #     )
+        # elif self.config['vector_field_type'] == 'bilinear':
+        #     vf_pred = self.network.select('transition_vf')(
+        #         jnp.repeat(path_sample.x_t, self.config['latent_dim'], axis=-1),
+        #         times,
+        #         next_observations,
+        #         params=grad_params,
+        #     )
         vf_pred = self.network.select('transition_vf')(
             path_sample.x_t,
             times,
@@ -194,6 +229,8 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         #     perm_rng, obs_actions, axis=0)
         # next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
         latents = self.compute_rev_flow_transitions(next_actions, next_observations)
+        if self.config['vector_field_type'] == 'bilinear':
+            latents = jax.vmap(jnp.diag, -1, -1)(latents)
 
         info = dict()
         # SARSA^2 flow matching for the occupancy
@@ -207,6 +244,20 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
                 current_noise_rng, observations, axis=0)
         current_path_sample = self.cond_prob_path(
             x_0=current_noises, x_1=observations, t=times)
+        # if self.config['vector_field_type'] == 'mlp':
+        #     current_vf_pred = self.network.select('critic_vf')(
+        #         current_path_sample.x_t,
+        #         times,
+        #         observations, actions, latents,
+        #         params=grad_params,
+        #     )
+        # elif self.config['vector_field_type'] == 'bilinear':
+        #     current_vf_pred = self.network.select('critic_vf')(
+        #         jnp.repeat(current_path_sample.x_t, self.config['latent_dim'], axis=-1),
+        #         times,
+        #         observations, actions, latents,
+        #         params=grad_params,
+        #     )
         current_vf_pred = self.network.select('critic_vf')(
             current_path_sample.x_t,
             times,
@@ -233,8 +284,34 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             observation_max=batch.get('observation_max', None),
             use_target_network=True
         )
+        if self.config['vector_field_type'] == 'bilinear':
+            flow_future_observations = jax.vmap(jnp.diag, -1, -1)(flow_future_observations)
         future_path_sample = self.cond_prob_path(
             x_0=future_noises, x_1=flow_future_observations, t=times)
+        # if self.config['vector_field_type'] == 'mlp':
+        #     future_vf_target = self.network.select('target_critic_vf')(
+        #         future_path_sample.x_t,
+        #         times,
+        #         next_observations, next_actions, latents,
+        #     )
+        #     future_vf_pred = self.network.select('critic_vf')(
+        #         future_path_sample.x_t,
+        #         times,
+        #         jax.lax.stop_gradient(observations), actions, latents,
+        #         params=grad_params,
+        #     )
+        # elif self.config['vector_field_type'] == 'bilinear':
+        #     future_vf_target = self.network.select('target_critic_vf')(
+        #         jnp.repeat(future_path_sample.x_t, self.config['latent_dim'], axis=-1),
+        #         times,
+        #         next_observations, next_actions, latents,
+        #     )
+        #     future_vf_pred = self.network.select('critic_vf')(
+        #         jnp.repeat(future_path_sample.x_t, self.config['latent_dim'], axis=-1),
+        #         times,
+        #         jax.lax.stop_gradient(observations), actions, latents,
+        #         params=grad_params,
+        #     )
         future_vf_target = self.network.select('target_critic_vf')(
             future_path_sample.x_t,
             times,
@@ -397,7 +474,10 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             }
 
     def compute_rev_flow_transitions(self, next_observation_actions, observations):
-        noisy_obs_actions = next_observation_actions
+        if self.config['vector_field_type'] == 'mlp':
+            noisy_obs_actions = next_observation_actions
+        elif self.config['vector_field_type'] == 'bilinear':
+            noisy_obs_actions = jnp.repeat(next_observation_actions, self.config['latent_dim'], axis=-1)
         init_times = jnp.ones(noisy_obs_actions.shape[:-1], dtype=noisy_obs_actions.dtype)
         end_times = jnp.zeros(noisy_obs_actions.shape[:-1], dtype=noisy_obs_actions.dtype)
         step_size = (end_times - init_times) / self.config['num_flow_steps']
@@ -410,15 +490,31 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             (noisy_obs_actions, ) = carry
 
             times = i * step_size + init_times
-            vf = self.network.select('transition_vf')(
-                noisy_obs_actions, times, observations)
+            if self.config['vector_field_type'] == 'mlp':
+                vf = self.network.select('transition_vf')(
+                    noisy_obs_actions, times, observations)
+            elif self.config['vector_field_type'] == 'bilinear':
+                _, _, vf = self.network.select('transition_vf')(
+                    noisy_obs_actions, times, observations, info=True)
+
             new_noisy_obs_actions = noisy_obs_actions + vf * jnp.expand_dims(step_size, axis=-1)
+            if self.config['vector_field_type'] == 'mlp' and self.config['clip_flow_goals']:
+                new_noisy_obs_actions = jnp.clip(new_noisy_obs_actions, -1, 1)
 
             return (new_noisy_obs_actions,), None
 
         # Use lax.scan to iterate over num_flow_steps
         (noisy_obs_actions,), _ = jax.lax.scan(
             body_fn, (noisy_obs_actions,), jnp.arange(self.config['num_flow_steps']))
+        if self.config['vector_field_type'] == 'bilinear':
+            _, phi, _ = self.network.select('transition_vf')(
+                noisy_obs_actions, end_times, observations, info=True)
+            psi = noisy_obs_actions.reshape([
+                -1, next_observation_actions.shape[-1], self.config['latent_dim']])
+            noisy_obs_actions = jnp.einsum('ik,jlk->ijl', phi, psi) / jnp.sqrt(self.config['latent_dim'])
+
+        if self.config['vector_field_type'] == 'bilinear' and self.config['clip_flow_goals']:
+            noisy_obs_actions = jnp.clip(noisy_obs_actions, -1, 1)
 
         return noisy_obs_actions
 
@@ -431,7 +527,10 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         else:
             module_name = 'critic_vf'
 
-        noisy_goals = noises
+        if self.config['vector_field_type'] == 'mlp':
+            noisy_goals = noises
+        elif self.config['vector_field_type'] == 'bilinear':
+            noisy_goals = jnp.repeat(noises, self.config['latent_dim'], axis=-1)
         if init_times is None:
             init_times = jnp.zeros(noisy_goals.shape[:-1], dtype=noisy_goals.dtype)
         if end_times is None:
@@ -446,10 +545,14 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             (noisy_goals, ) = carry
 
             times = i * step_size + init_times
-            vf = self.network.select(module_name)(
-                noisy_goals, times, observations, actions, latents)
+            if self.config['vector_field_type'] == 'mlp':
+                vf = self.network.select(module_name)(
+                    noisy_goals, times, observations, actions, latents)
+            elif self.config['vector_field_type'] == 'bilinear':
+                _, _, vf = self.network.select(module_name)(
+                    noisy_goals, times, observations, actions, latents, info=True)
             new_noisy_goals = noisy_goals + vf * jnp.expand_dims(step_size, axis=-1)
-            if self.config['clip_flow_goals']:
+            if self.config['vector_field_type'] == 'mlp' and self.config['clip_flow_goals']:
                 new_noisy_goals = jnp.clip(new_noisy_goals, observation_min + 1e-5, observation_max - 1e-5)
 
             return (new_noisy_goals,), None
@@ -457,6 +560,14 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         # Use lax.scan to iterate over num_flow_steps
         (noisy_goals,), _ = jax.lax.scan(
             body_fn, (noisy_goals,), jnp.arange(self.config['num_flow_steps']))
+        if self.config['vector_field_type'] == 'bilinear':
+            _, phi, _ = self.network.select(module_name)(
+                noisy_goals, end_times, observations, actions, latents, info=True)
+            psi = noisy_goals.reshape([-1, noises.shape[-1], self.config['latent_dim']])
+            noisy_goals = jnp.einsum('ik,jlk->ijl', phi, psi) / jnp.sqrt(self.config['latent_dim'])
+
+        if self.config['vector_field_type'] == 'bilinear' and self.config['clip_flow_goals']:
+            noisy_goals = jnp.clip(noisy_goals, observation_min + 1e-5, observation_max - 1e-5)
 
         return noisy_goals
 
@@ -648,21 +759,43 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             num_ensembles=2,
             encoder=encoders.get('critic'),
         )
-        critic_vf_def = GCFMVectorField(
-            network_type=config['network_type'],
-            num_residual_blocks=config['num_residual_blocks'],
-            vector_dim=obs_dim,
-            hidden_dims=config['value_hidden_dims'],
-            layer_norm=config['value_layer_norm'],
-            # state_encoder=encoders.get('critic_vf'),
-        )
-        transition_vf_def = GCFMVectorField(
-            network_type=config['network_type'],
-            num_residual_blocks=config['num_residual_blocks'],
-            vector_dim=action_dim,
-            hidden_dims=config['transition_hidden_dims'],
-            layer_norm=config['transition_hidden_dims'],
-        )
+        if config['vector_field_type'] == 'mlp':
+            critic_vf_def = GCFMVectorField(
+                network_type=config['network_type'],
+                num_residual_blocks=config['num_residual_blocks'],
+                vector_dim=obs_dim,
+                hidden_dims=config['value_hidden_dims'],
+                layer_norm=config['value_layer_norm'],
+                # state_encoder=encoders.get('critic_vf'),
+            )
+            transition_vf_def = GCFMVectorField(
+                network_type=config['network_type'],
+                num_residual_blocks=config['num_residual_blocks'],
+                vector_dim=action_dim,
+                hidden_dims=config['transition_hidden_dims'],
+                layer_norm=config['transition_hidden_dims'],
+            )
+        elif config['vector_field_type'] == 'bilinear':
+            critic_vf_def = GCFMBilinearVectorField(
+                network_type=config['network_type'],
+                num_residual_blocks=config['num_residual_blocks'],
+                vector_dim=obs_dim,
+                latent_dim=config['latent_dim'],
+                time_sin_embedding=config['vector_field_time_sin_embedding'],
+                hidden_dims=config['value_hidden_dims'],
+                layer_norm=config['value_layer_norm'],
+            )
+            transition_vf_def = GCFMBilinearVectorField(
+                network_type=config['network_type'],
+                num_residual_blocks=config['num_residual_blocks'],
+                vector_dim=action_dim,
+                latent_dim=config['latent_dim'],
+                time_sin_embedding=config['vector_field_time_sin_embedding'],
+                hidden_dims=config['transition_hidden_dims'],
+                layer_norm=config['transition_hidden_dims'],
+            )
+        else:
+            raise NotImplementedError
 
         actor_def = GCActor(
             network_type=config['network_type'],
@@ -745,8 +878,10 @@ def get_config():
             # Action data type (will be set automatically).
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
-            network_type='mlp',  # Type of the network
+            network_type='mlp',  # Type of the network.
             num_residual_blocks=1,  # Number of residual blocks for simba network.
+            vector_field_type='mlp',  # Type of vector field network. ('mlp', 'bilinear')
+            vector_field_time_sin_embedding=True,  # Whether to use time embedding in the vector field.
             transition_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
@@ -754,6 +889,7 @@ def get_config():
             reward_layer_norm=True,  # Whether to use layer normalization for the reward.
             value_layer_norm=False,  # Whether to use layer normalization for the critic.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
+            latent_dim=512,  # Latent dimension for phi and psi.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
             expectile=0.9,  # IQL style expectile.
