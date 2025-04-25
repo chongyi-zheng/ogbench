@@ -110,7 +110,8 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         assert self.config['reward_type'] == 'state'
         future_rewards = self.network.select('reward')(flow_goals)
 
-        future_rewards = future_rewards.mean(axis=(0, 1))  # MC estimations over latent and future state dims.
+        # future_rewards = future_rewards.mean(axis=(0, 1))  # MC estimations over latent and future state dims.
+        future_rewards = future_rewards.mean(axis=1).max(axis=0)
         target_q = 1.0 / (1 - self.config['discount']) * future_rewards
         qs = self.network.select('critic')(batch['observations'], actions, params=grad_params)
         critic_loss = self.expectile_loss(target_q - qs, target_q - qs, self.config['expectile']).mean()

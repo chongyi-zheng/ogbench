@@ -57,11 +57,11 @@ def main():
             # "puzzle-3x3-play-singletask-task1-v0"
             "cheetah_run",
             # "cheetah_run_backward",
-            "cheetah_walk",
+            # "cheetah_walk",
             # "cheetah_walk_backward",
             "walker_walk",
             # "walker_flip",
-            "walker_stand",
+            # "walker_stand",
             # "walker_run",
             # "quadruped_run",
             # "quadruped_jump",
@@ -76,13 +76,13 @@ def main():
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
                         for alpha in [0.3]:
-                            for num_flow_latents in [1, 16]:
+                            for num_flow_latents in [1, 8, 16]:
                                 for num_flow_goals in [4, 16]:
                                     for actor_freq in [4]:
-                                        for expectile in [0.75, 0.85]:
+                                        for expectile in [0.5]:
                                             for q_agg in ['min']:
                                                 for clip_flow_goals in [True]:
-                                                    for use_mixup in [False]:
+                                                    for use_mixup in [True, False]:
                                                         for mixup_bw in [0.1]:
                                                             for reward_type in ['state']:
                                                                 for critic_fm_loss_type in ['sarsa_squared']:
