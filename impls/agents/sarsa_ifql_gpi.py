@@ -433,8 +433,10 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
                 vf = self.network.select('transition_vf')(
                     noisy_obs_actions, times, observations)
             elif self.config['vector_field_type'] == 'bilinear':
-                _, _, vf = self.network.select('transition_vf')(
-                    noisy_obs_actions, times, observations, info=True)
+                # _, _, vf = self.network.select('transition_vf')(
+                #     noisy_obs_actions, times, observations, info=True)
+                vf = self.network.select('transition_vf')(
+                    noisy_obs_actions, times, observations, ngt_repr=True) / jnp.sqrt(self.config['latent_dim'])
 
             new_noisy_obs_actions = noisy_obs_actions + vf * jnp.expand_dims(step_size, axis=-1)
             if self.config['vector_field_type'] == 'mlp' and self.config['clip_flow_goals']:
@@ -446,8 +448,10 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         (noisy_obs_actions,), _ = jax.lax.scan(
             body_fn, (noisy_obs_actions,), jnp.arange(self.config['num_flow_steps']))
         if self.config['vector_field_type'] == 'bilinear':
-            _, phi, _ = self.network.select('transition_vf')(
-                noisy_obs_actions, end_times, observations, info=True)
+            # _, phi, _ = self.network.select('transition_vf')(
+            #     noisy_obs_actions, end_times, observations, info=True)
+            phi = self.network.select('transition_vf')(
+                noisy_obs_actions, end_times, observations, sa_repr=True)
             psi = noisy_obs_actions.reshape([
                 -1, next_observation_actions.shape[-1], self.config['latent_dim']])
             noisy_obs_actions = jnp.einsum('ik,jlk->ijl', phi, psi) / jnp.sqrt(self.config['latent_dim'])
@@ -488,8 +492,10 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
                 vf = self.network.select(module_name)(
                     noisy_goals, times, observations, actions, latents)
             elif self.config['vector_field_type'] == 'bilinear':
-                _, _, vf = self.network.select(module_name)(
-                    noisy_goals, times, observations, actions, latents, info=True)
+                # _, _, vf = self.network.select(module_name)(
+                #     noisy_goals, times, observations, actions, latents, info=True)
+                vf = self.network.select(module_name)(
+                    noisy_goals, times, observations, actions, latents, ngt_repr=True) / jnp.sqrt(self.config['latent_dim'])
             new_noisy_goals = noisy_goals + vf * jnp.expand_dims(step_size, axis=-1)
             if self.config['vector_field_type'] == 'mlp' and self.config['clip_flow_goals']:
                 new_noisy_goals = jnp.clip(new_noisy_goals, observation_min + 1e-5, observation_max - 1e-5)
@@ -500,8 +506,10 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         (noisy_goals,), _ = jax.lax.scan(
             body_fn, (noisy_goals,), jnp.arange(self.config['num_flow_steps']))
         if self.config['vector_field_type'] == 'bilinear':
-            _, phi, _ = self.network.select(module_name)(
-                noisy_goals, end_times, observations, actions, latents, info=True)
+            # _, phi, _ = self.network.select(module_name)(
+            #     noisy_goals, end_times, observations, actions, latents, info=True)
+            phi = self.network.select(module_name)(
+                noisy_goals, end_times, observations, actions, latents, sa_repr=True)
             psi = noisy_goals.reshape([-1, noises.shape[-1], self.config['latent_dim']])
             noisy_goals = jnp.einsum('ik,jlk->ijl', phi, psi) / jnp.sqrt(self.config['latent_dim'])
 

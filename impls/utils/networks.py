@@ -843,7 +843,7 @@ class GCFMBilinearVectorField(nn.Module):
         return psi
 
     def __call__(self, noisy_goals, times, observations, actions=None, commanded_goals=None,
-                 info=False):
+                 sa_repr=False, ngt_repr=False):
         """Return the value/critic velocity field.
 
         Args:
@@ -855,8 +855,15 @@ class GCFMBilinearVectorField(nn.Module):
         if noisy_goals.shape[-1] != self.vector_dim * self.latent_dim:
             noisy_goals = jnp.repeat(noisy_goals, self.latent_dim, axis=-1)
 
-        phi = self.sa_reprs(observations, actions, commanded_goals)
-        flatten_psi = self.ngt_reprs(noisy_goals, times)
+        if sa_repr:
+            phi = self.sa_reprs(observations, actions, commanded_goals)
+            return phi
+        elif ngt_repr:
+            flatten_psi = self.ngt_reprs(noisy_goals, times)
+            return flatten_psi
+        else:
+            phi = self.sa_reprs(observations, actions, commanded_goals)
+            flatten_psi = self.ngt_reprs(noisy_goals, times)
 
         if self.num_ensembles > 1:
             psi = flatten_psi.reshape([self.num_ensembles, -1, self.vector_dim, self.latent_dim])
@@ -865,10 +872,7 @@ class GCFMBilinearVectorField(nn.Module):
             psi = flatten_psi.reshape([-1, self.vector_dim, self.latent_dim])
             vf = jnp.einsum('ik,jlk->ijl', phi, psi) / jnp.sqrt(self.latent_dim)
 
-        if info:
-            return vf, phi, flatten_psi
-        else:
-            return vf
+        return vf
 
 
 class GCActorVectorField(nn.Module):
