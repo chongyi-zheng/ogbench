@@ -79,7 +79,7 @@ def main():
                             for num_flow_latents in [1]:
                                 for num_flow_goals in [8, 16, 32]:
                                     for actor_freq in [4]:
-                                        for expectile in [0.5, 0.8, 0.9, 0.99]:
+                                        for expectile in [0.75, 0.85, 0.95]:
                                             for vector_field_type in ['mlp']:
                                                 for vector_field_time_sin_embedding in [True, False]:
                                                     for latent_dim in [16]:
