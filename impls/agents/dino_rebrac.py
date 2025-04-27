@@ -102,7 +102,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         ) / 2 + self.dino_loss(
             target_repr2, repr2, grad_params['modules_target_repr_center']['value'],
             self.config['target_repr_temp'], self.config['repr_temp']
-        )
+        ) / 2
 
         return repr_loss, {
             'repr_loss': repr_loss,
@@ -237,8 +237,8 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
 
         # ema update
         target_repr_center = (repr_center * self.config['target_repr_center_tau'] +
-                              network.params[f'modules_target_repr_center']['value'] * (1 - self.config['target_repr_center_tau']))
-        network.params[f'modules_target_repr_center']['value'] = target_repr_center
+                              network.params['modules_target_repr_center']['value'] * (1 - self.config['target_repr_center_tau']))
+        network.params['modules_target_repr_center']['value'] = target_repr_center
 
     @jax.jit
     def pretrain(self, batch):
