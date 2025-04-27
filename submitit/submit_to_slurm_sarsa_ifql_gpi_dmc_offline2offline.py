@@ -75,16 +75,16 @@ def main():
             for obs_norm_type in ['normal']:
                 for lr in [3e-4]:
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
-                        for alpha in [0.3]:
+                        for alpha in [1.0, 0.3, 0.1]:
                             for num_flow_latents in [1]:
-                                for num_flow_goals in [8, 16, 32]:
+                                for num_flow_goals in [1]:
                                     for actor_freq in [4]:
                                         for expectile in [0.65, 0.75, 0.85, 0.95]:
                                             for vector_field_type in ['mlp']:
                                                 for vector_field_time_sin_embedding in [True, False]:
                                                     for latent_dim in [16]:
-                                                        for clip_flow_goals in [True, False]:
-                                                            for use_mixup in [True]:
+                                                        for clip_flow_goals in [True]:
+                                                            for use_mixup in [False]:
                                                                 for mixup_bw in [0.1]:
                                                                     for reward_type in ['state']:
                                                                         for seed in [20, 30]:

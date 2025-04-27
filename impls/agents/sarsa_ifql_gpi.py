@@ -66,52 +66,22 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             assert self.config['critic_noise_type'] == 'normal'
             noises = jax.random.normal(
                 noise_rng,
-                shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *observations.shape),
+                shape=observations.shape,
                 dtype=observations.dtype
             )
-            # TODO (chongyiz): add latents
-            # obs_action_dim = observations.shape[-1] + actions.shape[-1]
             latents = jax.random.normal(
                 latent_rng,
-                shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *actions.shape),
+                shape=actions.shape,
                 dtype=observations.dtype,
             )
             flow_goals = self.compute_fwd_flow_goals(
                 noises,
-                # jnp.repeat(
-                #     jnp.repeat(observations[None, None],
-                #                self.config['num_flow_latents'],
-                #                axis=0),
-                #     self.config['num_flow_goals'],
-                #     axis=1,
-                # ),
-                jnp.broadcast_to(
-                    observations[None, None],
-                    (self.config['num_flow_latents'], self.config['num_flow_goals'], *observations.shape)
-                ),
-                # jnp.repeat(
-                #     jnp.repeat(actions[None, None],
-                #                self.config['num_flow_latents'],
-                #                axis=0),
-                #     self.config['num_flow_goals'],
-                #     axis=1
-                # ),
-                jnp.broadcast_to(
-                    actions[None, None],
-                    (self.config['num_flow_latents'], self.config['num_flow_goals'], *actions.shape)
-                ),
+                observations,
+                actions,
                 latents,
                 observation_min=batch.get('observation_min', None),
-                observation_max=batch.get('observation_max', None),
+                observation_max=batch.get('observation_max', None)
             )
-            # flow_goals = jax.vmap(
-            #     partial(self.compute_fwd_flow_goals,
-            #             observation_min=batch.get('observation_min', None),
-            #             observation_max=batch.get('observation_max', None)),
-            #     in_axes=(0, 0, None, None),
-            # )(noises, latents, observations, actions)
-            # flow_goals = flow_goals.reshape([self.config['num_flow_latents'], self.config['num_flow_goals'],
-            #                                  *observations.shape])
         elif self.config['vector_field_type'] == 'bilinear':
             rng, noise_rng = jax.random.split(rng)
             if self.config['critic_noise_type'] == 'normal':
@@ -139,11 +109,22 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
 
         assert self.config['reward_type'] == 'state'
         future_rewards = self.network.select('reward')(flow_goals)
+        target_behavioral_q = 1.0 / (1 - self.config['discount']) * future_rewards
+
+        behavioral_q = self.network.select('behavioral_critic')(
+            jnp.concatenate([observations, latents], axis=-1), actions, params=grad_params)
+        behavioral_q_loss = jnp.square(behavioral_q - target_behavioral_q).mean()
 
         # future_rewards = future_rewards.mean(axis=(0, 1))  # MC estimations over latent and future state dims.
-        target_q = 1.0 / (1 - self.config['discount']) * future_rewards.mean(axis=1).max(axis=0)
+        # target_q = 1.0 / (1 - self.config['discount']) * future_rewards.mean(axis=1).max(axis=0)
         qs = self.network.select('critic')(batch['observations'], actions, params=grad_params)
-        critic_loss = self.expectile_loss(target_q - qs, target_q - qs, self.config['expectile']).mean()
+        q_loss = self.expectile_loss(
+            jax.lax.stop_gradient(behavioral_q) - qs,
+            jax.lax.stop_gradient(behavioral_q) - qs,
+            self.config['expectile']
+        ).mean()
+
+        critic_loss = behavioral_q_loss + q_loss
 
         # For logging
         if self.config['q_agg'] == 'mean':
@@ -153,6 +134,8 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
 
         return critic_loss, {
             'critic_loss': critic_loss,
+            'behavioral_q_loss': behavioral_q_loss,
+            'q_loss': q_loss,
             'q_mean': q.mean(),
             'q_max': q.max(),
             'q_min': q.min(),
@@ -720,6 +703,13 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             num_ensembles=2,
             encoder=encoders.get('critic'),
         )
+        behavioral_critic_def = Value(
+            network_type=config['network_type'],
+            num_residual_blocks=config['num_residual_blocks'],
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['value_layer_norm'],
+            encoder=encoders.get('critic'),
+        )
         if config['vector_field_type'] == 'mlp':
             critic_vf_def = GCFMVectorField(
                 network_type=config['network_type'],
@@ -782,6 +772,8 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         assert config['reward_type'] == 'state'
         network_info = dict(
             critic=(critic_def, (ex_orig_observations, ex_actions)),
+            behavioral_critic=(behavioral_critic_def, (
+                jnp.concatenate([ex_orig_observations, ex_actions], axis=-1), ex_actions)),
             critic_vf=(critic_vf_def, (
                 ex_observations, ex_times,
                 ex_observations, ex_actions,

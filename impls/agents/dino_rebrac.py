@@ -10,7 +10,7 @@ import optax
 
 from utils.encoders import encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, Value
+from utils.networks import Actor, Value, Param
 
 
 class DINOReBRACAgent(flax.struct.PyTreeNode):
@@ -23,12 +23,11 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
     rng: Any
     network: Any
     config: Any = nonpytree_field()
-    target_repr_center: Any = 0
 
     @staticmethod
     def dino_loss(target_repr, repr,
                   target_repr_center,
-                  target_temp=2.0, temp=2.0):
+                  target_temp=0.04, temp=0.1):
         # stop_gradient
         target_repr = jax.lax.stop_gradient(target_repr)
 
@@ -41,7 +40,8 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
     def critic_loss(self, batch, grad_params, rng):
         """Compute the ReBRAC critic loss."""
         rng, sample_rng = jax.random.split(rng)
-        next_dist = self.network.select('target_actor')(batch['next_observations'])
+        next_reprs = self.network.select('target_encoder')(batch['next_observations'])
+        next_dist = self.network.select('target_actor')(next_reprs)
         next_actions = next_dist.mode()
         noise = jnp.clip(
             (jax.random.normal(sample_rng, next_actions.shape) * self.config['actor_noise']),
@@ -50,7 +50,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         )
         next_actions = jnp.clip(next_actions + noise, -1, 1)
 
-        next_qs = self.network.select('target_critic')(batch['next_observations'], actions=next_actions)
+        next_qs = self.network.select('target_critic')(next_reprs, actions=next_actions)
         next_q = next_qs.min(axis=0)
 
         mse = jnp.square(next_actions - batch['next_actions']).sum(axis=-1)
@@ -58,7 +58,8 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
 
         target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
 
-        q = self.network.select('critic')(batch['observations'], actions=batch['actions'], params=grad_params)
+        reprs = self.network.select('encoder')(batch['observations'])
+        q = self.network.select('critic')(reprs, actions=batch['actions'], params=grad_params)
         critic_loss = jnp.square(q - target_q).mean()
 
         return critic_loss, {
@@ -73,7 +74,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
 
         rng, noise_rng1, noise_rng2 = jax.random.split(rng, 3)
-        if self.config['encoder'] is None:
+        if self.config['encoder'] == 'mlp':
             noises1 = jnp.clip(
                 (jax.random.normal(noise_rng1, observations.shape) * self.config['repr_noise']),
                 -self.config['repr_noise_clip'],
@@ -86,25 +87,21 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
             )
             aug1_observations = observations + noises1
             aug2_observations = observations + noises2
-        else:
+        elif 'impala' in self.config['encoder']:
             aug1_observations = batch['aug1_observations']
             aug2_observations = batch['aug2_observations']
 
-        repr1 = self.network.select('encoder', params=grad_params)(aug1_observations)
-        repr2 = self.network.select('encoder', params=grad_params)(aug2_observations)
+        repr1 = self.network.select('encoder')(aug1_observations, params=grad_params)
+        repr2 = self.network.select('encoder')(aug2_observations, params=grad_params)
         target_repr1 = self.network.select('target_encoder')(aug1_observations)
         target_repr2 = self.network.select('target_encoder')(aug2_observations)
 
         repr_loss = self.dino_loss(
-            target_repr1, repr1, self.target_repr_center,
+            target_repr1, repr1, grad_params['modules_target_repr_center']['value'],
             self.config['target_repr_temp'], self.config['repr_temp']
         ) / 2 + self.dino_loss(
-            target_repr2, repr2, self.target_repr_center,
+            target_repr2, repr2, grad_params['modules_target_repr_center']['value'],
             self.config['target_repr_temp'], self.config['repr_temp']
-        )
-
-        self.target_center_update(
-            jnp.concatenate([target_repr1, target_repr2], axis=-1).mean(axis=0)
         )
 
         return repr_loss, {
@@ -116,7 +113,8 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
         actions = batch['actions']
 
-        dist = self.network.select('actor')(observations, params=grad_params)
+        reprs = self.network.select('encoder')(observations)
+        dist = self.network.select('actor')(reprs, params=grad_params)
         log_prob = dist.log_prob(actions)
         bc_loss = -log_prob.mean()
 
@@ -128,11 +126,12 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
 
     def actor_loss(self, batch, grad_params, rng):
         """Compute the ReBRAC actor loss."""
-        dist = self.network.select('actor')(batch['observations'], params=grad_params)
+        reprs = self.network.select('encoder')(batch['observations'])
+        dist = self.network.select('actor')(reprs, params=grad_params)
         actions = dist.mode()
 
         # Q loss.
-        qs = self.network.select('critic')(batch['observations'], actions=actions)
+        qs = self.network.select('critic')(reprs, actions=actions)
         q = jnp.min(qs, axis=0)
 
         # BC loss.
@@ -207,14 +206,39 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         )
         network.params[f'modules_target_{module_name}'] = new_target_params
 
-    def target_center_update(self, target_repr):
+    def target_center_update(self, network, batch, rng):
         """
         Update center used for teacher output.
         """
-        repr_center = jnp.mean(target_repr, axis=0, keepdims=True)
+        observations = batch['observations']
+
+        rng, noise_rng1, noise_rng2 = jax.random.split(rng, 3)
+        if self.config['encoder'] == 'mlp':
+            noises1 = jnp.clip(
+                (jax.random.normal(noise_rng1, observations.shape) * self.config['repr_noise']),
+                -self.config['repr_noise_clip'],
+                self.config['repr_noise_clip'],
+            )
+            noises2 = jnp.clip(
+                (jax.random.normal(noise_rng2, observations.shape) * self.config['repr_noise']),
+                -self.config['repr_noise_clip'],
+                self.config['repr_noise_clip'],
+            )
+            aug1_observations = observations + noises1
+            aug2_observations = observations + noises2
+        elif 'impala' in self.config['encoder']:
+            aug1_observations = batch['aug1_observations']
+            aug2_observations = batch['aug2_observations']
+
+        target_repr1 = self.network.select('target_encoder')(aug1_observations)
+        target_repr2 = self.network.select('target_encoder')(aug2_observations)
+        target_repr = jnp.stack([target_repr1, target_repr2], axis=0)
+        repr_center = jnp.mean(target_repr, axis=0)
 
         # ema update
-        self.target_repr_center = repr_center * self.target_repr_center_tau + self.target_repr_center * (1 - self.target_repr_center_tau)
+        target_repr_center = (repr_center * self.config['target_repr_center_tau'] +
+                              network.params[f'modules_target_repr_center']['value'] * (1 - self.config['target_repr_center_tau']))
+        network.params[f'modules_target_repr_center']['value'] = target_repr_center
 
     @jax.jit
     def pretrain(self, batch):
@@ -232,15 +256,17 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
     def finetune(self, batch, full_update=True):
         """Update the agent and return a new agent with information dictionary."""
         new_rng, rng = jax.random.split(self.rng)
-
         def loss_fn(grad_params):
             return self.total_loss(batch, grad_params, full_update, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
         if full_update:
             # Update the target networks only when `full_update` is True.
+            self.target_update(new_network, 'encoder')
             self.target_update(new_network, 'critic')
             self.target_update(new_network, 'actor')
+            new_rng, rng = jax.random.split(rng)
+            self.target_center_update(new_network, batch, rng)
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -255,8 +281,11 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
         if full_update:
             # Update the target networks only when `full_update` is True.
+            self.target_update(new_network, 'encoder')
             self.target_update(new_network, 'critic')
             self.target_update(new_network, 'actor')
+            new_rng, rng = jax.random.split(rng)
+            self.target_center_update(new_network, batch, rng)
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -268,7 +297,8 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the actor."""
-        dist = self.network.select('actor')(observations, temperature=temperature)
+        reprs = self.network.select('encoder')(observations)
+        dist = self.network.select('actor')(reprs, temperature=temperature)
         actions = dist.mode()
         noise = jnp.clip(
             (jax.random.normal(seed, actions.shape) * self.config['actor_noise'] * temperature),
@@ -295,7 +325,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
             config: Configuration dictionary.
         """
         rng = jax.random.PRNGKey(seed)
-        rng, init_rng = jax.random.split(rng, 2)
+        rng, init_with_output_rng, init_rng = jax.random.split(rng, 3)
 
         action_dim = ex_actions.shape[-1]
 
@@ -310,9 +340,8 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['layer_norm'],
             num_ensembles=2,
-            encoder=encoders.get('encoder'),
         )
-        actor_def = GCActor(
+        actor_def = Actor(
             hidden_dims=config['actor_hidden_dims'],
             action_dim=action_dim,
             layer_norm=config['actor_layer_norm'],
@@ -320,17 +349,21 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
             state_dependent_std=False,
             const_std=True,
             final_fc_init_scale=config['actor_fc_scale'],
-            gc_encoder=encoders.get('encoder'),
         )
 
+        ex_reprs, _ = encoders.get('encoder').init_with_output(init_with_output_rng, ex_observations)
+
+        target_repr_center_def = Param(shape=ex_reprs.shape[1:])
+
         network_info = dict(
-            critic=(critic_def, (ex_observations, ex_actions)),
-            target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_actions)),
-            actor=(actor_def, (ex_observations,)),
-            target_actor=(copy.deepcopy(actor_def), (ex_observations,)),
+            critic=(critic_def, (ex_reprs, ex_actions)),
+            target_critic=(copy.deepcopy(critic_def), (ex_reprs, ex_actions)),
+            actor=(actor_def, (ex_reprs,)),
+            target_actor=(copy.deepcopy(actor_def), (ex_reprs,)),
             # Add encoder to ModuleDict to make it separately callable.
             encoder=(encoders.get('encoder'), (ex_observations,)),
-            target_encoder=(copy.deepcopy(encoders['encoder']), (ex_observations,)),
+            target_encoder=(copy.deepcopy(encoders.get('encoder')), (ex_observations,)),
+            target_repr_center=(target_repr_center_def, ()),
         )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
