@@ -137,6 +137,7 @@ def main():
                                             --agent.alpha_critic={alpha_critic} \
                                             --agent.actor_freq={actor_freq} \
                                             --agent.repr_noise_clip={repr_noise_clip} \
+                                            --agent.encoder=mlp \
                                             --seed={seed} \
                                             --save_dir={log_dir} \
                                         2>&1 | tee {log_dir}/stream.log;
