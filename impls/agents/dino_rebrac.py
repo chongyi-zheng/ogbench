@@ -97,10 +97,10 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         target_repr2 = self.network.select('target_encoder')(aug2_observations)
 
         repr_loss = self.dino_loss(
-            target_repr1, repr1, grad_params['modules_target_repr_center']['value'],
+            target_repr1, repr1, self.network.params['modules_target_repr_center']['value'],
             self.config['target_repr_temp'], self.config['repr_temp']
         ) / 2 + self.dino_loss(
-            target_repr2, repr2, grad_params['modules_target_repr_center']['value'],
+            target_repr2, repr2, self.network.params['modules_target_repr_center']['value'],
             self.config['target_repr_temp'], self.config['repr_temp']
         ) / 2
 
