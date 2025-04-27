@@ -117,10 +117,18 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
 
         # future_rewards = future_rewards.mean(axis=(0, 1))  # MC estimations over latent and future state dims.
         # target_q = 1.0 / (1 - self.config['discount']) * future_rewards.mean(axis=1).max(axis=0)
+        latents = jax.random.normal(
+            latent_rng,
+            shape=actions.shape,
+            dtype=actions.dtype,
+        )
+        target_q = self.network.select('behavioral_critic')(
+            jnp.concatenate([observations, latents], axis=-1), actions)
+
         qs = self.network.select('critic')(batch['observations'], actions, params=grad_params)
         q_loss = self.expectile_loss(
-            jax.lax.stop_gradient(behavioral_q) - qs,
-            jax.lax.stop_gradient(behavioral_q) - qs,
+            target_q - qs,
+            target_q - qs,
             self.config['expectile']
         ).mean()
 
