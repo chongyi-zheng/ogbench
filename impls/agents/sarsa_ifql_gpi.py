@@ -62,21 +62,14 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             observations = self.network.select('critic_vf_encoder')(observations)
 
         if self.config['vector_field_type'] == 'mlp':
-            rng, noise_rng = jax.random.split(rng)
-            if self.config['critic_noise_type'] == 'normal':
-                noises = jax.random.normal(
-                    noise_rng,
-                    shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *observations.shape),
-                    dtype=observations.dtype
-                )
-            elif self.config['critic_noise_type'] == 'marginal_state':
-                # noises = jax.random.permutation(noise_rng, observations, axis=0)
-                # noise_rngs = jax.random.split(noise_rng, self.config['num_flow_goals'])
-                # noises = jax.vmap(jax.random.permutation, in_axes=(0, None), out_axes=0)(
-                #     noise_rngs, observations)
-                raise NotImplementedError
+            rng, noise_rng, latent_rng = jax.random.split(rng, 3)
+            assert self.config['critic_noise_type'] == 'normal'
+            noises = jax.random.normal(
+                noise_rng,
+                shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *observations.shape),
+                dtype=observations.dtype
+            )
             # TODO (chongyiz): add latents
-            rng, latent_rng = jax.random.split(rng)
             # obs_action_dim = observations.shape[-1] + actions.shape[-1]
             latents = jax.random.normal(
                 latent_rng,
@@ -85,24 +78,40 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             )
             flow_goals = self.compute_fwd_flow_goals(
                 noises,
-                jnp.repeat(
-                    jnp.repeat(observations[None, None],
-                               self.config['num_flow_latents'],
-                               axis=0),
-                    self.config['num_flow_goals'],
-                    axis=1,
+                # jnp.repeat(
+                #     jnp.repeat(observations[None, None],
+                #                self.config['num_flow_latents'],
+                #                axis=0),
+                #     self.config['num_flow_goals'],
+                #     axis=1,
+                # ),
+                jnp.broadcast_to(
+                    observations[None, None],
+                    (self.config['num_flow_latents'], self.config['num_flow_goals'], *observations.shape)
                 ),
-                jnp.repeat(
-                    jnp.repeat(actions[None, None],
-                               self.config['num_flow_latents'],
-                               axis=0),
-                    self.config['num_flow_goals'],
-                    axis=1
+                # jnp.repeat(
+                #     jnp.repeat(actions[None, None],
+                #                self.config['num_flow_latents'],
+                #                axis=0),
+                #     self.config['num_flow_goals'],
+                #     axis=1
+                # ),
+                jnp.broadcast_to(
+                    actions[None, None],
+                    (self.config['num_flow_latents'], self.config['num_flow_goals'], *actions.shape)
                 ),
                 latents,
                 observation_min=batch.get('observation_min', None),
                 observation_max=batch.get('observation_max', None),
             )
+            # flow_goals = jax.vmap(
+            #     partial(self.compute_fwd_flow_goals,
+            #             observation_min=batch.get('observation_min', None),
+            #             observation_max=batch.get('observation_max', None)),
+            #     in_axes=(0, 0, None, None),
+            # )(noises, latents, observations, actions)
+            # flow_goals = flow_goals.reshape([self.config['num_flow_latents'], self.config['num_flow_goals'],
+            #                                  *observations.shape])
         elif self.config['vector_field_type'] == 'bilinear':
             rng, noise_rng = jax.random.split(rng)
             if self.config['critic_noise_type'] == 'normal':
@@ -132,8 +141,7 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         future_rewards = self.network.select('reward')(flow_goals)
 
         # future_rewards = future_rewards.mean(axis=(0, 1))  # MC estimations over latent and future state dims.
-        future_rewards = future_rewards.mean(axis=1).max(axis=0)
-        target_q = 1.0 / (1 - self.config['discount']) * future_rewards
+        target_q = 1.0 / (1 - self.config['discount']) * future_rewards.mean(axis=1).max(axis=0)
         qs = self.network.select('critic')(batch['observations'], actions, params=grad_params)
         critic_loss = self.expectile_loss(target_q - qs, target_q - qs, self.config['expectile']).mean()
 
@@ -183,6 +191,8 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             next_observations,
             params=grad_params,
         )
+        if self.config['vector_field_type'] == 'bilinear':
+            vf_pred = jax.vmap(jnp.diag, -1, -1)(vf_pred)
         flow_matching_loss = jnp.square(
             jax.lax.stop_gradient(path_sample.dx_t) - vf_pred).mean()
 
@@ -236,6 +246,8 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             observations, actions, latents,
             params=grad_params,
         )
+        if self.config['vector_field_type'] == 'bilinear':
+            current_vf_pred = jax.vmap(jnp.diag, -1, -1)(current_vf_pred)
         # stop gradient for the image encoder
         current_flow_matching_loss = jnp.square(
             jax.lax.stop_gradient(current_path_sample.dx_t) - current_vf_pred).mean(axis=-1)
@@ -262,6 +274,8 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
             jax.lax.stop_gradient(observations), actions, latents,
             params=grad_params,
         )
+        if self.config['vector_field_type'] == 'bilinear':
+            future_vf_pred = jax.vmap(jnp.diag, -1, -1)(future_vf_pred)
         future_flow_matching_loss = jnp.square(future_vf_target - future_vf_pred).mean(axis=-1)
 
         if self.config['use_terminal_masks']:
