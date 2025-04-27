@@ -55,7 +55,7 @@ def main():
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
             # "puzzle-3x3-play-singletask-task1-v0"
-            "cheetah_run",
+            # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
@@ -77,14 +77,14 @@ def main():
                     for tau in [0.005]:  # 1.0 doesn't work better than 0.005
                         for alpha in [0.3]:
                             for num_flow_latents in [1]:
-                                for num_flow_goals in [64, 128]:
+                                for num_flow_goals in [8, 16, 32]:
                                     for actor_freq in [4]:
-                                        for expectile in [0.65, 0.75]:
+                                        for expectile in [0.65, 0.75, 0.85, 0.95]:
                                             for vector_field_type in ['mlp']:
                                                 for vector_field_time_sin_embedding in [True, False]:
                                                     for latent_dim in [16]:
                                                         for clip_flow_goals in [True, False]:
-                                                            for use_mixup in [False]:
+                                                            for use_mixup in [True]:
                                                                 for mixup_bw in [0.1]:
                                                                     for reward_type in ['state']:
                                                                         for seed in [20, 30]:

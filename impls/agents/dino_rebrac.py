@@ -23,6 +23,20 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
     rng: Any
     network: Any
     config: Any = nonpytree_field()
+    target_repr_center: Any = 0
+
+    @staticmethod
+    def dino_loss(target_repr, repr,
+                  target_repr_center,
+                  target_temp=2.0, temp=2.0):
+        # stop_gradient
+        target_repr = jax.lax.stop_gradient(target_repr)
+
+        # center + sharpen
+        logits = repr / temp
+        target_probs = jax.nn.softmax((target_repr - target_repr_center) / target_temp, axis=-1)
+
+        return -(target_probs * jax.nn.log_softmax(logits, axis=-1)).sum(axis=-1).mean()
 
     def critic_loss(self, batch, grad_params, rng):
         """Compute the ReBRAC critic loss."""
@@ -59,23 +73,42 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         observations = batch['observations']
 
         rng, noise_rng1, noise_rng2 = jax.random.split(rng, 3)
-        noise1 = jnp.clip(
-            (jax.random.normal(noise_rng1, observations.shape) * self.config['repr_noise']),
-            -self.config['repr_noise_clip'],
-            self.config['repr_noise_clip'],
-        )
-        noise2 = jnp.clip(
-            (jax.random.normal(noise_rng2, observations.shape) * self.config['repr_noise']),
-            -self.config['repr_noise_clip'],
-            self.config['repr_noise_clip'],
-        )
-        aug1_observations = observations + noise1
-        aug2_observations = observations + noise2
+        if self.config['encoder'] is None:
+            noises1 = jnp.clip(
+                (jax.random.normal(noise_rng1, observations.shape) * self.config['repr_noise']),
+                -self.config['repr_noise_clip'],
+                self.config['repr_noise_clip'],
+            )
+            noises2 = jnp.clip(
+                (jax.random.normal(noise_rng2, observations.shape) * self.config['repr_noise']),
+                -self.config['repr_noise_clip'],
+                self.config['repr_noise_clip'],
+            )
+            aug1_observations = observations + noises1
+            aug2_observations = observations + noises2
+        else:
+            aug1_observations = batch['aug1_observations']
+            aug2_observations = batch['aug2_observations']
 
-        return bc_loss, {
-            'bc_loss': bc_loss,
-            'bc_log_prob': log_prob.mean(),
-            'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+        repr1 = self.network.select('encoder', params=grad_params)(aug1_observations)
+        repr2 = self.network.select('encoder', params=grad_params)(aug2_observations)
+        target_repr1 = self.network.select('target_encoder')(aug1_observations)
+        target_repr2 = self.network.select('target_encoder')(aug2_observations)
+
+        repr_loss = self.dino_loss(
+            target_repr1, repr1, self.target_repr_center,
+            self.config['target_repr_temp'], self.config['repr_temp']
+        ) / 2 + self.dino_loss(
+            target_repr2, repr2, self.target_repr_center,
+            self.config['target_repr_temp'], self.config['repr_temp']
+        )
+
+        self.target_center_update(
+            jnp.concatenate([target_repr1, target_repr2], axis=-1).mean(axis=0)
+        )
+
+        return repr_loss, {
+            'repr_loss': repr_loss,
         }
 
     def behavioral_cloning_loss(self, batch, grad_params):
@@ -130,7 +163,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         info = {}
         rng = rng if rng is not None else self.rng
 
-        repr_loss, repr_info = self.representation_loss(batch, grad_params)
+        repr_loss, repr_info = self.representation_loss(batch, grad_params, rng)
         for k, v in repr_info.items():
             info[f'repr/{k}'] = v
 
@@ -173,6 +206,15 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
             self.network.params[f'modules_target_{module_name}'],
         )
         network.params[f'modules_target_{module_name}'] = new_target_params
+
+    def target_center_update(self, target_repr):
+        """
+        Update center used for teacher output.
+        """
+        repr_center = jnp.mean(target_repr, axis=0, keepdims=True)
+
+        # ema update
+        self.target_repr_center = repr_center * self.target_repr_center_tau + self.target_repr_center * (1 - self.target_repr_center_tau)
 
     @jax.jit
     def pretrain(self, batch):
@@ -288,6 +330,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
             target_actor=(copy.deepcopy(actor_def), (ex_observations,)),
             # Add encoder to ModuleDict to make it separately callable.
             encoder=(encoders.get('encoder'), (ex_observations,)),
+            target_encoder=(copy.deepcopy(encoders['encoder']), (ex_observations,)),
         )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
@@ -300,6 +343,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         params = network.params
         params['modules_target_critic'] = params['modules_critic']
         params['modules_target_actor'] = params['modules_actor']
+        params['modules_target_encoder'] = params['modules_encoder']
 
         return cls(rng, network=network, config=flax.core.FrozenDict(**config))
 
@@ -325,6 +369,9 @@ def get_config():
             actor_noise_clip=0.5,  # Actor noise clipping threshold.
             repr_noise=0.5,  # Representation noise scale.
             repr_noise_clip=1.0,  # Representation noise clipping threshold.
+            target_repr_center_tau=0.1,  # Target representation center update rate
+            repr_temp=1.0,  # Student representation temperature
+            target_repr_temp=0.04,  # Teacher representation temperature
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
         )
     )
