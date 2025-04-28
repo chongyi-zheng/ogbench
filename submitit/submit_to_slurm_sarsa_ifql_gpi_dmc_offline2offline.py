@@ -79,17 +79,17 @@ def main():
                             for num_flow_latents in [1]:
                                 for num_flow_goals in [16, 32]:
                                     for actor_freq in [4]:
-                                        for expectile in [0.7, 0.8, 0.9]:
+                                        for expectile in [0.65, 0.75, 0.85]:
                                             for vector_field_type in ['mlp']:
                                                 for vector_field_time_sin_embedding in [True, False]:
-                                                    for latent_dim in [16]:
+                                                    for value_layer_norm in [True]:
                                                         for clip_flow_goals in [True]:
                                                             for use_mixup in [False]:
                                                                 for mixup_bw in [0.1]:
                                                                     for use_target_reward in [False]:
                                                                         for reward_type in ['state']:
                                                                             for seed in [30, 40]:
-                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fl={num_flow_latents}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_vf_type={vector_field_type}_vf_time_emb={vector_field_time_sin_embedding}_ld={latent_dim}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_bw={mixup_bw}_target_reward={use_target_reward}_reward={reward_type}"
+                                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_lr={lr}_tau={tau}_alpha={alpha}_num_fl={num_flow_latents}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_vf_type={vector_field_type}_vf_time_emb={vector_field_time_sin_embedding}_value_ln={value_layer_norm}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_bw={mixup_bw}_target_reward={use_target_reward}_reward={reward_type}"
                                                                                 log_dir = os.path.expanduser(
                                                                                     f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_gpi_offline2offline/{exp_name}/{seed}")
 
@@ -152,10 +152,11 @@ def main():
                                                                                         --agent.expectile={expectile} \
                                                                                         --agent.vector_field_type={vector_field_type} \
                                                                                         --agent.vector_field_time_sin_embedding={vector_field_time_sin_embedding} \
-                                                                                        --agent.latent_dim={latent_dim} \
+                                                                                        --agent.latent_dim=16 \
                                                                                         --agent.q_agg=min \
                                                                                         --agent.reward_layer_norm=True \
                                                                                         --agent.actor_layer_norm=False \
+                                                                                        --agent.value_layer_norm={value_layer_norm} \
                                                                                         --agent.normalize_q_loss=False \
                                                                                         --agent.use_mixup={use_mixup} \
                                                                                         --agent.mixup_alpha=2.0 \
