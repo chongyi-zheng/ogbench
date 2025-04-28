@@ -74,14 +74,14 @@ def main():
         ]:
             for obs_norm_type in ['normal']:
                 for alpha in [0.3]:
-                    for num_flow_goals in [16, 32]:
+                    for num_flow_goals in [16]:
                         for actor_freq in [4]:
                             for expectile in [0.65, 0.75, 0.85, 0.95]:
                                 for critic_latent_type in ['encoding', 'prior']:
                                     for vector_field_time_sin_embedding in [False]:
                                         for transition_layer_norm in [True, False]:
                                             for kl_weight in [0.01, 0.05, 0.001]:
-                                                for latent_dim in [128, 256]:
+                                                for latent_dim in [128]:
                                                     for seed in [20, 30]:
                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_critic_z_type={critic_latent_type}_vf_time_emb={vector_field_time_sin_embedding}_transition_ln={transition_layer_norm}_kl_weight={kl_weight}_latent_dim={latent_dim}"
                                                         log_dir = os.path.expanduser(
