@@ -68,7 +68,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         if self.config['critic_latent_type'] == 'prior':
             latents = jax.random.normal(
                 latent_rng,
-                shape=(self.config['num_flow_goals'], *actions.shape),
+                shape=(self.config['num_flow_goals'], *actions.shape[:-1], self.config['latent_dim']),
                 dtype=observations.dtype,
             )
         elif self.config['critic_latent_type'] == 'encoding':
