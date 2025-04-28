@@ -310,6 +310,50 @@ class Actor(nn.Module):
         return distribution
 
 
+class TransitionEncoder(nn.Module):
+    """Transition encoder network.
+
+    Attributes:
+        hidden_dims: Hidden layer dimensions.
+        action_dim: Action dimension.
+        layer_norm: Whether to apply layer normalization.
+        encoder: Optional encoder module to encode the inputs.
+    """
+
+    hidden_dims: Sequence[int]
+    latent_dim: int
+    layer_norm: bool = False
+    encoder: nn.Module = None
+
+    def setup(self):
+        self.trunk_net = MLP(self.hidden_dims, activate_final=True, layer_norm=self.layer_norm)
+        self.mean_net = nn.Dense(self.latent_dim, kernel_init=default_init())
+        self.log_std_net = nn.Dense(self.latent_dim, kernel_init=default_init())
+
+    def __call__(
+        self,
+        observations,
+        actions,
+    ):
+        """Return latent distribution.
+
+        Args:
+            observations: Observations.
+            actions: Actions.
+        """
+        if self.encoder is not None:
+            observations = self.encoder(observations)
+        inputs = jnp.concatenate([observations, actions], axis=-1)
+        outputs = self.trunk_net(inputs)
+
+        means = self.mean_net(outputs)
+        log_stds = self.log_std_net(outputs)
+
+        distribution = distrax.MultivariateNormalDiag(loc=means, scale_diag=jnp.exp(log_stds))
+
+        return distribution
+
+
 class GCActor(nn.Module):
     """Goal-conditioned actor.
 

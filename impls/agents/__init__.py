@@ -23,6 +23,7 @@ from agents.sac import SACAgent
 from agents.sarsa_ifac import SARSAIFACAgent
 from agents.sarsa_ifac_q import SARSAIFACQAgent
 from agents.sarsa_ifql import SARSAIFQLAgent
+from agents.sarsa_ifql_vib_gpi import SARSAIFQLVIBGPIAgent
 from agents.sarsa_ifql_gpi import SARSAIFQLGPIAgent
 from agents.td_fmrl import TDFMRLAgent
 from agents.td_infonce import TDInfoNCEAgent
@@ -52,6 +53,7 @@ agents = dict(
     sarsa_ifac=SARSAIFACAgent,
     sarsa_ifac_q=SARSAIFACQAgent,
     sarsa_ifql=SARSAIFQLAgent,
+    sarsa_ifql_vib_gpi=SARSAIFQLVIBGPIAgent,
     sarsa_ifql_gpi=SARSAIFQLGPIAgent,
     td_fmrl=TDFMRLAgent,
     gctd_fmrl=GCTDFMRLAgent,

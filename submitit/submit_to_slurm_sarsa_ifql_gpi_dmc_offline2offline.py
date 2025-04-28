@@ -134,7 +134,6 @@ def main():
                                                                                 --agent.transition_hidden_dims="(512,512,512,512)" \
                                                                                 --agent.actor_hidden_dims="(512,512,512,512)" \
                                                                                 --agent.value_hidden_dims="(512,512,512,512)" \
-                                                                          
                                                                                 --agent.reward_hidden_dims="(512,512,512,512)" \
                                                                                 --agent.lr=3e-4 \
                                                                                 --agent.tau=0.005 \
