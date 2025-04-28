@@ -30,7 +30,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="sarsa_ifql_vib_gpi_offline2offline",
+        slurm_name="sarsa_ifql_vfm_gpi_offline2offline",
         slurm_time=int(12 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
@@ -81,9 +81,9 @@ def main():
                                     for transition_layer_norm in [True, False]:
                                         for kl_weight in [1.0, 0.1, 0.01]:
                                             for seed in [20, 30]:
-                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_vf_time_emb={vector_field_time_sin_embedding}_transition_ln={transition_layer_norm}_kl_weight={kl_weight}"
+                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vfm_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_vf_time_emb={vector_field_time_sin_embedding}_transition_ln={transition_layer_norm}_kl_weight={kl_weight}"
                                                 log_dir = os.path.expanduser(
-                                                    f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_vib_gpi_offline2offline/{exp_name}/{seed}")
+                                                    f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_vfm_gpi_offline2offline/{exp_name}/{seed}")
 
                                                 # change the log folder of slurm executor
                                                 submitit_log_dir = os.path.join(
@@ -123,7 +123,7 @@ def main():
                                                         --env_name={env_name} \
                                                         --obs_norm_type={obs_norm_type} \
                                                         --eval_episodes=50 \
-                                                        --agent=impls/agents/sarsa_ifql_vib_gpi.py \
+                                                        --agent=impls/agents/sarsa_ifql_vfm_gpi.py \
                                                         --agent.batch_size=256 \
                                                         --agent.transition_hidden_dims="(512,512,512,512)" \
                                                         --agent.actor_hidden_dims="(512,512,512,512)" \
