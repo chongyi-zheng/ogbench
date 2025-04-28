@@ -50,6 +50,8 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         """Compute the value loss."""
         observations = batch['observations']
         actions = batch['actions']
+        next_observations = batch['next_observations']
+        next_actions = batch['next_actions']
 
         if self.config['encoder'] is not None:
             observations = self.network.select('critic_vf_encoder')(observations)
@@ -58,25 +60,29 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         assert self.config['critic_noise_type'] == 'normal'
         noises = jax.random.normal(
             noise_rng,
-            shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *observations.shape),
+            shape=(self.config['num_flow_goals'], *observations.shape),
             dtype=observations.dtype
         )
         # TODO (chongyiz): add latents
         # obs_action_dim = observations.shape[-1] + actions.shape[-1]
-        latents = jax.random.normal(
-            latent_rng,
-            shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *actions.shape),
-            dtype=observations.dtype,
-        )
+        if self.config['critic_latent_type'] == 'prior':
+            latents = jax.random.normal(
+                latent_rng,
+                shape=(self.config['num_flow_goals'], *actions.shape),
+                dtype=observations.dtype,
+            )
+        elif self.config['critic_latent_type'] == 'encoding':
+            latent_dist = self.network.select('transition_encoder')(next_observations, next_actions)
+            latents = latent_dist.sample(seed=latent_rng, sample_shape=self.config['num_flow_goals'])
         flow_goals = self.compute_fwd_flow_goals(
             noises,
             jnp.broadcast_to(
-                observations[None, None],
-                (self.config['num_flow_latents'], self.config['num_flow_goals'], *observations.shape)
+                observations[None],
+                (self.config['num_flow_goals'], *observations.shape)
             ),
             jnp.broadcast_to(
-                actions[None, None],
-                (self.config['num_flow_latents'], self.config['num_flow_goals'], *actions.shape)
+                actions[None],
+                (self.config['num_flow_goals'], *actions.shape)
             ),
             latents,
             observation_min=batch.get('observation_min', None),
@@ -90,7 +96,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
             future_rewards = self.network.select('reward')(flow_goals)
 
         # future_rewards = future_rewards.mean(axis=(0, 1))  # MC estimations over latent and future state dims.
-        target_q = 1.0 / (1 - self.config['discount']) * future_rewards.mean(axis=1).max(axis=0)
+        target_q = 1.0 / (1 - self.config['discount']) * future_rewards.mean(axis=0)
         qs = self.network.select('critic')(batch['observations'], actions, params=grad_params)
         critic_loss = self.expectile_loss(target_q - qs, target_q - qs, self.config['expectile']).mean()
 
@@ -136,8 +142,8 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
             next_observations, next_actions, params=grad_params)
         latents = latent_dist.sample(seed=latent_rng)
 
-        means = latent_dist.mode()
-        log_stds = jnp.log(latent_dist.scale_diag)
+        means = latent_dist.mean()
+        log_stds = jnp.log(latent_dist.stddev())
         kl_loss = -0.5 * (1 + log_stds - means ** 2 - jnp.exp(log_stds)).mean()
         # reward_kl_loss = reward_pred_loss + kl_loss * agent.config['kl_weight']
 
@@ -191,6 +197,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
             critic_flow_matching_loss = ((1 - self.config['discount']) * current_flow_matching_loss
                                          + self.config['discount'] * future_flow_matching_loss).mean()
 
+        # VIB loss
         flow_matching_loss = critic_flow_matching_loss + self.config['kl_weight'] * kl_loss
 
         return flow_matching_loss, {
@@ -439,10 +446,10 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
-        flow_transition_loss, flow_transition_info = self.flow_transition_loss(
-            batch, grad_params, flow_transition_rng)
-        for k, v in flow_transition_info.items():
-            info[f'flow_transition/{k}'] = v
+        # flow_transition_loss, flow_transition_info = self.flow_transition_loss(
+        #     batch, grad_params, flow_transition_rng)
+        # for k, v in flow_transition_info.items():
+        #     info[f'flow_transition/{k}'] = v
 
         flow_occupancy_loss, flow_occupancy_info = self.flow_occupancy_loss(
             batch, grad_params, flow_occupancy_rng)
@@ -458,7 +465,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
             # Skip actor update.
             actor_loss = 0.0
 
-        loss = reward_loss + critic_loss + flow_transition_loss + flow_occupancy_loss + actor_loss
+        loss = reward_loss + critic_loss + flow_occupancy_loss + actor_loss
         return loss, info
 
     def target_update(self, network, module_name):
@@ -554,6 +561,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         ex_orig_observations = ex_observations
 
         ex_times = ex_actions[..., 0]
+        ex_latents = jnp.ones((*ex_actions.shape[:-1], config['latent_dim']))
         obs_dims = ex_observations.shape[1:]
         obs_dim = obs_dims[-1]
         action_dim = ex_actions.shape[-1]
@@ -625,12 +633,10 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
             critic=(critic_def, (ex_orig_observations, ex_actions)),
             critic_vf=(critic_vf_def, (
                 ex_observations, ex_times,
-                ex_observations, ex_actions,
-                ex_actions)),
+                ex_observations, ex_actions, ex_latents)),
             target_critic_vf=(copy.deepcopy(critic_vf_def), (
                 ex_observations, ex_times,
-                ex_observations, ex_actions,
-                ex_actions)),
+                ex_observations, ex_actions, ex_latents)),
             transition_encoder=(transition_encoder_def, (
                 ex_observations, ex_actions)),
             actor=(actor_def, (ex_orig_observations, )),
@@ -700,6 +706,7 @@ def get_config():
             q_agg='mean',  # Aggregation method for target Q values.
             critic_noise_type='normal',  # Critic noise type. ('marginal_state', 'normal').
             critic_fm_loss_type='sarsa_squared', # Type of critic flow matching loss. ('naive_sarsa', 'coupled_sarsa', 'sarsa_squared')
+            critic_latent_type='encoding',  # Type of critic latents. ('prior', 'encoding')
             num_flow_goals=4,  # Number of future flow goals for computing the target q.
             num_flow_latents=4,  # Number of flow latents for computing the target q.
             clip_flow_goals=False,  # Whether to clip the flow goals.
