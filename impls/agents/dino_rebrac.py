@@ -403,7 +403,7 @@ def get_config():
             repr_noise=0.5,  # Representation noise scale.
             repr_noise_clip=1.0,  # Representation noise clipping threshold.
             target_repr_center_tau=0.1,  # Target representation center update rate
-            repr_temp=1.0,  # Student representation temperature
+            repr_temp=0.1,  # Student representation temperature
             target_repr_temp=0.04,  # Teacher representation temperature
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
         )
