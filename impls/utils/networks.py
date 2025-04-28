@@ -239,6 +239,63 @@ class Value(nn.Module):
 
         return v
 
+class GCFMValue(nn.Module):
+    """Value/critic network.
+
+    This module can be used for both value V(s, g) and critic Q(s, a, g) functions.
+
+    Attributes:
+        hidden_dims: Hidden layer dimensions.
+        layer_norm: Whether to apply layer normalization.
+        num_ensembles: Number of ensemble components.
+        encoder: Optional encoder module to encode the inputs.
+    """
+
+    hidden_dims: Sequence[int]
+    network_type: str = 'mlp'
+    layer_norm: bool = True
+    num_residual_blocks: int = 1
+    num_ensembles: int = 1
+    encoder: nn.Module = None
+
+    def setup(self):
+        mlp_class = MLP
+        if self.network_type == 'mlp':
+            mlp_class = MLP
+            kwargs = dict(hidden_dims=(*self.hidden_dims, 1),
+                          activate_final=False, layer_norm=self.layer_norm)
+        elif self.network_type == 'simba':
+            mlp_class = SimBaMLP
+            kwargs = dict(hidden_dims=(*self.hidden_dims, 1), num_residual_blocks=self.num_residual_blocks,
+                          activate_final=False, layer_norm=self.layer_norm)
+
+        if self.num_ensembles > 1:
+            mlp_class = ensemblize(mlp_class, self.num_ensembles)
+
+        value_net = mlp_class(**kwargs)
+
+        self.value_net = value_net
+
+    def __call__(self, observations, actions=None):
+        """Return values or critic values.
+
+        Args:
+            observations: Observations.
+            actions: Actions (optional).
+        """
+        if self.encoder is not None:
+            inputs = [self.encoder(observations)]
+        else:
+            inputs = [observations]
+        if actions is not None:
+            inputs.append(actions)
+        inputs = jnp.concatenate(inputs, axis=-1)
+
+        v = self.value_net(inputs).squeeze(-1)
+
+        return v
+
+
 class Actor(nn.Module):
     """Gaussian actor network.
 
@@ -1057,8 +1114,8 @@ class GCActorVectorField(nn.Module):
         return vf
 
 
-class GCFMValue(nn.Module):
-    """Goal-conditioned flow matching value/critic function.
+class FMValue(nn.Module):
+    """Flow matching value/critic function.
 
     This module can be used for both value V(s, g) and critic Q(s, a, g) functions.
     We typically use this module to distill the ODE solutions.
@@ -1068,8 +1125,7 @@ class GCFMValue(nn.Module):
         hidden_dims: Hidden layer dimensions.
         layer_norm: Whether to apply layer normalization.
         num_ensembles: Number of value function ensembles.
-        state_encoder: Optional state encoder.
-        goal_encoder: Optional goal encoder.
+        encoder: Optional state encoder.
     """
 
     hidden_dims: Sequence[int]
@@ -1079,8 +1135,7 @@ class GCFMValue(nn.Module):
     activate_final: bool = False
     num_residual_blocks: int = 1
     num_ensembles: int = 1
-    state_encoder: nn.Module = None
-    goal_encoder: nn.Module = None
+    encoder: nn.Module = None
 
     def setup(self):
         if self.network_type == 'mlp':
@@ -1096,18 +1151,9 @@ class GCFMValue(nn.Module):
         if self.num_ensembles > 1:
             network_module = ensemblize(network_module, self.num_ensembles)
 
-        # if self.network_type == 'mlp':
-        #     value_net = network_module(
-        #         (*self.hidden_dims, self.output_dim),
-        #         activate_final=self.activate_final,
-        #         layer_norm=self.layer_norm
-        #     )
-        # else:
-        #     raise NotImplementedError
-
         self.value_net = network_module(**kwargs)
 
-    def __call__(self, goals, observations, actions=None, commanded_goals=None):
+    def __call__(self, observations, actions=None):
         """Return the value/critic function.
 
         Args:
@@ -1115,18 +1161,13 @@ class GCFMValue(nn.Module):
             goals: Goals (optional).
             actions: Actions (optional).
         """
-        if self.goal_encoder is not None:
-            goals = self.goal_encoder(goals)
+        if self.encoder is not None:
+            observations = self.encoder(observations)
 
-        if self.state_encoder is not None:
-            observations = self.state_encoder(observations)
-
-        conds = observations
-        if commanded_goals is not None:
-            conds = jnp.concatenate([conds, commanded_goals], axis=-1)
+        inputs = [observations]
         if actions is not None:
-            conds = jnp.concatenate([conds, actions], axis=-1)
-        inputs = jnp.concatenate([goals, conds], axis=-1)
+            inputs.append(actions)
+        inputs = jnp.concatenate(inputs, axis=-1)
 
         if self.output_dim == 1:
             output = self.value_net(inputs).squeeze(-1)
