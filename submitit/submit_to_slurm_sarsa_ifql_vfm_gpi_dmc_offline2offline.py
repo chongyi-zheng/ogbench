@@ -76,7 +76,7 @@ def main():
                 for alpha in [0.3]:
                     for num_flow_goals in [16]:
                         for actor_freq in [4]:
-                            for expectile in [0.65, 0.75, 0.85, 0.95]:
+                            for expectile in [0.65, 0.7]:
                                 for vector_field_time_sin_embedding in [True]:
                                     for transition_layer_norm in [True]:
                                         for kl_weight in [0.1, 0.05, 0.01]:
