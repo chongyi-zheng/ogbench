@@ -77,16 +77,16 @@ def main():
                     for num_flow_latents in [1]:
                         for num_flow_goals in [16, 32]:
                             for actor_freq in [4]:
-                                for expectile in [0.65, 0.75, 0.85]:
+                                for expectile in [0.65, 0.75, 0.85, 0.95]:
                                     for vector_field_type in ['mlp']:
                                         for vector_field_time_sin_embedding in [True, False]:
-                                            for value_layer_norm in [True]:
+                                            for value_layer_norm in [False, True]:
                                                 for clip_flow_goals in [True]:
                                                     for use_mixup in [False]:
                                                         for mixup_bw in [0.1]:
                                                             for use_target_reward in [False]:
                                                                 for reward_type in ['state']:
-                                                                    for seed in [30, 40]:
+                                                                    for seed in [20, 30]:
                                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fl={num_flow_latents}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_vf_type={vector_field_type}_vf_time_emb={vector_field_time_sin_embedding}_value_ln={value_layer_norm}_clip_fgs={clip_flow_goals}_mixup={use_mixup}_mixup_bw={mixup_bw}_target_reward={use_target_reward}_reward={reward_type}"
                                                                         log_dir = os.path.expanduser(
                                                                             f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_gpi_offline2offline/{exp_name}/{seed}")
