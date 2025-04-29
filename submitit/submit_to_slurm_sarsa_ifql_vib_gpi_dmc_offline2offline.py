@@ -78,7 +78,7 @@ def main():
                         for actor_freq in [4]:
                             for expectile in [0.65, 0.75]:
                                 for critic_latent_type in ['prior']:
-                                    for vector_field_time_sin_embedding in [False]:
+                                    for vector_field_time_sin_embedding in [True]:
                                         for transition_layer_norm in [True]:
                                             for kl_weight in [0.05]:
                                                 for latent_dim in [128]:
