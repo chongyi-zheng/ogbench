@@ -64,10 +64,10 @@ class SARSAIFQLVFMGPIAgent(flax.struct.PyTreeNode):
             dtype=observations.dtype
         )
         # TODO (chongyiz): add latents
-        obs_action_dim = observations.shape[-1] + actions.shape[-1]
+        # obs_action_dim = observations.shape[-1] + actions.shape[-1]
         latents = jax.random.normal(
             latent_rng,
-            shape=(self.config['num_flow_goals'], *actions.shape[:-1], obs_action_dim),
+            shape=(self.config['num_flow_goals'], *actions.shape),
             dtype=observations.dtype,
         )
         flow_goals = self.compute_fwd_flow_goals(
@@ -113,6 +113,8 @@ class SARSAIFQLVFMGPIAgent(flax.struct.PyTreeNode):
         """Compute the flow transition loss."""
 
         batch_size = batch['observations'].shape[0]
+        # observations = batch['observations']
+        # actions = batch['actions']
         next_observations = batch['next_observations']
         next_actions = batch['next_actions']
 
@@ -121,30 +123,33 @@ class SARSAIFQLVFMGPIAgent(flax.struct.PyTreeNode):
                 batch['next_observations'], params=grad_params)
 
         # obs_actions = jnp.concatenate([observations, actions], axis=-1)
-        next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
+        # next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
 
         # flow matching for the transition
         rng, time_rng, noise_rng = jax.random.split(rng, 3)
-        times = jax.random.uniform(time_rng, shape=(batch_size,), dtype=next_obs_actions.dtype)
+        times = jax.random.uniform(time_rng, shape=(batch_size,), dtype=next_actions.dtype)
         if self.config['critic_noise_type'] == 'normal':
             noises = jax.random.normal(
-                noise_rng, shape=next_obs_actions.shape, dtype=next_obs_actions.dtype)
+                noise_rng, shape=next_actions.shape, dtype=next_actions.dtype)
         elif self.config['critic_noise_type'] == 'marginal_state':
             noises = jax.random.permutation(
-                noise_rng, next_obs_actions, axis=0)
+                noise_rng, next_actions, axis=0)
         path_sample = self.cond_prob_path(
-            x_0=noises, x_1=next_obs_actions, t=times)
+            x_0=noises, x_1=next_actions, t=times)
         vf_pred = self.network.select('transition_vf')(
             path_sample.x_t,
             times,
+            next_observations,
             params=grad_params,
         )
         flow_matching_loss = jnp.square(
             jax.lax.stop_gradient(path_sample.dx_t) - vf_pred).mean()
 
-        return flow_matching_loss, {
-            'flow_matching_loss': flow_matching_loss
-        }
+        info = dict(
+            flow_matching_loss=flow_matching_loss,
+        )
+
+        return flow_matching_loss, info
 
     def flow_occupancy_loss(self, batch, grad_params, rng):
         """Compute the flow occupancy loss."""
@@ -167,11 +172,12 @@ class SARSAIFQLVFMGPIAgent(flax.struct.PyTreeNode):
         # obs_actions = jnp.concatenate([observations, actions], axis=-1)
         # obs_actions = jax.random.permutation(
         #     perm_rng, obs_actions, axis=0)
-        next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
+        # next_obs_actions = jnp.concatenate([next_observations, next_actions], axis=-1)
         # TODO (chongyiz)
-        flow_latents = self.compute_rev_flow_transitions(next_obs_actions)
+        # flow_latents = self.compute_rev_flow_transitions(next_obs_actions)
+        flow_latents = self.compute_rev_flow_transitions(next_actions, next_observations)
         latents = self.network.select('onestep_transition_vf')(
-            next_obs_actions, params=grad_params)
+            next_observations, next_actions, params=grad_params)
         # rng, latent_rng = jax.random.split(rng)
         # latent_dist = self.network.select('transition_encoder')(
         #     next_observations, next_actions, params=grad_params)
@@ -372,10 +378,10 @@ class SARSAIFQLVFMGPIAgent(flax.struct.PyTreeNode):
                 'std': jnp.mean(dist.scale_diag),
             }
 
-    def compute_rev_flow_transitions(self, next_observation_actions):
-        noisy_obs_actions = next_observation_actions
-        init_times = jnp.ones(noisy_obs_actions.shape[:-1], dtype=noisy_obs_actions.dtype)
-        end_times = jnp.zeros(noisy_obs_actions.shape[:-1], dtype=noisy_obs_actions.dtype)
+    def compute_rev_flow_transitions(self, actions, observations):
+        noisy_actions = actions
+        init_times = jnp.ones(noisy_actions.shape[:-1], dtype=noisy_actions.dtype)
+        end_times = jnp.zeros(noisy_actions.shape[:-1], dtype=noisy_actions.dtype)
         step_size = (end_times - init_times) / self.config['num_flow_steps']
 
         def body_fn(carry, i):
@@ -383,21 +389,21 @@ class SARSAIFQLVFMGPIAgent(flax.struct.PyTreeNode):
             carry: (noisy_goals, )
             i: current step index
             """
-            (noisy_obs_actions, ) = carry
+            (noisy_actions, ) = carry
 
             times = i * step_size + init_times
             vf = self.network.select('transition_vf')(
-                noisy_obs_actions, times)
+                noisy_actions, times, observations)
 
-            new_noisy_obs_actions = noisy_obs_actions + vf * jnp.expand_dims(step_size, axis=-1)
+            new_noisy_actions = noisy_actions + vf * jnp.expand_dims(step_size, axis=-1)
 
-            return (new_noisy_obs_actions,), None
+            return (new_noisy_actions,), None
 
         # Use lax.scan to iterate over num_flow_steps
-        (noisy_obs_actions,), _ = jax.lax.scan(
-            body_fn, (noisy_obs_actions,), jnp.arange(self.config['num_flow_steps']))
+        (noisy_actions,), _ = jax.lax.scan(
+            body_fn, (noisy_actions,), jnp.arange(self.config['num_flow_steps']))
 
-        return noisy_obs_actions
+        return noisy_actions
 
     def compute_fwd_flow_goals(self, noises, observations, actions, latents,
                                observation_min=None, observation_max=None,
@@ -629,7 +635,7 @@ class SARSAIFQLVFMGPIAgent(flax.struct.PyTreeNode):
         transition_vf_def = GCFMVectorField(
             network_type=config['network_type'],
             num_residual_blocks=config['num_residual_blocks'],
-            vector_dim=obs_dim + action_dim,
+            vector_dim=action_dim,
             time_sin_embedding=config['vector_field_time_sin_embedding'],
             hidden_dims=config['transition_hidden_dims'],
             layer_norm=config['transition_hidden_dims'],
@@ -637,7 +643,7 @@ class SARSAIFQLVFMGPIAgent(flax.struct.PyTreeNode):
         onestep_transition_vf_def = FMValue(
             network_type=config['network_type'],
             num_residual_blocks=config['num_residual_blocks'],
-            output_dim=obs_dim + action_dim,
+            output_dim=action_dim,
             hidden_dims=config['transition_hidden_dims'],
             layer_norm=config['transition_hidden_dims'],
         )
@@ -676,18 +682,21 @@ class SARSAIFQLVFMGPIAgent(flax.struct.PyTreeNode):
             critic_vf=(critic_vf_def, (
                 ex_observations, ex_times,
                 ex_observations, ex_actions,
-                jnp.concatenate([ex_actions, ex_observations], axis=-1)
+                # jnp.concatenate([ex_actions, ex_observations], axis=-1)
+                ex_actions
             )),
             target_critic_vf=(copy.deepcopy(critic_vf_def), (
                 ex_observations, ex_times,
                 ex_observations, ex_actions,
-                jnp.concatenate([ex_actions, ex_observations], axis=-1)
+                # jnp.concatenate([ex_actions, ex_observations], axis=-1)
+                ex_actions
             )),
             transition_vf=(transition_vf_def, (
-                jnp.concatenate([ex_actions, ex_observations], axis=-1), ex_times,
+                ex_actions, ex_times, ex_observations
             )),
             onestep_transition_vf=(onestep_transition_vf_def, (
-                jnp.concatenate([ex_actions, ex_observations], axis=-1),
+                # jnp.concatenate([ex_actions, ex_observations], axis=-1),
+                ex_observations, ex_actions
             )),
             actor=(actor_def, (ex_orig_observations, )),
             reward=(reward_def, (ex_observations,)),

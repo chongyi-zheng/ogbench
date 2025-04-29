@@ -1170,11 +1170,11 @@ class FMValue(nn.Module):
         inputs = jnp.concatenate(inputs, axis=-1)
 
         if self.output_dim == 1:
-            output = self.value_net(inputs).squeeze(-1)
+            outputs = self.value_net(inputs).squeeze(-1)
         else:
-            output = self.value_net(inputs)
+            outputs = self.value_net(inputs)
 
-        return output
+        return outputs
 
 
 class GCFMBilinearValue(nn.Module):
