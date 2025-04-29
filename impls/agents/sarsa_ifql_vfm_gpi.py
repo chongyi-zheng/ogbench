@@ -227,7 +227,7 @@ class SARSAIFQLVFMGPIAgent(flax.struct.PyTreeNode):
         future_vf_pred = self.network.select('critic_vf')(
             future_path_sample.x_t,
             times,
-            jax.lax.stop_gradient(observations), actions, latents,
+            jax.lax.stop_gradient(observations), actions, jax.lax.stop_gradient(latents),
             params=grad_params,
         )
         future_flow_matching_loss = jnp.square(future_vf_target - future_vf_pred).mean(axis=-1)
