@@ -58,11 +58,11 @@ def main():
             # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
-            # "cheetah_walk_backward",
-            "walker_walk",
-            "walker_flip",
-            "walker_stand",
-            "walker_run",
+            "cheetah_walk_backward",
+            # "walker_walk",
+            # "walker_flip",
+            # "walker_stand",
+            # "walker_run",
             # "quadruped_run",
             # "quadruped_jump",
             # "quadruped_stand",
@@ -73,16 +73,16 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [0.3]:
+                for alpha in [0.1]:
                     for num_flow_goals in [16]:
                         for actor_freq in [4]:
-                            for expectile in [0.65, 0.75]:
+                            for expectile in [0.65, 0.75, 0.85]:
                                 for critic_latent_type in ['prior']:
                                     for vector_field_time_sin_embedding in [True]:
                                         for transition_layer_norm in [True]:
-                                            for kl_weight in [0.05]:
+                                            for kl_weight in [0.2, 0.1, 0.05]:
                                                 for latent_dim in [128]:
-                                                    for seed in [10, 40, 50, 60, 70]:
+                                                    for seed in [40, 50]:
                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_critic_z_type={critic_latent_type}_vf_time_emb={vector_field_time_sin_embedding}_transition_ln={transition_layer_norm}_kl_weight={kl_weight}_latent_dim={latent_dim}"
                                                         log_dir = os.path.expanduser(
                                                             f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_vib_gpi_offline2offline/{exp_name}/{seed}")
