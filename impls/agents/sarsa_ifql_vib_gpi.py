@@ -168,7 +168,12 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         current_flow_matching_loss = jnp.square(
             jax.lax.stop_gradient(current_path_sample.dx_t) - current_vf_pred).mean(axis=-1)
 
-        future_noises = current_noises
+        if self.config['critic_noise_type'] == 'normal':
+            future_noises = jax.random.normal(
+                current_noise_rng, shape=observations.shape, dtype=observations.dtype)
+        elif self.config['critic_noise_type'] == 'marginal_state':
+            future_noises = jax.random.permutation(
+                current_noise_rng, observations, axis=0)
         flow_future_observations = self.compute_fwd_flow_goals(
             future_noises, next_observations, next_actions, jax.lax.stop_gradient(latents),
             observation_min=batch.get('observation_min', None),
