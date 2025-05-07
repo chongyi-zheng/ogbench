@@ -103,7 +103,8 @@ def main(_):
             dataset.frame_stack = FLAGS.frame_stack
             if config['agent_name'] in ['rebrac', 'dino_rebrac', 'td_infonce',
                                         'sarsa_ifac_q', 'sarsa_ifql', 'sarsa_ifql_gpi',
-                                        'sarsa_ifql_vib_gpi', 'sarsa_ifql_vfm_gpi']:
+                                        'sarsa_ifql_vib_gpi', 'sarsa_ifql_vfm_gpi',
+                                        'fb_repr_fom']:
                 dataset.return_next_actions = True
             dataset.normalize_observations()
     if FLAGS.dataset_class == 'GCDataset':

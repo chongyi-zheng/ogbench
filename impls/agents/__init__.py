@@ -3,6 +3,7 @@ from agents.crl_infonce import CRLInfoNCEAgent
 from agents.dino_rebrac import DINOReBRACAgent
 from agents.fac import FACAgent
 from agents.fb_repr import ForwardBackwardRepresentationAgent
+from agents.fb_repr_fom import ForwardBackwardRepresentationFOMAgent
 from agents.fmrl import FMRLAgent
 from agents.fql import FQLAgent
 from agents.gcbc import GCBCAgent
@@ -38,6 +39,7 @@ agents = dict(
     fmrl=FMRLAgent,
     fql=FQLAgent,
     fb_repr=ForwardBackwardRepresentationAgent,
+    fb_repr_fom=ForwardBackwardRepresentationFOMAgent,
     gcfac=GCFlowActorCriticAgent,
     gcfmrl=GCFMRLAgent,
     gcbc=GCBCAgent,

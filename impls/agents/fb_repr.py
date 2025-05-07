@@ -14,7 +14,11 @@ from utils.networks import GCActor, FMValue
 
 
 class ForwardBackwardRepresentationAgent(flax.struct.PyTreeNode):
-    """Forward Backward Representation agent."""
+    """Forward Backward Representation agent.
+    
+    Reference: https://github.com/enjeeneer/zero-shot-rl/blob/main/agents/fb/agent.py.
+
+    """
 
     rng: Any
     network: Any
