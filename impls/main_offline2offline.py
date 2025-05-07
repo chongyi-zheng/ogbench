@@ -172,12 +172,12 @@ def main(_):
 
             agent, update_info = agent.pretrain(batch)
         else:
-            if i == (FLAGS.pretraining_steps + 1) and config['agent_name'] in ['hilp', 'fb_repr']:
+            if (i == (FLAGS.pretraining_steps + 1)) and config['agent_name'] in ['hilp', 'fb_repr']:
                 # Infer the latent vector.
                 num_samples = 0
                 inference_batch = defaultdict(list)
                 while num_samples < config['num_latent_inference_samples']:
-                    batch = dataset.sample(config['batch_size'])
+                    batch = finetuning_train_dataset.sample(config['batch_size'])
                     for k, v in batch.items():
                         inference_batch[k].append(v)
                     num_samples += config['batch_size']
@@ -234,6 +234,10 @@ def main(_):
                 loss_fn = agent.total_loss
             if val_dataset is not None:
                 val_batch = val_dataset.sample(config['batch_size'])
+
+                if config['agent_name'] in ['hilp', 'fb_repr'] and (inferred_latent is not None):
+                    val_batch['latents'] = np.tile(inferred_latent, (val_batch['observations'].shape[0], 1))
+
                 _, val_info = loss_fn(val_batch, grad_params=None)
                 train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
 
