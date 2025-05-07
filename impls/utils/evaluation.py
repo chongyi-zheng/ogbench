@@ -42,6 +42,7 @@ def evaluate(
     num_eval_episodes=50,
     num_video_episodes=0,
     video_frame_skip=3,
+    inferred_latent=None,
     eval_temperature=0,
 ):
     """Evaluate the agent in the environment.
@@ -53,6 +54,7 @@ def evaluate(
         num_eval_episodes: Number of episodes to evaluate the agent.
         num_video_episodes: Number of episodes to render. These episodes are not included in the statistics.
         video_frame_skip: Number of frames to skip between renders.
+        inferred_latent: Latent to be used for evaluation (only for HILP and FB).
         eval_temperature: Action sampling temperature.
 
     Returns:
@@ -74,7 +76,10 @@ def evaluate(
         step = 0
         render = []
         while not done:
-            action = actor_fn(observations=observation, temperature=eval_temperature)
+            if inferred_latent is not None:
+                action = actor_fn(observations=observation, latents=inferred_latent, temperature=eval_temperature)
+            else:
+                action = actor_fn(observations=observation, temperature=eval_temperature)
             action = np.array(action)
             action = np.clip(action, -1, 1)
 

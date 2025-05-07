@@ -1153,13 +1153,13 @@ class FMValue(nn.Module):
 
         self.value_net = network_module(**kwargs)
 
-    def __call__(self, observations, actions=None):
+    def __call__(self, observations, actions=None, goals=None):
         """Return the value/critic function.
 
         Args:
             observations: Observations.
-            goals: Goals (optional).
             actions: Actions (optional).
+            goals: Goals (optional).
         """
         if self.encoder is not None:
             observations = self.encoder(observations)
@@ -1167,6 +1167,8 @@ class FMValue(nn.Module):
         inputs = [observations]
         if actions is not None:
             inputs.append(actions)
+        if goals is not None:
+            inputs.append(goals)
         inputs = jnp.concatenate(inputs, axis=-1)
 
         if self.output_dim == 1:
