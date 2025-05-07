@@ -12,6 +12,7 @@ import tqdm
 import wandb
 from absl import app, flags
 from ml_collections import config_flags
+from collections import defaultdict
 
 from agents import agents
 from utils.env_utils import make_env_and_datasets
@@ -160,6 +161,8 @@ def main(_):
     first_time = time.time()
     last_time = time.time()
 
+    inferred_latent = None  # Only for HILP and FB.
+    expl_metrics = dict()
     for i in tqdm.tqdm(range(1, FLAGS.pretraining_steps + FLAGS.finetuning_steps + 1), smoothing=0.1, dynamic_ncols=True):
         if i <= FLAGS.pretraining_steps:
             # Offline pre-training.
@@ -169,6 +172,43 @@ def main(_):
 
             agent, update_info = agent.pretrain(batch)
         else:
+            if i == (FLAGS.pretraining_steps + 1) and config['agent_name'] in ['hilp', 'fb_repr']:
+                # Infer the latent vector.
+                num_samples = 0
+                inference_batch = defaultdict(list)
+                while num_samples < config['num_latent_inference_samples']:
+                    batch = dataset.sample(config['batch_size'])
+                    for k, v in batch.items():
+                        inference_batch[k].append(v)
+                    num_samples += config['batch_size']
+                for k, v in inference_batch.items():
+                    inference_batch[k] = np.concatenate(v, axis=0)[:config['num_latent_inference_samples']]
+
+                if config['agent_name'] == 'hilp':
+                    # TODO
+                    raise NotImplementedError
+                    # # Infer the skill vector.
+                    # num_steps = 0
+                    # phis = []
+                    # rewards = []
+                    # # TODO: Make num_steps configurable.
+                    # while num_steps < 10000:
+                    #     batch = dataset.sample(config['batch_size'])
+                    #     phi = agent.get_phis(batch['next_observations']) - agent.get_phis(batch['observations'])
+                    #     phis.append(phi)
+                    #     rewards.append(batch['rewards'])
+                    #     num_steps += config['batch_size']
+                    #
+                    # phi = np.concatenate(phis, axis=0)
+                    # reward = np.concatenate(rewards, axis=0)
+                    # z = np.linalg.lstsq(phi, reward, rcond=None)[0]
+                    # latent_skill = z / np.linalg.norm(z) * np.sqrt(config['latent_dim'])
+                elif config['agent_name'] == 'fb_repr':
+                    inferred_latent = agent.infer_latent(inference_batch)
+                    inferred_latent = np.array(inferred_latent)
+                else:
+                    raise NotImplementedError
+
             # for OfflineObservationNormalizer
             # if i == (FLAGS.pretraining_steps + 1):
             #     agent = agent.update_dataset(finetuning_train_dataset)
@@ -177,6 +217,9 @@ def main(_):
             batch = finetuning_train_dataset.sample(config['batch_size'])
             train_logger = finetuning_train_logger
             eval_logger = finetuning_eval_logger
+
+            if config['agent_name'] in ['hilp', 'fb_repr']:
+                batch['latents'] = np.tile(inferred_latent, (batch['observations'].shape[0], 1))
 
             agent, update_info = agent.finetune(batch, full_update=(i % config['actor_freq'] == 0))
 
@@ -196,6 +239,7 @@ def main(_):
 
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval
             train_metrics['time/total_time'] = time.time() - first_time
+            train_metrics.update(expl_metrics)
             last_time = time.time()
             if FLAGS.enable_wandb:
                 wandb.log(train_metrics, step=i)
@@ -217,6 +261,7 @@ def main(_):
                 num_eval_episodes=FLAGS.eval_episodes,
                 num_video_episodes=FLAGS.video_episodes,
                 video_frame_skip=FLAGS.video_frame_skip,
+                inferred_latent=inferred_latent,
             )
             renders.extend(cur_renders)
             for k, v in eval_info.items():
