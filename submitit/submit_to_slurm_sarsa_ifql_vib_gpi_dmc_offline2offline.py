@@ -171,7 +171,6 @@ def main():
                                                                     --agent.use_mixup=False \
                                                                     --agent.mixup_alpha=2.0 \
                                                                     --agent.mixup_bandwidth=1.0 \
-                                                                    --agent.use_target_reward=False \
                                                                     --agent.reward_type=state \
                                                                     --agent.use_terminal_masks=False \
                                                                     --seed={seed} \

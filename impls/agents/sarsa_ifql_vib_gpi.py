@@ -90,10 +90,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         )
 
         assert self.config['reward_type'] == 'state'
-        if self.config['use_target_reward']:
-            future_rewards = self.network.select('target_reward')(flow_goals)
-        else:
-            future_rewards = self.network.select('reward')(flow_goals)
+        future_rewards = self.network.select('reward')(flow_goals)
 
         # future_rewards = future_rewards.mean(axis=(0, 1))  # MC estimations over latent and future state dims.
         target_q = 1.0 / (1 - self.config['discount']) * future_rewards.mean(axis=0)
@@ -481,7 +478,6 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
             return self.pretraining_loss(batch, grad_params, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        self.target_update(new_network, 'reward')
         if self.config['encoder'] is not None:
             self.target_update(new_network, 'critic_vf_encoder')
         self.target_update(new_network, 'critic_vf')
@@ -497,7 +493,6 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, full_update, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        self.target_update(new_network, 'reward')
         if self.config['encoder'] is not None:
             self.target_update(new_network, 'critic_vf_encoder')
         self.target_update(new_network, 'critic_vf')
@@ -513,7 +508,6 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, full_update=True, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        self.target_update(new_network, 'reward')
         if self.config['encoder'] is not None:
             self.target_update(new_network, 'critic_vf_encoder')
         self.target_update(new_network, 'critic_vf')
@@ -640,7 +634,6 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
                 ex_observations, ex_actions)),
             actor=(actor_def, (ex_orig_observations, )),
             reward=(reward_def, (ex_observations,)),
-            target_reward=(copy.deepcopy(reward_def), (ex_observations,)),
         )
         if config['encoder'] is not None:
             network_info['critic_vf_encoder'] = (
@@ -660,7 +653,6 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         if config['encoder'] is not None:
             params['modules_target_critic_vf_encoder'] = params['modules_critic_vf_encoder']
         params['modules_target_critic_vf'] = params['modules_critic_vf']
-        params['modules_target_reward'] = params['modules_reward']
 
         cond_prob_path = cond_prob_path_class[config['prob_path_class']](
             scheduler=scheduler_class[config['scheduler_class']]()
@@ -719,7 +711,6 @@ def get_config():
             const_std=True,  # Whether to use constant standard deviation for the actor.
             num_flow_steps=10,  # Number of flow steps.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
-            use_target_reward=False,  # Whether to use the target reward network.
             reward_type='state',  # Reward type. ('state', 'state_action')
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             reward_env_info=ml_collections.config_dict.placeholder(dict),  # Environment information for computing the ground truth reward.
