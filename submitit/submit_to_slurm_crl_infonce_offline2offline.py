@@ -83,7 +83,7 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [30.0, 3.0, 0.3, 0.0003]:
+                for alpha in [30.0, 3.0, 0.3]:
                     for reward_type in ['state']:
                         for actor_freq in [4]:
                             for seed in [20]:
