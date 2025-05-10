@@ -110,10 +110,16 @@ def main(_):
     if FLAGS.dataset_class == 'GCDataset':
         config['p_aug'] = FLAGS.p_aug
         config['frame_stack'] = FLAGS.frame_stack
-        pretraining_train_dataset = GCDataset(pretraining_train_dataset, config)
+        if config['agent_name'] in ['hilp']:
+            pretraining_train_dataset = GCDataset(pretraining_train_dataset, dict(config, relabel_reward=True))
+        else:
+            pretraining_train_dataset = GCDataset(pretraining_train_dataset, config)
         finetuning_train_dataset = GCDataset(finetuning_train_dataset, config)
         if pretraining_val_dataset is not None:
-            pretraining_val_dataset = GCDataset(pretraining_val_dataset, config)
+            if config['agent_name'] in ['hilp']:
+                pretraining_val_dataset = GCDataset(pretraining_val_dataset, dict(config, relabel_reward=True))
+            else:
+                pretraining_val_dataset = GCDataset(pretraining_val_dataset, config)
             finetuning_val_dataset = GCDataset(finetuning_val_dataset, config)
 
     # Create agent.
@@ -185,30 +191,8 @@ def main(_):
                 for k, v in inference_batch.items():
                     inference_batch[k] = np.concatenate(v, axis=0)[:config['num_latent_inference_samples']]
 
-                if config['agent_name'] == 'hilp':
-                    # TODO
-                    raise NotImplementedError
-                    # # Infer the skill vector.
-                    # num_steps = 0
-                    # phis = []
-                    # rewards = []
-                    # # TODO: Make num_steps configurable.
-                    # while num_steps < 10000:
-                    #     batch = dataset.sample(config['batch_size'])
-                    #     phi = agent.get_phis(batch['next_observations']) - agent.get_phis(batch['observations'])
-                    #     phis.append(phi)
-                    #     rewards.append(batch['rewards'])
-                    #     num_steps += config['batch_size']
-                    #
-                    # phi = np.concatenate(phis, axis=0)
-                    # reward = np.concatenate(rewards, axis=0)
-                    # z = np.linalg.lstsq(phi, reward, rcond=None)[0]
-                    # latent_skill = z / np.linalg.norm(z) * np.sqrt(config['latent_dim'])
-                elif config['agent_name'] == 'fb_repr':
-                    inferred_latent = agent.infer_latent(inference_batch)
-                    inferred_latent = np.array(inferred_latent)
-                else:
-                    raise NotImplementedError
+                inferred_latent = agent.infer_latent(inference_batch)
+                inferred_latent = np.array(inferred_latent)
 
             # for OfflineObservationNormalizer
             # if i == (FLAGS.pretraining_steps + 1):

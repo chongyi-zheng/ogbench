@@ -313,17 +313,18 @@ class ForwardBackwardRepresentationAgent(flax.struct.PyTreeNode):
     def sample_latents(self, batch, rng):
         latent_rng, perm_rng, mix_rng = jax.random.split(rng, 3)
 
-        latents = jax.random.normal(latent_rng, shape=(self.config['batch_size'], self.config['latent_dim']),
+        batch_size = batch['observations'].shape[0]
+        latents = jax.random.normal(latent_rng, shape=(batch_size, self.config['latent_dim']),
                                     dtype=batch['actions'].dtype)
         latents = latents / jnp.linalg.norm(
             latents, axis=-1, keepdims=True) * jnp.sqrt(self.config['latent_dim'])
-        perm = jax.random.permutation(perm_rng, jnp.arange(self.config['batch_size']))
+        perm = jax.random.permutation(perm_rng, jnp.arange(batch_size))
         backward_reprs = self.network.select('backward_repr')(batch['observations'][perm])
         backward_reprs = backward_reprs / jnp.linalg.norm(
             backward_reprs, axis=-1, keepdims=True) * jnp.sqrt(self.config['latent_dim'])
         backward_reprs = jax.lax.stop_gradient(backward_reprs)
         latents = jnp.where(
-            jax.random.uniform(mix_rng, (self.config['batch_size'], 1)) < self.config['latent_mix_prob'],
+            jax.random.uniform(mix_rng, (batch_size, 1)) < self.config['latent_mix_prob'],
             latents,
             backward_reprs
         )
