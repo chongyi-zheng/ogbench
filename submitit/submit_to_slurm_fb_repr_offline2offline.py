@@ -131,7 +131,6 @@ def main():
                                             --finetuning_steps=500_000 \
                                             --eval_interval=50_000 \
                                             --eval_episodes=50 \
-                                            --dataset_class=GCDataset \
                                             --agent=impls/agents/fb_repr.py \
                                             --agent.discount=0.99 \
                                             --agent.expectile={expectile} \
