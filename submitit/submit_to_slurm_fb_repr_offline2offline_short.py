@@ -12,7 +12,7 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
-    elif cluster_name == 'della':
+    elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -30,7 +30,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="dino_rebrac_offline2offline",
+        slurm_name="fb_repr_offline2offline",
         slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=10,
+        slurm_array_parallelism=20,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -64,40 +64,35 @@ def main():
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
-            # "puzzle-4x4-play-singletask-task1-v0",
-            # "puzzle-4x4-play-singletask-task2-v0",
-            # "puzzle-4x4-play-singletask-task3-v0",
-            # "puzzle-4x4-play-singletask-task4-v0",
-            # "puzzle-4x4-play-singletask-task5-v0",
-            # "cheetah_run",
-            # "cheetah_run_backward",
+            "cheetah_run",
+            "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
             # "walker_walk",
             # "walker_flip",
             # "walker_stand",
             # "walker_run",
-            "quadruped_run",
-            "quadruped_jump",
-            "quadruped_stand",
-            "quadruped_walk",
+            # "quadruped_run",
+            # "quadruped_jump",
+            # "quadruped_stand",
+            # "quadruped_walk",
             # "jaco_reach_top_left",
             # "jaco_reach_top_right",
             # "jaco_reach_bottom_left",
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha_actor in [0.1]:
-                    for alpha_critic in [0.1]:
-                        for actor_freq in [4]:
-                            for repr_noise in [0.2]:
-                                for repr_noise_clip in [0.2]:
-                                    for repr_temp in [0.1]:
-                                        for target_repr_temp in [0.04]:
+                for finetuning_size in [500_000]:
+                    for finetuning_steps in [250_000]:
+                        for eval_interval in [1_000]:
+                            for repr_alpha in [1.0]:
+                                for awr_alpha in [1.0]:
+                                    for expectile in [0.9]:
+                                        for actor_freq in [4]:
                                             for seed in [100, 200, 300, 400]:
-                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_dino_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_actor_freq={actor_freq}_repr_noise={repr_noise}_repr_noise_clip={repr_noise_clip}_repr_temp={repr_temp}_target_repr_temp={target_repr_temp}"
+                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_fb_repr_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_repr_alpha={repr_alpha}_awr_alpha={awr_alpha}_expectile={expectile}_actor_freq={actor_freq}"
                                                 log_dir = os.path.expanduser(
-                                                    f"{log_root_dir}/exp_logs/ogbench_logs/dino_rebrac_offline2offline/{exp_name}/{seed}")
+                                                    f"{log_root_dir}/exp_logs/ogbench_logs/fb_repr_offline2offline/{exp_name}/{seed}")
 
                                                 # change the log folder of slurm executor
                                                 submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -139,16 +134,12 @@ def main():
                                                         --finetuning_steps=500_000 \
                                                         --eval_interval=50_000 \
                                                         --eval_episodes=50 \
-                                                        --agent=impls/agents/dino_rebrac.py \
+                                                        --agent=impls/agents/fb_repr.py \
                                                         --agent.discount=0.99 \
-                                                        --agent.alpha_actor={alpha_actor} \
-                                                        --agent.alpha_critic={alpha_critic} \
+                                                        --agent.expectile={expectile} \
+                                                        --agent.repr_alpha={repr_alpha} \
+                                                        --agent.awr_alpha={awr_alpha} \
                                                         --agent.actor_freq={actor_freq} \
-                                                        --agent.repr_noise={repr_noise} \
-                                                        --agent.repr_noise_clip={repr_noise_clip} \
-                                                        --agent.repr_temp={repr_temp} \
-                                                        --agent.target_repr_temp={target_repr_temp} \
-                                                        --agent.encoder=mlp \
                                                         --seed={seed} \
                                                         --save_dir={log_dir} \
                                                     2>&1 | tee {log_dir}/stream.log;

@@ -30,17 +30,17 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="rebrac_offline2offline",
+        slurm_name="crl_infonce_offline2offline",
         slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="16G",
+        slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=25,
+        slurm_array_parallelism=20,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -49,27 +49,50 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
+            # "cube-single-play-singletask-task1-v0",
             # "cube-single-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task3-v0",
+            # "cube-single-play-singletask-task4-v0",
+            # "cube-single-play-singletask-task5-v0",
+            # "cube-double-play-singletask-task1-v0",
             # "cube-double-play-singletask-task2-v0",
+            # "cube-double-play-singletask-task3-v0",
+            # "cube-double-play-singletask-task4-v0",
+            # "cube-double-play-singletask-task5-v0",
+            # "scene-play-singletask-task1-v0",
             # "scene-play-singletask-task2-v0",
-            "cheetah_run",
-            # "walker_walk",
+            # "scene-play-singletask-task3-v0",
+            # "scene-play-singletask-task4-v0",
+            # "scene-play-singletask-task5-v0",
+            # "scene-play-singletask-task2-v0",
+            # "cheetah_run",
             "cheetah_run_backward",
+            # "cheetah_walk",
+            # "cheetah_walk_backward",
+            # "walker_walk",
             # "walker_flip",
+            # "walker_stand",
+            # "walker_run",
+            # "quadruped_run",
             # "quadruped_jump",
+            # "quadruped_stand",
+            # "quadruped_walk",
             # "jaco_reach_top_left",
+            # "jaco_reach_top_right",
+            # "jaco_reach_bottom_left",
+            # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha_actor in [0.1]:
-                    for alpha_critic in [0.1]:
-                        for finetuning_size in [500_000]:
-                            for finetuning_steps in [250_000]:
-                                for eval_interval in [1_000]:
+                for alpha in [0.003]:
+                    for finetuning_size in [500_000]:
+                        for finetuning_steps in [250_000]:
+                            for eval_interval in [1_000]:
+                                for reward_type in ['state']:
                                     for actor_freq in [4]:
                                         for seed in [100, 200, 300, 400]:
-                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_actor_freq={actor_freq}"
+                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_crl_infonce_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_reward_type={reward_type}_actor_freq={actor_freq}"
                                             log_dir = os.path.expanduser(
-                                                f"{log_root_dir}/exp_logs/ogbench_logs/rebrac_offline2offline/{exp_name}/{seed}")
+                                                f"{log_root_dir}/exp_logs/ogbench_logs/crl_infonce_offline2offline/{exp_name}/{seed}")
 
                                             # change the log folder of slurm executor
                                             submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -83,7 +106,7 @@ def main():
                                                 conda activate ogbench;
                                                 which python;
                                                 echo $CONDA_PREFIX;
-            
+
                                                 echo job_id: $SLURM_ARRAY_JOB_ID;
                                                 echo task_id: $SLURM_ARRAY_TASK_ID;
                                                 squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
@@ -100,7 +123,7 @@ def main():
                                                 export D4RL_SUPPRESS_IMPORT_ERROR=1;
                                                 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
                                                 export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-            
+
                                                 rm -rf {log_dir};
                                                 mkdir -p {log_dir};
                                                 python $PROJECT_DIR/impls/main_offline2offline.py \
@@ -111,15 +134,16 @@ def main():
                                                     --finetuning_steps={finetuning_steps} \
                                                     --eval_interval={eval_interval} \
                                                     --eval_episodes=50 \
-                                                    --agent=impls/agents/rebrac.py \
+                                                    --dataset_class=GCDataset \
+                                                    --agent=impls/agents/crl_infonce.py \
                                                     --agent.discount=0.99 \
-                                                    --agent.alpha_actor={alpha_actor} \
-                                                    --agent.alpha_critic={alpha_critic} \
+                                                    --agent.reward_type={reward_type} \
+                                                    --agent.alpha={alpha} \
                                                     --agent.actor_freq={actor_freq} \
                                                     --seed={seed} \
                                                     --save_dir={log_dir} \
                                                 2>&1 | tee {log_dir}/stream.log;
-            
+
                                                 export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
                                                 echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
                                                 echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
