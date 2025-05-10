@@ -82,8 +82,8 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for repr_alpha in [10.0, 1.0]:
-                    for alpha in [10.0, 1.0, 0.1]:
+                for repr_alpha in [10.0, 1.0, 0.1]:
+                    for alpha in [0.3]:
                         for num_flow_goals in [16]:
                             for expectile in [0.9]:
                                 for actor_freq in [4]:

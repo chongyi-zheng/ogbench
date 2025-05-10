@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=12,
+        slurm_array_parallelism=20,
     )
 
     with executor.batch():  # job array
@@ -57,7 +57,7 @@ def main():
             # "cube-single-play-singletask-task4-v0",
             # "cube-single-play-singletask-task5-v0",
             # "cube-double-play-singletask-task1-v0",
-            "cube-double-play-singletask-task2-v0",
+            # "cube-double-play-singletask-task2-v0",
             # "cube-double-play-singletask-task3-v0",
             # "cube-double-play-singletask-task4-v0",
             # "cube-double-play-singletask-task5-v0",
@@ -68,11 +68,11 @@ def main():
             # "scene-play-singletask-task5-v0",
             # "puzzle-3x3-play-singletask-task1-v0"
             # "puzzle-4x4-play-singletask-task1-v0",
-            # "cheetah_run",
+            "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
-            # "walker_walk",
+            "walker_walk",
             # "walker_flip",
             # "walker_stand",
             # "walker_run",
@@ -86,18 +86,18 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [300.0]:
+                for alpha in [0.3]:
                     for num_flow_goals in [16]:
                         for actor_freq in [4]:
-                            for expectile in [0.95, 0.99]:
+                            for expectile in [0.9]:
                                 for critic_latent_type in ['prior']:
                                     for vector_field_time_sin_embedding in [False]:
-                                        for transition_layer_norm in [True]:
-                                            for kl_weight in [0.01, 0.005, 0.001]:
-                                                for latent_dim in [128]:
-                                                    for clip_flow_goals in [True, False]:
+                                        for actor_layer_norm in [True]:
+                                            for kl_weight in [0.1]:
+                                                for latent_dim in [32, 64, 128, 256]:
+                                                    for clip_flow_goals in [True]:
                                                         for seed in [200, 400]:
-                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_critic_z_type={critic_latent_type}_vf_time_emb={vector_field_time_sin_embedding}_transition_ln={transition_layer_norm}_kl_weight={kl_weight}_latent_dim={latent_dim}_clip_fg={clip_flow_goals}"
+                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_critic_z_type={critic_latent_type}_vf_time_emb={vector_field_time_sin_embedding}_actor_ln={actor_layer_norm}_kl_weight={kl_weight}_latent_dim={latent_dim}_clip_fg={clip_flow_goals}"
                                                             log_dir = os.path.expanduser(
                                                                 f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_vib_gpi_offline2offline/{exp_name}/{seed}")
 
@@ -153,7 +153,6 @@ def main():
                                                                     --agent.num_flow_steps=10 \
                                                                     --agent.critic_noise_type=normal \
                                                                     --agent.critic_fm_loss_type=sarsa_squared \
-                                                                    --agent.num_flow_latents=1 \
                                                                     --agent.num_flow_goals={num_flow_goals} \
                                                                     --agent.actor_freq={actor_freq} \
                                                                     --agent.clip_flow_goals={clip_flow_goals} \
@@ -163,9 +162,9 @@ def main():
                                                                     --agent.vector_field_time_sin_embedding={vector_field_time_sin_embedding} \
                                                                     --agent.latent_dim={latent_dim} \
                                                                     --agent.q_agg=min \
-                                                                    --agent.transition_layer_norm={transition_layer_norm} \
+                                                                    --agent.transition_layer_norm=True \
                                                                     --agent.reward_layer_norm=True \
-                                                                    --agent.actor_layer_norm=False \
+                                                                    --agent.actor_layer_norm={actor_layer_norm} \
                                                                     --agent.value_layer_norm=False \
                                                                     --agent.normalize_q_loss=False \
                                                                     --agent.use_mixup=False \
