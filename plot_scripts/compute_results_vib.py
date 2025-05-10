@@ -39,185 +39,221 @@ def parse_args() -> argparse.Namespace:
         type=str_triplet,
         default=[
             # # cheetah_run
-            # ("sarsa_ifql_vib_gpi_offline2offline", "cheetah_run", "20250504_sarsa_ifql_vib_gpi_offline2offline_cheetah_run_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.15_latent_dim=128"), 
+            # ("sarsa_ifql_vib_gpi_offline2offline", "cheetah_run", "20250508_sarsa_ifql_vib_gpi_offline2offline_cheetah_run_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=128_clip_fg=True"), 
             # ("iql_offline2offline", "cheetah_run", "20250405_iql_offline2offline_cheetah_run_obs_norm_type=normal_alpha=1.0_actor_freq=4"), 
             # ("rebrac_offline2offline", "cheetah_run", "20250416_rebrac_offline2offline_cheetah_run_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"), 
             # ("crl_infonce_offline2offline", "cheetah_run", "20250416_crl_infonce_offline2offline_cheetah_run_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cheetah_run", "20250418_td_infonce_offline2offline_cheetah_run_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"),
+            # ("dino_rebrac_offline2offline", "cheetah_run", "20250428_dino_rebrac_offline2offline_cheetah_run_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # cheetah_run_backward
-            # ("sarsa_ifql_vib_gpi_offline2offline", "cheetah_run_backward", "20250504_sarsa_ifql_vib_gpi_offline2offline_cheetah_run_backward_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.15_latent_dim=128"), 
+            # ("sarsa_ifql_vib_gpi_offline2offline", "cheetah_run_backward", "20250508_sarsa_ifql_vib_gpi_offline2offline_cheetah_run_backward_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=128_clip_fg=True"), 
             # ("iql_offline2offline", "cheetah_run_backward", "20250416_iql_offline2offline_cheetah_run_backward_obs_norm_type=normal_alpha=10.0_expectile=0.99_actor_freq=4"), 
             # ("rebrac_offline2offline", "cheetah_run_backward", "20250416_rebrac_offline2offline_cheetah_run_backward_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"), 
             # ("crl_infonce_offline2offline", "cheetah_run_backward", "20250416_crl_infonce_offline2offline_cheetah_run_backward_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
             # ("td_infonce_offline2offline", "cheetah_run_backward", "20250418_td_infonce_offline2offline_cheetah_run_backward_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
+            # ("dino_rebrac_offline2offline", "cheetah_run_backward", "20250428_dino_rebrac_offline2offline_cheetah_run_backward_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # cheetah_walk
-            # ("sarsa_ifql_vib_gpi_offline2offline", "cheetah_walk", "20250504_sarsa_ifql_vib_gpi_offline2offline_cheetah_walk_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.15_latent_dim=128"), 
+            # ("sarsa_ifql_vib_gpi_offline2offline", "cheetah_walk", "20250508_sarsa_ifql_vib_gpi_offline2offline_cheetah_walk_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=128_clip_fg=True"), 
             # ("iql_offline2offline", "cheetah_walk", "20250416_iql_offline2offline_cheetah_walk_obs_norm_type=normal_alpha=10.0_expectile=0.99_actor_freq=4"), 
             # ("rebrac_offline2offline", "cheetah_walk", "20250416_rebrac_offline2offline_cheetah_walk_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"), 
             # ("crl_infonce_offline2offline", "cheetah_walk", "20250416_crl_infonce_offline2offline_cheetah_walk_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
             # ("td_infonce_offline2offline", "cheetah_walk", "20250418_td_infonce_offline2offline_cheetah_walk_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
+            # ("dino_rebrac_offline2offline", "cheetah_walk", "20250428_dino_rebrac_offline2offline_cheetah_walk_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # cheetah_walk_backward
-            # ("sarsa_ifql_vib_gpi_offline2offline", "cheetah_walk_backward", "20250504_sarsa_ifql_vib_gpi_offline2offline_cheetah_walk_backward_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.15_latent_dim=128"), 
+            # ("sarsa_ifql_vib_gpi_offline2offline", "cheetah_walk_backward", "20250508_sarsa_ifql_vib_gpi_offline2offline_cheetah_walk_backward_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=128_clip_fg=True"), 
             # ("iql_offline2offline", "cheetah_walk_backward", "20250416_iql_offline2offline_cheetah_walk_backward_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"), 
             # ("rebrac_offline2offline", "cheetah_walk_backward", "20250416_rebrac_offline2offline_cheetah_walk_backward_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
             # ("crl_infonce_offline2offline", "cheetah_walk_backward", "20250416_crl_infonce_offline2offline_cheetah_walk_backward_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
             # ("td_infonce_offline2offline", "cheetah_walk_backward", "20250418_td_infonce_offline2offline_cheetah_walk_backward_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
+            # ("dino_rebrac_offline2offline", "cheetah_walk_backward", "20250428_dino_rebrac_offline2offline_cheetah_walk_backward_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # walker_walk
-            # ("sarsa_ifql_vib_gpi_offline2offline", "walker_walk", "20250504_sarsa_ifql_vib_gpi_offline2offline_walker_walk_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128"),
+            # ("sarsa_ifql_vib_gpi_offline2offline", "walker_walk", "20250508_sarsa_ifql_vib_gpi_offline2offline_walker_walk_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.1_latent_dim=64_clip_fg=True"),
             # ("iql_offline2offline", "walker_walk", "20250418_iql_offline2offline_walker_walk_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"), 
             # ("rebrac_offline2offline", "walker_walk", "20250418_rebrac_offline2offline_walker_walk_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=10.0_actor_freq=4"), 
             # ("crl_infonce_offline2offline", "walker_walk", "20250418_crl_infonce_offline2offline_walker_walk_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
             # ("td_infonce_offline2offline", "walker_walk", "20250418_td_infonce_offline2offline_walker_walk_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
+            # ("dino_rebrac_offline2offline", "walker_walk", "20250428_dino_rebrac_offline2offline_walker_walk_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # walker_run
-            # ("sarsa_ifql_vib_gpi_offline2offline", "walker_run", "20250504_sarsa_ifql_vib_gpi_offline2offline_walker_run_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128"),
+            # ("sarsa_ifql_vib_gpi_offline2offline", "walker_run", "20250508_sarsa_ifql_vib_gpi_offline2offline_walker_run_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.1_latent_dim=64_clip_fg=True"),
             # ("iql_offline2offline", "walker_run", "20250418_iql_offline2offline_walker_run_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"), 
             # ("rebrac_offline2offline", "walker_run", "20250418_rebrac_offline2offline_walker_run_obs_norm_type=normal_alpha_actor=10.0_alpha_critic=0.1_actor_freq=4"), 
             # ("crl_infonce_offline2offline", "walker_run", "20250418_crl_infonce_offline2offline_walker_run_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
             # ("td_infonce_offline2offline", "walker_run", "20250418_td_infonce_offline2offline_walker_run_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
+            # ("dino_rebrac_offline2offline", "walker_run", "20250428_dino_rebrac_offline2offline_walker_run_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # walker_stand
-            # ("sarsa_ifql_vib_gpi_offline2offline", "walker_stand", "20250504_sarsa_ifql_vib_gpi_offline2offline_walker_stand_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.01_latent_dim=128"),
+            # ("sarsa_ifql_vib_gpi_offline2offline", "walker_stand", "20250508_sarsa_ifql_vib_gpi_offline2offline_walker_stand_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
             # ("iql_offline2offline", "walker_stand", "20250418_iql_offline2offline_walker_stand_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"), 
             # ("rebrac_offline2offline", "walker_stand", "20250418_rebrac_offline2offline_walker_stand_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"), 
             # ("crl_infonce_offline2offline", "walker_stand", "20250418_crl_infonce_offline2offline_walker_stand_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"), 
             # ("td_infonce_offline2offline", "walker_stand", "20250418_td_infonce_offline2offline_walker_stand_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"), 
+            # ("dino_rebrac_offline2offline", "walker_stand", "20250428_dino_rebrac_offline2offline_walker_stand_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # walker_flip
-            # ("sarsa_ifql_vib_gpi_offline2offline", "walker_flip", "20250504_sarsa_ifql_vib_gpi_offline2offline_walker_flip_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128"),
+            # ("sarsa_ifql_vib_gpi_offline2offline", "walker_flip", "20250508_sarsa_ifql_vib_gpi_offline2offline_walker_flip_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
             # ("iql_offline2offline", "walker_flip", "20250418_iql_offline2offline_walker_flip_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             # ("rebrac_offline2offline", "walker_flip", "20250418_rebrac_offline2offline_walker_flip_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
             # ("crl_infonce_offline2offline", "walker_flip", "20250418_crl_infonce_offline2offline_walker_flip_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"), 
             # ("td_infonce_offline2offline", "walker_flip", "20250418_td_infonce_offline2offline_walker_flip_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"), 
+            # ("dino_rebrac_offline2offline", "walker_flip", "20250428_dino_rebrac_offline2offline_walker_flip_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # quadruped_run
             # ("sarsa_ifql_vib_gpi_offline2offline", "quadruped_run", "20250504_sarsa_ifql_vib_gpi_offline2offline_quadruped_run_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.005_latent_dim=128"),
             # ("iql_offline2offline", "quadruped_run", "20250420_iql_offline2offline_quadruped_run_obs_norm_type=normal_alpha=10.0_expectile=0.99_actor_freq=4"),
             # ("rebrac_offline2offline", "quadruped_run", "20250420_rebrac_offline2offline_quadruped_run_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
             # ("crl_infonce_offline2offline", "quadruped_run", "20250420_crl_infonce_offline2offline_quadruped_run_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "quadruped_run", "20250420_td_infonce_offline2offline_quadruped_run_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
+            # # ("dino_rebrac_offline2offline", "quadruped_run", "20250428_dino_rebrac_offline2offline_quadruped_run_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # quadruped_jump
             # ("sarsa_ifql_vib_gpi_offline2offline", "quadruped_jump", "20250504_sarsa_ifql_vib_gpi_offline2offline_quadruped_jump_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.005_latent_dim=128"),
             # ("iql_offline2offline", "quadruped_jump", "20250420_iql_offline2offline_quadruped_jump_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             # ("rebrac_offline2offline", "quadruped_jump", "20250420_rebrac_offline2offline_quadruped_jump_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
             # ("crl_infonce_offline2offline", "quadruped_jump", "20250420_crl_infonce_offline2offline_quadruped_jump_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "quadruped_jump", "20250420_td_infonce_offline2offline_quadruped_jump_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
+            # # ("dino_rebrac_offline2offline", "quadruped_jump", "20250428_dino_rebrac_offline2offline_quadruped_jump_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # quadruped_stand
             # ("sarsa_ifql_vib_gpi_offline2offline", "quadruped_stand", "20250504_sarsa_ifql_vib_gpi_offline2offline_quadruped_stand_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.005_latent_dim=128"),
             # ("iql_offline2offline", "quadruped_stand", "20250420_iql_offline2offline_quadruped_stand_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
-            # ("rebrac_offline2offline", "quadruped_stand", "20250420_rebrac_offline2offline_quadruped_stand_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            # ("rebrac_offline2offline", "quadruped_stand", "20250420_rebrac_offltaine2offline_quadruped_stand_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
             # ("crl_infonce_offline2offline", "quadruped_stand", "20250420_crl_infonce_offline2offline_quadruped_stand_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "quadruped_stand", "20250420_td_infonce_offline2offline_quadruped_stand_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
+            # # ("dino_rebrac_offline2offline", "quadruped_stand", "20250428_dino_rebrac_offline2offline_quadruped_stand_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # quadruped_walk
             # ("sarsa_ifql_vib_gpi_offline2offline", "quadruped_walk", "20250504_sarsa_ifql_vib_gpi_offline2offline_quadruped_walk_obs_norm=normal_alpha=0.3_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.005_latent_dim=128"),
             # ("iql_offline2offline", "quadruped_walk", "20250420_iql_offline2offline_quadruped_walk_obs_norm_type=normal_alpha=10.0_expectile=0.99_actor_freq=4"),
             # ("rebrac_offline2offline", "quadruped_walk", "20250420_rebrac_offline2offline_quadruped_walk_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
             # ("crl_infonce_offline2offline", "quadruped_walk", "20250420_crl_infonce_offline2offline_quadruped_walk_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "quadruped_walk", "20250420_td_infonce_offline2offline_quadruped_walk_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
+            # # ("dino_rebrac_offline2offline", "quadruped_walk", "20250428_dino_rebrac_offline2offline_quadruped_walk_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # jaco_reach_top_left
             # ("sarsa_ifql_vib_gpi_offline2offline", "jaco_reach_top_left", "20250505_sarsa_ifql_vib_gpi_offline2offline_jaco_reach_top_left_obs_norm=normal_alpha=0.1_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "jaco_reach_top_left", "20250420_iql_offline2offline_jaco_reach_top_left_obs_norm_type=normal_alpha=10.0_expectile=0.99_actor_freq=4"),
             # ("rebrac_offline2offline", "jaco_reach_top_left", "20250420_rebrac_offline2offline_jaco_reach_top_left_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
             # ("crl_infonce_offline2offline", "jaco_reach_top_left", "20250420_crl_infonce_offline2offline_jaco_reach_top_left_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "jaco_reach_top_left", "20250420_td_infonce_offline2offline_jaco_reach_top_left_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
+            # ("dino_rebrac_offline2offline", "jaco_reach_top_left", "20250428_dino_rebrac_offline2offline_jaco_reach_top_left_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # jaco_reach_top_right
             # ("sarsa_ifql_vib_gpi_offline2offline", "jaco_reach_top_right", "20250505_sarsa_ifql_vib_gpi_offline2offline_jaco_reach_top_right_obs_norm=normal_alpha=0.1_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "jaco_reach_top_right", "20250420_iql_offline2offline_jaco_reach_top_right_obs_norm_type=normal_alpha=10.0_expectile=0.99_actor_freq=4"),
             # ("rebrac_offline2offline", "jaco_reach_top_right", "20250420_rebrac_offline2offline_jaco_reach_top_right_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
             # ("crl_infonce_offline2offline", "jaco_reach_top_right", "20250420_crl_infonce_offline2offline_jaco_reach_top_right_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "jaco_reach_top_right", "20250420_td_infonce_offline2offline_jaco_reach_top_right_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
+            # ("dino_rebrac_offline2offline", "jaco_reach_top_right", "20250428_dino_rebrac_offline2offline_jaco_reach_top_right_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # jaco_reach_bottom_left
             # ("sarsa_ifql_vib_gpi_offline2offline", "jaco_reach_bottom_left", "20250505_sarsa_ifql_vib_gpi_offline2offline_jaco_reach_bottom_left_obs_norm=normal_alpha=0.1_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "jaco_reach_bottom_left", "20250420_iql_offline2offline_jaco_reach_bottom_right_obs_norm_type=normal_alpha=10.0_expectile=0.99_actor_freq=4"),
             # ("rebrac_offline2offline", "jaco_reach_bottom_left", "20250420_rebrac_offline2offline_jaco_reach_bottom_left_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
             # ("crl_infonce_offline2offline", "jaco_reach_bottom_left", "20250420_crl_infonce_offline2offline_jaco_reach_bottom_left_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "jaco_reach_bottom_left", "20250420_td_infonce_offline2offline_jaco_reach_bottom_left_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
+            # ("dino_rebrac_offline2offline", "jaco_reach_bottom_left", "20250428_dino_rebrac_offline2offline_jaco_reach_bottom_left_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
             # # jaco_reach_bottom_right
             # ("sarsa_ifql_vib_gpi_offline2offline", "jaco_reach_bottom_right", "20250505_sarsa_ifql_vib_gpi_offline2offline_jaco_reach_bottom_right_obs_norm=normal_alpha=0.1_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "jaco_reach_bottom_right", "20250420_iql_offline2offline_jaco_reach_bottom_left_obs_norm_type=normal_alpha=10.0_expectile=0.99_actor_freq=4"),
             # ("rebrac_offline2offline", "jaco_reach_bottom_right", "20250420_rebrac_offline2offline_jaco_reach_bottom_right_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
             # ("crl_infonce_offline2offline", "jaco_reach_bottom_right", "20250420_crl_infonce_offline2offline_jaco_reach_bottom_right_obs_norm_type=normal_alpha=0.003_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "jaco_reach_bottom_right", "20250420_td_infonce_offline2offline_jaco_reach_bottom_right_obs_norm_type=normal_alpha=0.03_reward_type=state_actor_freq=4"),
+            # ("dino_rebrac_offline2offline", "jaco_reach_bottom_right", "20250428_dino_rebrac_offline2offline_jaco_reach_bottom_right_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
 
             # cube-single-play-singletask-task1-v0
-            ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task1-v0", "20250506_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task1-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128_clip_fg=False"),
-            ("iql_offline2offline", "cube-single-play-singletask-task1-v0", "20250420_iql_offline2offline_cube-single-play-singletask-task1-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
+            ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task1-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task1-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
+            ("iql_offline2offline", "cube-single-play-singletask-task1-v0", "20250420_iql_offline2offline_cube-double-play-singletask-task1-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "cube-single-play-singletask-task1-v0", "20250420_rebrac_offline2offline_cube-single-play-singletask-task1-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "cube-single-play-singletask-task1-v0", "20250508_crl_infonce_offline2offline_cube-single-play-singletask-task1-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # cube-single-play-singletask-task2-v0 
-            ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task2-v0", "20250506_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task2-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128_clip_fg=False"),
+            ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task2-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task2-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
             ("iql_offline2offline", "cube-single-play-singletask-task2-v0", "20250420_iql_offline2offline_cube-single-play-singletask-task2-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "cube-single-play-singletask-task2-v0", "20250420_rebrac_offline2offline_cube-single-play-singletask-task2-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "cube-single-play-singletask-task2-v0", "20250508_crl_infonce_offline2offline_cube-single-play-singletask-task2-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # cube-single-play-singletask-task3-v0 
-            ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task3-v0", "20250506_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task3-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128_clip_fg=False"),
+            ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task3-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task3-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
             ("iql_offline2offline", "cube-single-play-singletask-task3-v0", "20250420_iql_offline2offline_cube-single-play-singletask-task3-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "cube-single-play-singletask-task3-v0", "20250420_rebrac_offline2offline_cube-single-play-singletask-task3-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "cube-single-play-singletask-task3-v0", "20250508_crl_infonce_offline2offline_cube-single-play-singletask-task3-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # cube-single-play-singletask-task4-v0 
-            ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task4-v0", "20250506_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task4-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128_clip_fg=False"),
+            ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task4-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task4-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
             ("iql_offline2offline", "cube-single-play-singletask-task4-v0", "20250420_iql_offline2offline_cube-single-play-singletask-task4-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "cube-single-play-singletask-task4-v0", "20250420_rebrac_offline2offline_cube-single-play-singletask-task4-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "cube-single-play-singletask-task4-v0", "20250508_crl_infonce_offline2offline_cube-single-play-singletask-task4-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # cube-single-play-singletask-task5-v0 
-            ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task5-v0", "20250506_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task5-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128_clip_fg=False"),
+            ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task5-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task5-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
             ("iql_offline2offline", "cube-single-play-singletask-task5-v0", "20250420_iql_offline2offline_cube-single-play-singletask-task5-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "cube-single-play-singletask-task5-v0", "20250420_rebrac_offline2offline_cube-single-play-singletask-task5-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "cube-single-play-singletask-task5-v0", "20250508_crl_infonce_offline2offline_cube-single-play-singletask-task5-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             
             # cube-double-play-singletask-task1-v0
-            ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task1-v0", "20250506_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task1-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128_clip_fg=False"),
+            ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task1-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task1-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.025_latent_dim=64_clip_fg=True"),
             ("iql_offline2offline", "cube-double-play-singletask-task1-v0", "20250420_iql_offline2offline_cube-double-play-singletask-task1-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "cube-double-play-singletask-task1-v0", "20250420_rebrac_offline2offline_cube-double-play-singletask-task1-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "cube-double-play-singletask-task1-v0", "20250508_crl_infonce_offline2offline_cube-double-play-singletask-task1-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # cube-double-play-singletask-task2-v0
-            ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task2-v0", "20250506_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task2-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128_clip_fg=False"),
+            ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task2-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task2-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.025_latent_dim=64_clip_fg=True"),
             ("iql_offline2offline", "cube-double-play-singletask-task2-v0", "20250420_iql_offline2offline_cube-double-play-singletask-task2-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "cube-double-play-singletask-task2-v0", "20250420_rebrac_offline2offline_cube-double-play-singletask-task2-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "cube-double-play-singletask-task2-v0", "20250508_crl_infonce_offline2offline_cube-double-play-singletask-task2-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # cube-double-play-singletask-task3-v0
-            ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task3-v0", "20250506_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task3-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128_clip_fg=False"),
+            ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task3-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task3-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.025_latent_dim=64_clip_fg=True"),
             ("iql_offline2offline", "cube-double-play-singletask-task3-v0", "20250420_iql_offline2offline_cube-double-play-singletask-task3-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "cube-double-play-singletask-task3-v0", "20250420_rebrac_offline2offline_cube-double-play-singletask-task3-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "cube-double-play-singletask-task3-v0", "20250508_crl_infonce_offline2offline_cube-double-play-singletask-task3-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # cube-double-play-singletask-task4-v0
-            ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task4-v0", "20250506_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task4-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128_clip_fg=False"),
+            # ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task4-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task4-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.025_latent_dim=64_clip_fg=True"),
             ("iql_offline2offline", "cube-double-play-singletask-task4-v0", "20250420_iql_offline2offline_cube-double-play-singletask-task4-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "cube-double-play-singletask-task4-v0", "20250420_rebrac_offline2offline_cube-double-play-singletask-task4-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "cube-double-play-singletask-task4-v0", "20250508_crl_infonce_offline2offline_cube-double-play-singletask-task4-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # cube-double-play-singletask-task5-v0
-            ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task5-v0", "20250506_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task5-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.05_latent_dim=128_clip_fg=False"),
+            # ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task5-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task5-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.025_latent_dim=64_clip_fg=True"),
             ("iql_offline2offline", "cube-double-play-singletask-task5-v0", "20250420_iql_offline2offline_cube-double-play-singletask-task5-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "cube-double-play-singletask-task5-v0", "20250420_rebrac_offline2offline_cube-double-play-singletask-task5-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "cube-double-play-singletask-task5-v0", "20250508_crl_infonce_offline2offline_cube-double-play-singletask-task5-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             
-            # # scene-play-singletask-task1-v0
-            # ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task1-v0", ""),
+            # scene-play-singletask-task1-v0
+            ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task1-v0", "20250509_sarsa_ifql_vib_gpi_offline2offline_scene-play-singletask-task1-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.99_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             ("iql_offline2offline", "scene-play-singletask-task1-v0", "20250420_iql_offline2offline_scene-play-singletask-task1-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "scene-play-singletask-task1-v0", "20250420_rebrac_offline2offline_scene-play-singletask-task1-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
-            # # scene-play-singletask-task2-v0
-            # ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task2-v0", ""),
+            ("crl_infonce_offline2offline", "scene-play-singletask-task1-v0", "20250508_crl_infonce_offline2offline_scene-play-singletask-task1-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
+            # scene-play-singletask-task2-v0
+            ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task2-v0", "20250509_sarsa_ifql_vib_gpi_offline2offline_scene-play-singletask-task2-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.99_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             ("iql_offline2offline", "scene-play-singletask-task2-v0", "20250420_iql_offline2offline_scene-play-singletask-task2-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "scene-play-singletask-task2-v0", "20250420_rebrac_offline2offline_scene-play-singletask-task2-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
-            # # scene-play-singletask-task3-v0
-            # ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task3-v0", ""),
+            ("crl_infonce_offline2offline", "scene-play-singletask-task2-v0", "20250508_crl_infonce_offline2offline_scene-play-singletask-task2-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
+            # scene-play-singletask-task3-v0
+            ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task3-v0", "20250509_sarsa_ifql_vib_gpi_offline2offline_scene-play-singletask-task3-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.99_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             ("iql_offline2offline", "scene-play-singletask-task3-v0", "20250420_iql_offline2offline_scene-play-singletask-task3-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "scene-play-singletask-task3-v0", "20250420_rebrac_offline2offline_scene-play-singletask-task3-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
-            # # scene-play-singletask-task4-v0
-            # ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task4-v0", ""),
+            ("crl_infonce_offline2offline", "scene-play-singletask-task3-v0", "20250508_crl_infonce_offline2offline_scene-play-singletask-task3-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
+            # scene-play-singletask-task4-v0
+            ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task4-v0", "20250509_sarsa_ifql_vib_gpi_offline2offline_scene-play-singletask-task4-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.99_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             ("iql_offline2offline", "scene-play-singletask-task4-v0", "20250420_iql_offline2offline_scene-play-singletask-task4-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "scene-play-singletask-task4-v0", "20250420_rebrac_offline2offline_scene-play-singletask-task4-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
-            # # scene-play-singletask-task5-v0
-            # ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task5-v0", ""),
+            ("crl_infonce_offline2offline", "scene-play-singletask-task4-v0", "20250508_crl_infonce_offline2offline_scene-play-singletask-task4-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
+            # scene-play-singletask-task5-v0
+            ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task5-v0", "20250509_sarsa_ifql_vib_gpi_offline2offline_scene-play-singletask-task5-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.99_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             ("iql_offline2offline", "scene-play-singletask-task5-v0", "20250420_iql_offline2offline_scene-play-singletask-task5-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
             ("rebrac_offline2offline", "scene-play-singletask-task5-v0", "20250420_rebrac_offline2offline_scene-play-singletask-task5-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4"),
+            ("crl_infonce_offline2offline", "scene-play-singletask-task5-v0", "20250508_crl_infonce_offline2offline_scene-play-singletask-task5-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             
             # puzzle-4x4-play-singletask-task1-v0
             ("sarsa_ifql_vib_gpi_offline2offline", "puzzle-4x4-play-singletask-task1-v0", "20250507_sarsa_ifql_vib_gpi_offline2offline_puzzle-4x4-play-singletask-task1-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.1_latent_dim=128_clip_fg=False"),
             ("iql_offline2offline", "puzzle-4x4-play-singletask-task1-v0", "20250507_iql_offline2offline_puzzle-4x4-play-singletask-task1-v0_obs_norm_type=normal_alpha=10.0_expectile=0.9_actor_freq=4"),
             ("rebrac_offline2offline", "puzzle-4x4-play-singletask-task1-v0", "20250507_rebrac_offline2offline_puzzle-4x4-play-singletask-task1-v0_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
+            ("crl_infonce_offline2offline", "puzzle-4x4-play-singletask-task1-v0", "20250509_crl_infonce_offline2offline_puzzle-4x4-play-singletask-task1-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # puzzle-4x4-play-singletask-task2-v0
             ("sarsa_ifql_vib_gpi_offline2offline", "puzzle-4x4-play-singletask-task2-v0", "20250507_sarsa_ifql_vib_gpi_offline2offline_puzzle-4x4-play-singletask-task2-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.1_latent_dim=128_clip_fg=False"),
             ("iql_offline2offline", "puzzle-4x4-play-singletask-task2-v0", "20250507_iql_offline2offline_puzzle-4x4-play-singletask-task2-v0_obs_norm_type=normal_alpha=10.0_expectile=0.9_actor_freq=4"),
             ("rebrac_offline2offline", "puzzle-4x4-play-singletask-task2-v0", "20250507_rebrac_offline2offline_puzzle-4x4-play-singletask-task2-v0_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
+            ("crl_infonce_offline2offline", "puzzle-4x4-play-singletask-task2-v0", "20250509_crl_infonce_offline2offline_puzzle-4x4-play-singletask-task2-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # puzzle-4x4-play-singletask-task3-v0
             ("sarsa_ifql_vib_gpi_offline2offline", "puzzle-4x4-play-singletask-task3-v0", "20250507_sarsa_ifql_vib_gpi_offline2offline_puzzle-4x4-play-singletask-task3-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.1_latent_dim=128_clip_fg=False"),
             ("iql_offline2offline", "puzzle-4x4-play-singletask-task3-v0", "20250507_iql_offline2offline_puzzle-4x4-play-singletask-task3-v0_obs_norm_type=normal_alpha=10.0_expectile=0.9_actor_freq=4"),
             ("rebrac_offline2offline", "puzzle-4x4-play-singletask-task3-v0", "20250507_rebrac_offline2offline_puzzle-4x4-play-singletask-task3-v0_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
+            ("crl_infonce_offline2offline", "puzzle-4x4-play-singletask-task3-v0", "20250509_crl_infonce_offline2offline_puzzle-4x4-play-singletask-task3-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # puzzle-4x4-play-singletask-task4-v0
             ("sarsa_ifql_vib_gpi_offline2offline", "puzzle-4x4-play-singletask-task4-v0", "20250507_sarsa_ifql_vib_gpi_offline2offline_puzzle-4x4-play-singletask-task4-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.1_latent_dim=128_clip_fg=False"),
             ("iql_offline2offline", "puzzle-4x4-play-singletask-task4-v0", "20250507_iql_offline2offline_puzzle-4x4-play-singletask-task4-v0_obs_norm_type=normal_alpha=10.0_expectile=0.9_actor_freq=4"),
             ("rebrac_offline2offline", "puzzle-4x4-play-singletask-task4-v0", "20250507_rebrac_offline2offline_puzzle-4x4-play-singletask-task4-v0_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
+            ("crl_infonce_offline2offline", "puzzle-4x4-play-singletask-task4-v0", "20250509_crl_infonce_offline2offline_puzzle-4x4-play-singletask-task4-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # puzzle-4x4-play-singletask-task5-v0
             ("sarsa_ifql_vib_gpi_offline2offline", "puzzle-4x4-play-singletask-task5-v0", "20250507_sarsa_ifql_vib_gpi_offline2offline_puzzle-4x4-play-singletask-task5-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.1_latent_dim=128_clip_fg=False"),
             ("iql_offline2offline", "puzzle-4x4-play-singletask-task5-v0", "20250507_iql_offline2offline_puzzle-4x4-play-singletask-task5-v0_obs_norm_type=normal_alpha=10.0_expectile=0.9_actor_freq=4"),
             ("rebrac_offline2offline", "puzzle-4x4-play-singletask-task5-v0", "20250507_rebrac_offline2offline_puzzle-4x4-play-singletask-task5-v0_obs_norm_type=normal_alpha_actor=0.1_alpha_critic=0.1_actor_freq=4"),
+            ("crl_infonce_offline2offline", "puzzle-4x4-play-singletask-task5-v0", "20250509_crl_infonce_offline2offline_puzzle-4x4-play-singletask-task5-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
         ]
     )
     p.add_argument(

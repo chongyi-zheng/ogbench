@@ -64,29 +64,29 @@ def main():
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
-            "cheetah_run",
+            # "cheetah_run",
             # "cheetah_run_backward",
-            "cheetah_walk",
+            # "cheetah_walk",
             # "cheetah_walk_backward",
             # "walker_walk",
             # "walker_flip",
             # "walker_stand",
             # "walker_run",
-            # "quadruped_run",
-            # "quadruped_jump",
-            # "quadruped_stand",
-            # "quadruped_walk",
+            "quadruped_run",
+            "quadruped_jump",
+            "quadruped_stand",
+            "quadruped_walk",
             # "jaco_reach_top_left",
             # "jaco_reach_top_right",
             # "jaco_reach_bottom_left",
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for repr_alpha in [10.0, 1.0]:
+                for repr_alpha in [10.0]:
                     for awr_alpha in [1.0]:
                         for expectile in [0.9]:
                             for actor_freq in [4]:
-                                for seed in [100, 200]:
+                                for seed in [100, 200, 300, 400, 500]:
                                     exp_name = f"{datetime.today().strftime('%Y%m%d')}_fb_repr_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_repr_alpha={repr_alpha}_awr_alpha={awr_alpha}_expectile={expectile}_actor_freq={actor_freq}"
                                     log_dir = os.path.expanduser(
                                         f"{log_root_dir}/exp_logs/ogbench_logs/fb_repr_offline2offline/{exp_name}/{seed}")
@@ -131,6 +131,7 @@ def main():
                                             --finetuning_steps=500_000 \
                                             --eval_interval=50_000 \
                                             --eval_episodes=50 \
+                                            --dataset_class=GCDataset \
                                             --agent=impls/agents/fb_repr.py \
                                             --agent.discount=0.99 \
                                             --agent.expectile={expectile} \

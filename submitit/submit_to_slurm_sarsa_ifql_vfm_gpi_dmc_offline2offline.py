@@ -145,9 +145,9 @@ def main():
                                                         --agent.kl_weight={kl_weight} \
                                                         --agent.vector_field_time_sin_embedding={vector_field_time_sin_embedding} \
                                                         --agent.q_agg=min \
-                                                        --agent.transition_layer_norm={transition_layer_norm} \
+                                                        --agent.transition_layer_norm=True \
                                                         --agent.reward_layer_norm=True \
-                                                        --agent.actor_layer_norm=False \
+                                                        --agent.actor_layer_norm={actor_layer_norm} \
                                                         --agent.value_layer_norm=False \
                                                         --agent.normalize_q_loss=False \
                                                         --agent.use_mixup=False \

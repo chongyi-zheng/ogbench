@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=10,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -49,22 +49,27 @@ def main():
             # "antmaze-large-navigate-singletask-v0",
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
-            "cube-single-play-singletask-task1-v0",
+            # "cube-single-play-singletask-task1-v0",
             # "cube-single-play-singletask-task2-v0",
             # "cube-single-play-singletask-task3-v0",
             # "cube-single-play-singletask-task4-v0",
             # "cube-single-play-singletask-task5-v0",
-            "cube-double-play-singletask-task1-v0",
+            # "cube-double-play-singletask-task1-v0",
             # "cube-double-play-singletask-task2-v0",
             # "cube-double-play-singletask-task3-v0",
             # "cube-double-play-singletask-task4-v0",
             # "cube-double-play-singletask-task5-v0",
-            "scene-play-singletask-task1-v0",
+            # "scene-play-singletask-task1-v0",
             # "scene-play-singletask-task2-v0",
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
             # "scene-play-singletask-task2-v0",
+            "puzzle-4x4-play-singletask-task1-v0",
+            "puzzle-4x4-play-singletask-task2-v0",
+            "puzzle-4x4-play-singletask-task3-v0",
+            "puzzle-4x4-play-singletask-task4-v0",
+            "puzzle-4x4-play-singletask-task5-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
@@ -83,10 +88,10 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [30.0, 3.0, 0.3]:
+                for alpha in [3.0]:
                     for reward_type in ['state']:
                         for actor_freq in [4]:
-                            for seed in [20]:
+                            for seed in [100, 200, 300, 400]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_crl_infonce_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_reward_type={reward_type}_actor_freq={actor_freq}"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/ogbench_logs/crl_infonce_offline2offline/{exp_name}/{seed}")
