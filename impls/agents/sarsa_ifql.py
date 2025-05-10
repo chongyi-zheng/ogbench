@@ -9,12 +9,6 @@ import numpy as np
 import ml_collections
 import optax
 
-# from diffrax import (
-#     diffeqsolve, ODETerm,
-#     Euler, Dopri5,
-# )
-
-from utils.env_utils import compute_reward
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import GCFMVectorField, GCActor, Value
@@ -27,7 +21,6 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
     rng: Any
     network: Any
     cond_prob_path: Any
-    # ode_solver: Any
     config: Any = nonpytree_field()
 
     @staticmethod
@@ -99,15 +92,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             assert self.config['reward_type'] == 'state'
             goal_actions = None
 
-        if self.config['use_reward_func']:
-            assert self.config['reward_type'] == 'state'
-            future_rewards = compute_reward(self.config['reward_env_info'], flow_goals)
-        else:
-            # if self.config['use_target_reward']:
-            #     future_rewards = self.network.select('target_reward')(flow_goals, actions=goal_actions)
-            # else:
-            #     future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
-            future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
+        future_rewards = self.network.select('reward')(flow_goals, actions=goal_actions)
 
         future_rewards = future_rewards.mean(axis=0)  # MC estimations
         target_q = 1.0 / (1 - self.config['discount']) * future_rewards
@@ -294,16 +279,15 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             current_flow_matching_loss = jnp.square(
                 jax.lax.stop_gradient(current_path_sample.dx_t) - current_vf_pred).mean(axis=-1)
 
-            # if self.config['critic_noise_type'] == 'normal':
-            #     future_noises = jax.random.normal(
-            #         future_noise_rng, shape=observations.shape, dtype=observations.dtype)
-            # elif self.config['critic_noise_type'] == 'marginal_state':
-            #     future_noises = jax.random.permutation(
-            #         future_noise_rng, observations, axis=0)
+            if self.config['critic_noise_type'] == 'normal':
+                future_noises = jax.random.normal(
+                    future_noise_rng, shape=observations.shape, dtype=observations.dtype)
+            elif self.config['critic_noise_type'] == 'marginal_state':
+                future_noises = jax.random.permutation(
+                    future_noise_rng, observations, axis=0)
             # elif self.config['critic_noise_type'] == 'marginal_goal':
             #     future_noises = jax.random.permutation(
             #         future_noise_rng, goals, axis=0)
-            future_noises = current_noises
             flow_future_observations = self.compute_fwd_flow_goals(
                 future_noises, next_observations, next_actions,
                 observation_min=batch.get('observation_min', None),
@@ -511,7 +495,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             mixup_observations = lam * observations + (1.0 - lam) * observations[perms]
             mixup_actions = lam * actions + (1.0 - lam) * actions[perms]
 
-            dist = self.network.select('actor')(observations)
+            # dist = self.network.select('actor')(observations)
             log_prob = dist.log_prob(actions)
             mixup_dist = self.network.select('actor')(mixup_observations, params=grad_params)
             mixup_log_prob = mixup_dist.log_prob(mixup_actions)
@@ -533,7 +517,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
                 'mixup_std': jnp.mean(mixup_dist.scale_diag),
             }
         else:
-            dist = self.network.select('actor')(observations, params=grad_params)
+            # dist = self.network.select('actor')(observations, params=grad_params)
             log_prob = dist.log_prob(actions)
             bc_loss = -(self.config['alpha'] * log_prob).mean()
 
@@ -659,6 +643,9 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             return self.pretraining_loss(batch, grad_params, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
+        if self.config['encoder'] is not None:
+            self.target_update(new_network, 'critic_vf_encoder')
+        self.target_update(new_network, 'critic_vf')
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -671,7 +658,6 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, full_update, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        # self.target_update(new_network, 'reward')
         if self.config['encoder'] is not None:
             self.target_update(new_network, 'critic_vf_encoder')
         self.target_update(new_network, 'critic_vf')
@@ -687,7 +673,6 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, full_update=True, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        # self.target_update(new_network, 'reward')
         if self.config['encoder'] is not None:
             self.target_update(new_network, 'critic_vf_encoder')
         self.target_update(new_network, 'critic_vf')
@@ -731,8 +716,6 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
         # action_dim = ex_actions.shape[-1]
         # ex_orig_observations = ex_observations
         # ex_times = jax.random.uniform(time_rng, shape=(ex_observations.shape[0],), dtype=ex_actions.dtype)
-        if config['use_reward_func']:
-            assert config['reward_env_info'] is not None
         ex_orig_observations = ex_observations
 
         ex_times = ex_actions[..., 0]
@@ -770,6 +753,7 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
             network_type=config['network_type'],
             num_residual_blocks=config['num_residual_blocks'],
             vector_dim=obs_dim,
+            time_sin_embedding=config['vector_field_time_sin_embedding'],
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
             # state_encoder=encoders.get('critic_vf'),
@@ -797,9 +781,11 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
         network_info = dict(
             critic=(critic_def, (ex_orig_observations, ex_actions)),
             critic_vf=(critic_vf_def, (
-                ex_observations, ex_times, ex_observations, ex_actions)),
+                ex_observations, ex_times,
+                ex_observations, ex_actions)),
             target_critic_vf=(copy.deepcopy(critic_vf_def), (
-                ex_observations, ex_times, ex_observations, ex_actions)),
+                ex_observations, ex_times,
+                ex_observations, ex_actions)),
             actor=(actor_def, (ex_orig_observations, )),
         )
         if config['reward_type'] == 'state':
@@ -833,7 +819,6 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
         network = TrainState.create(network_def, network_params, tx=network_tx)
 
         params = network.params
-        # params['modules_target_reward'] = params['modules_reward']
         if config['encoder'] is not None:
             params['modules_target_critic_vf_encoder'] = params['modules_critic_vf_encoder']
         params['modules_target_critic_vf'] = params['modules_critic_vf']
@@ -841,13 +826,6 @@ class SARSAIFQLAgent(flax.struct.PyTreeNode):
         cond_prob_path = cond_prob_path_class[config['prob_path_class']](
             scheduler=scheduler_class[config['scheduler_class']]()
         )
-
-        # if config['ode_solver_type'] == 'euler':
-        #     ode_solver = Euler()
-        # elif config['ode_solver_type'] == 'dopri5':
-        #     ode_solver = Dopri5()
-        # else:
-        #     raise TypeError("Unknown ode_solver_type: {}".format(config['ode_solver_type']))
 
         config['obs_dims'] = obs_dims
         config['action_dim'] = action_dim
@@ -869,8 +847,9 @@ def get_config():
             # Action data type (will be set automatically).
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
-            network_type='mlp',  # Type of the network
+            network_type='mlp',  # Type of the network.
             num_residual_blocks=1,  # Number of residual blocks for simba network.
+            vector_field_time_sin_embedding=False,  # Whether to use time embedding in the vector field.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             reward_hidden_dims=(512, 512, 512, 512),  # Reward network hidden dimensions.
@@ -883,10 +862,9 @@ def get_config():
             q_agg='mean',  # Aggregation method for target Q values.
             critic_noise_type='normal',  # Critic noise type. ('marginal_state', 'normal').
             critic_fm_loss_type='sarsa_squared', # Type of critic flow matching loss. ('naive_sarsa', 'coupled_sarsa', 'sarsa_squared')
-            num_flow_goals=1,  # Number of future flow goals for the compute target q.
+            num_flow_goals=4,  # Number of future flow goals for the compute target q.
             clip_flow_goals=False,  # Whether to clip the flow goals.
             use_terminal_masks=False,  # Whether to use the terminal masks.
-            ode_solver_type='euler',  # Type of ODE solver ('euler', 'dopri5').
             prob_path_class='AffineCondProbPath',  # Conditional probability path class name.
             scheduler_class='CondOTScheduler',  # Scheduler class name.
             use_mixup=False,  # Whether to use mixup for the behavioral cloning loss. (prevent overfitting).
@@ -897,10 +875,7 @@ def get_config():
             const_std=True,  # Whether to use constant standard deviation for the actor.
             num_flow_steps=10,  # Number of flow steps.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
-            use_reward_func=False,  # Whether to use the ground truth reward function.
-            use_target_reward=False,  # Whether to use the target reward network.
             reward_type='state',  # Reward type. ('state', 'state_action')
-            encoder_actor_loss_grad=False,  # Whether to backpropagate gradients from the actor loss into the encoder.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             reward_env_info=ml_collections.config_dict.placeholder(dict),  # Environment information for computing the ground truth reward.
         )
