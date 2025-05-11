@@ -12,19 +12,23 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
+        exclude = None
     elif cluster_name == 'della':
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
+        exclude = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
+        exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
+        exclude = 'neu324,neu325,neu329,neu306'
     else:
         raise NotImplementedError
 
@@ -40,6 +44,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
+        slurm_exclude=exclude,
         slurm_array_parallelism=25,
     )
 
@@ -72,17 +77,16 @@ def main():
             # "puzzle-4x4-play-singletask-task3-v0",
             # "puzzle-4x4-play-singletask-task4-v0",
             # "puzzle-4x4-play-singletask-task5-v0",
-            "cheetah_run",
-            "cheetah_run_backward",
+            # "cheetah_run",
+            # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
             # "walker_walk",
             # "walker_flip",
             # "walker_stand",
             # "walker_run",
-            # "quadruped_run",
-            # "quadruped_jump",
-            # "quadruped_stand",
+            "quadruped_run",
+            "quadruped_jump",
             # "quadruped_walk",
             # "jaco_reach_top_left",
             # "jaco_reach_top_right",
@@ -97,9 +101,9 @@ def main():
                                 for num_flow_goals in [16]:
                                     for actor_freq in [4]:
                                         for expectile in [0.9]:
-                                            for kl_weight in [0.05]:
+                                            for kl_weight in [0.005]:
                                                 for latent_dim in [128]:
-                                                    for seed in [100, 200, 300, 400]:
+                                                    for seed in [100, 200, 300]:
                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_actor_ln=False_kl_weight={kl_weight}_latent_dim={latent_dim}"
                                                         log_dir = os.path.expanduser(
                                                             f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_vib_gpi_offline2offline/{exp_name}/{seed}")

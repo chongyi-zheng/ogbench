@@ -12,7 +12,8 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
-    elif 'della' in cluster_name:
+        exclude = None
+    elif cluster_name == 'della':
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
@@ -21,10 +22,12 @@ def main():
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
+        exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
+        exclude = 'neu324,neu325,neu329,neu306'
     else:
         raise NotImplementedError
 
@@ -40,6 +43,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
+        slurm_exclude=exclude,
         slurm_array_parallelism=20,
     )
 
@@ -64,16 +68,16 @@ def main():
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
-            "cheetah_run",
-            "cheetah_run_backward",
+            # "cheetah_run",
+            # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
             # "walker_walk",
             # "walker_flip",
             # "walker_stand",
             # "walker_run",
-            # "quadruped_run",
-            # "quadruped_jump",
+            "quadruped_run",
+            "quadruped_jump",
             # "quadruped_stand",
             # "quadruped_walk",
             # "jaco_reach_top_left",
@@ -85,11 +89,11 @@ def main():
                 for finetuning_size in [500_000]:
                     for finetuning_steps in [250_000]:
                         for eval_interval in [1_000]:
-                            for repr_alpha in [1.0]:
+                            for repr_alpha in [10.0]:
                                 for awr_alpha in [1.0]:
                                     for expectile in [0.9]:
                                         for actor_freq in [4]:
-                                            for seed in [100, 200, 300, 400]:
+                                            for seed in [100, 200, 300]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_fb_repr_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_repr_alpha={repr_alpha}_awr_alpha={awr_alpha}_expectile={expectile}_actor_freq={actor_freq}"
                                                 log_dir = os.path.expanduser(
                                                     f"{log_root_dir}/exp_logs/ogbench_logs/fb_repr_offline2offline/{exp_name}/{seed}")

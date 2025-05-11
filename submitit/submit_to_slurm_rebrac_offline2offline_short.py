@@ -12,19 +12,23 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
+        exclude = None
     elif cluster_name == 'della':
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
+        exclude = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
+        exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
+        exclude = 'neu324,neu325,neu329,neu306'
     else:
         raise NotImplementedError
 
@@ -40,6 +44,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
+        slurm_exclude=exclude,
         slurm_array_parallelism=25,
     )
 
@@ -52,16 +57,17 @@ def main():
             # "cube-single-play-singletask-task2-v0",
             # "cube-double-play-singletask-task2-v0",
             # "scene-play-singletask-task2-v0",
-            "cheetah_run",
+            # "cheetah_run",
             # "walker_walk",
-            "cheetah_run_backward",
+            # "cheetah_run_backward",
             # "walker_flip",
-            # "quadruped_jump",
+            "quadruped_run",
+            "quadruped_jump",
             # "jaco_reach_top_left",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha_actor in [0.1]:
-                    for alpha_critic in [0.1]:
+                for alpha_actor in [1.0]:
+                    for alpha_critic in [1.0]:
                         for finetuning_size in [500_000]:
                             for finetuning_steps in [250_000]:
                                 for eval_interval in [1_000]:
