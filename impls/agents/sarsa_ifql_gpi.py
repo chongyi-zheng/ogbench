@@ -65,7 +65,7 @@ class SARSAIFQLGPIAgent(flax.struct.PyTreeNode):
         # obs_action_dim = observations.shape[-1] + actions.shape[-1]
         latents = jax.random.normal(
             latent_rng,
-            shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *actions.shape),
+            shape=(self.config['num_flow_latents'], self.config['num_flow_goals'], *actions.shape[:-1], self.config['latent_dim']),
             dtype=observations.dtype,
         )
         flow_goals = self.compute_fwd_flow_goals(
