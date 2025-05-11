@@ -40,7 +40,7 @@ def main():
         slurm_mem="8G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=10,
+        slurm_array_parallelism=20,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -64,6 +64,11 @@ def main():
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
+            "puzzle-4x4-play-singletask-task1-v0",
+            # "puzzle-4x4-play-singletask-task2-v0",
+            # "puzzle-4x4-play-singletask-task3-v0",
+            # "puzzle-4x4-play-singletask-task4-v0",
+            # "puzzle-4x4-play-singletask-task5-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
@@ -76,16 +81,16 @@ def main():
             # "quadruped_jump",
             # "quadruped_stand",
             # "quadruped_walk",
-            "jaco_reach_top_left",
-            "jaco_reach_top_right",
-            "jaco_reach_bottom_left",
-            "jaco_reach_bottom_right",
+            # "jaco_reach_top_left",
+            # "jaco_reach_top_right",
+            # "jaco_reach_bottom_left",
+            # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [1.0]:
+                for alpha in [10.0, 1.0, 0.1]:
                     for expectile in [0.9]:
                         for actor_freq in [4]:
-                            for seed in [100, 200, 300, 400, 500]:
+                            for seed in [100, 200]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_hilp_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_expectile={expectile}_actor_freq={actor_freq}"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/ogbench_logs/hilp_offline2offline/{exp_name}/{seed}")
