@@ -73,7 +73,7 @@ class Dataset(FrozenDict):
         self.inplace_aug = False  # Whether to replace the original image after applying augmentations.
         self.return_next_actions = False  # Whether to additionally return next actions; set outside the class.
 
-        self._prestacked = False
+        # self._prestacked = False
 
         # observation statistics
         self.obs_mean = None
@@ -166,41 +166,44 @@ class Dataset(FrozenDict):
                 next_obs.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs], self['observations']))
         next_obs.append(jax.tree_util.tree_map(lambda arr: arr[idxs], self['next_observations']))
 
-        obs = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *obs)
-        next_obs = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *next_obs)
+        # obs = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *obs)
+        # next_obs = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *next_obs)
         # overwrite unstacked frame version of self._dict
-        obs.setflags(write=False)
-        next_obs.setflags(write=False)
-        self._dict['observations'] = obs
-        self._dict['next_observations'] = next_obs
+        # obs.setflags(write=False)
+        # next_obs.setflags(write=False)
+        self._dict['observations'] = jax.tree_util.tree_map(
+            lambda *args: np.concatenate(args, axis=-1), *obs)
+        self._dict['next_observations'] = jax.tree_util.tree_map(
+            lambda *args: np.concatenate(args, axis=-1), *next_obs)
         # don't need to prestack once we've already prestacked...
         self._prestacked = True
 
     def sample(self, batch_size: int, idxs=None):
         """Sample a batch of transitions."""
         # prestack frames for faster batch sampling
-        if (self.frame_stack is not None) and (not self._prestacked):
-            self._prestack_frames()
+        # warning: require a large amount of cpu mems
+        # if (self.frame_stack is not None) and (not self._prestacked):
+        #     self._prestack_frames()
         if idxs is None:
             idxs = self.get_random_idxs(batch_size)
         batch = self.get_subset(idxs)
         batch['observation_min'] = self.normalized_obs_min
         batch['observation_max'] = self.normalized_obs_max
-        # if self.frame_stack is not None:
-        #     # Stack frames.
-        #     initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
-        #     obs = []  # Will be [ob[t - frame_stack + 1], ..., ob[t]].
-        #     next_obs = []  # Will be [ob[t - frame_stack + 2], ..., ob[t], next_ob[t]].
-        #     for i in reversed(range(self.frame_stack)):
-        #         # Use the initial state if the index is out of bounds.
-        #         cur_idxs = np.maximum(idxs - i, initial_state_idxs)
-        #         obs.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs], self['observations']))
-        #         if i != self.frame_stack - 1:
-        #             next_obs.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs], self['observations']))
-        #     next_obs.append(jax.tree_util.tree_map(lambda arr: arr[idxs], self['next_observations']))
-        #
-        #     batch['observations'] = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *obs)
-        #     batch['next_observations'] = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *next_obs)
+        if self.frame_stack is not None:
+            # Stack frames.
+            initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
+            obs = []  # Will be [ob[t - frame_stack + 1], ..., ob[t]].
+            next_obs = []  # Will be [ob[t - frame_stack + 2], ..., ob[t], next_ob[t]].
+            for i in reversed(range(self.frame_stack)):
+                # Use the initial state if the index is out of bounds.
+                cur_idxs = np.maximum(idxs - i, initial_state_idxs)
+                obs.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs], self['observations']))
+                if i != self.frame_stack - 1:
+                    next_obs.append(jax.tree_util.tree_map(lambda arr: arr[cur_idxs], self['observations']))
+            next_obs.append(jax.tree_util.tree_map(lambda arr: arr[idxs], self['next_observations']))
+
+            batch['observations'] = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *obs)
+            batch['next_observations'] = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=-1), *next_obs)
         if self.p_aug is not None:
             # Apply random-crop image augmentation.
             if np.random.rand() < self.p_aug:

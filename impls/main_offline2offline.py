@@ -48,6 +48,8 @@ flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
 flags.DEFINE_string('obs_norm_type', 'none',
                     'Type of observation normalization. (none, normal, bounded)')
 flags.DEFINE_float('p_aug', None, 'Probability of applying image augmentation.')
+flags.DEFINE_integer('num_aug', 1, 'Number of image augmentations.')
+flags.DEFINE_integer('inplace_aug', 1, 'Whether to replace the original image after applying augmentations.')
 flags.DEFINE_integer('frame_stack', None, 'Number of frames to stack.')
 
 config_flags.DEFINE_config_file('agent', 'agents/fql.py', lock_config=False)
@@ -100,6 +102,8 @@ def main(_):
         if dataset is not None:
             dataset.obs_norm_type = FLAGS.obs_norm_type
             dataset.p_aug = FLAGS.p_aug
+            dataset.num_aug = FLAGS.num_aug
+            dataset.inplace_aug = FLAGS.inplace_aug
             dataset.frame_stack = FLAGS.frame_stack
             if config['agent_name'] in ['rebrac', 'dino_rebrac', 'td_infonce',
                                         'sarsa_ifac_q', 'sarsa_ifql', 'sarsa_ifql_gpi',
@@ -123,7 +127,7 @@ def main(_):
             finetuning_val_dataset = GCDataset(finetuning_val_dataset, config)
 
     # Create agent.
-    example_batch = finetuning_train_dataset.sample(1)
+    example_batch = pretraining_train_dataset.sample(1)
     # if config['discrete']:
     #     # Fill with the maximum action to let the agent know the action space size.
     #     example_batch['actions'] = np.full_like(example_batch['actions'], env.action_space.n - 1)

@@ -37,7 +37,7 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=16,
-        slurm_mem="64G",
+        slurm_mem="120G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=10,
@@ -90,7 +90,7 @@ def main():
             # "jaco_reach_bottom_left",
             # "jaco_reach_bottom_right",
         ]:
-            for obs_norm_type in ['normal']:
+            for obs_norm_type in ['none']:
                 for alpha_actor in [0.1]:
                     for alpha_critic in [0.1]:
                         for actor_freq in [4]:
@@ -137,7 +137,8 @@ def main():
                                             --env_name={env_name} \
                                             --obs_norm_type={obs_norm_type} \
                                             --finetuning_size=500_000 \
-                                            --finetuning_steps=500_000 \
+                                            --pretraining_steps=500_000 \
+                                            --finetuning_steps=250_000 \
                                             --eval_interval=50_000 \
                                             --eval_episodes=50 \
                                             --p_aug=0.5 \
