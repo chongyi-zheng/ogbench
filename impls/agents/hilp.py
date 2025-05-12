@@ -10,7 +10,7 @@ import optax
 
 from utils.encoders import encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, Value, GCMetricValue, GCValue
+from utils.networks import GCActor, GCMetricValue, GCValue
 
 
 class HILPAgent(flax.struct.PyTreeNode):
@@ -37,14 +37,14 @@ class HILPAgent(flax.struct.PyTreeNode):
         """
         (next_v1_t, next_v2_t) = self.network.select('target_value')(batch['next_observations'], batch['value_goals'])
         next_v_t = jnp.minimum(next_v1_t, next_v2_t)
-        q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v_t
+        q = batch['relabeled_rewards'] + self.config['discount'] * batch['relabeled_masks'] * next_v_t
 
         (v1_t, v2_t) = self.network.select('target_value')(batch['observations'], batch['value_goals'])
         v_t = (v1_t + v2_t) / 2
         adv = q - v_t
 
-        q1 = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v1_t
-        q2 = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v2_t
+        q1 = batch['relabeled_rewards'] + self.config['discount'] * batch['relabeled_masks'] * next_v1_t
+        q2 = batch['relabeled_rewards'] + self.config['discount'] * batch['relabeled_masks'] * next_v2_t
         (v1, v2) = self.network.select('value')(batch['observations'], batch['value_goals'], params=grad_params)
         v = (v1 + v2) / 2
 
@@ -90,7 +90,7 @@ class HILPAgent(flax.struct.PyTreeNode):
             'q_min': q.min(),
         }
 
-    def skill_actor_loss(self, batch, grad_params, rng=None):
+    def skill_actor_loss(self, batch, grad_params):
         """Compute the actor loss."""
         v = self.network.select('skill_value')(batch['observations'], batch['skills'])
         q1, q2 = self.network.select('skill_critic')(batch['observations'], batch['skills'], batch['actions'])
@@ -114,7 +114,6 @@ class HILPAgent(flax.struct.PyTreeNode):
         }
 
         return actor_loss, actor_info
-
 
     @jax.jit
     def pretraining_loss(self, batch, grad_params, rng=None):

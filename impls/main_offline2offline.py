@@ -108,22 +108,16 @@ def main(_):
             if config['agent_name'] in ['rebrac', 'dino_rebrac', 'td_infonce',
                                         'sarsa_ifac_q', 'sarsa_ifql', 'sarsa_ifql_gpi',
                                         'sarsa_ifql_vib_gpi', 'sarsa_ifql_vfm_gpi',
-                                        'fb_repr_fom']:
+                                        'fb_repr_fom', 'hilp_fom']:
                 dataset.return_next_actions = True
             dataset.normalize_observations()
     if FLAGS.dataset_class == 'GCDataset':
         config['p_aug'] = FLAGS.p_aug
         config['frame_stack'] = FLAGS.frame_stack
-        if config['agent_name'] in ['hilp']:
-            pretraining_train_dataset = GCDataset(pretraining_train_dataset, dict(config, relabel_reward=True))
-        else:
-            pretraining_train_dataset = GCDataset(pretraining_train_dataset, config)
+        pretraining_train_dataset = GCDataset(pretraining_train_dataset, config)
         finetuning_train_dataset = GCDataset(finetuning_train_dataset, config)
         if pretraining_val_dataset is not None:
-            if config['agent_name'] in ['hilp']:
-                pretraining_val_dataset = GCDataset(pretraining_val_dataset, dict(config, relabel_reward=True))
-            else:
-                pretraining_val_dataset = GCDataset(pretraining_val_dataset, config)
+            pretraining_val_dataset = GCDataset(pretraining_val_dataset, config)
             finetuning_val_dataset = GCDataset(finetuning_val_dataset, config)
 
     # Create agent.

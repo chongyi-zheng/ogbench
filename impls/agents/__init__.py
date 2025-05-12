@@ -15,6 +15,7 @@ from agents.gcmciql import GCMCIQLAgent
 from agents.gcsarsaql import GCSARSAQLAgent
 from agents.gctd_fmrl import GCTDFMRLAgent
 from agents.hilp import HILPAgent
+from agents.hilp_fom import HILPFOMAgent
 from agents.hiql import HIQLAgent
 from agents.ifac import IFACAgent
 from agents.iql import IQLAgent
@@ -49,6 +50,7 @@ agents = dict(
     gcmciql=GCMCIQLAgent,
     gcivl=GCIVLAgent,
     hilp=HILPAgent,
+    hilp_fom=HILPFOMAgent,
     hiql=HIQLAgent,
     mcfac=MCFACAgent,
     ifac=IFACAgent,

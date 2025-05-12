@@ -37,7 +37,7 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="8G",
+        slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=20,
@@ -64,12 +64,12 @@ def main():
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
-            "cheetah_run",
+            # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
-            "walker_walk",
-            # "walker_flip",
+            # "walker_walk",
+            "walker_flip",
             # "walker_stand",
             # "walker_run",
             # "quadruped_run",
@@ -88,7 +88,7 @@ def main():
                             for expectile in [0.9]:
                                 for actor_freq in [4]:
                                     for clip_flow_goals in [True]:
-                                        for seed in [100, 200]:
+                                        for seed in [100, 200, 300]:
                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_fb_repr_fom_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_repr_alpha={repr_alpha}_alpha={alpha}_num_fg={num_flow_goals}_expectile={expectile}_actor_freq={actor_freq}_clip_fg={clip_flow_goals}"
                                             log_dir = os.path.expanduser(
                                                 f"{log_root_dir}/exp_logs/ogbench_logs/fb_repr_fom_offline2offline/{exp_name}/{seed}")
