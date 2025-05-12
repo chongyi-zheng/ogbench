@@ -12,26 +12,30 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
-    elif 'della' in cluster_name:
+        exclude = None
+    elif cluster_name == 'della':
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
+        exclude = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
+        exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
+        exclude = 'neu324,neu325,neu329,neu306,neu321'
     else:
         raise NotImplementedError
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="fql",
-        slurm_time=int(4 * 60),  # minute
+        slurm_name="hilp_fom_offline2offline",
+        slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
@@ -40,27 +44,59 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=40,
+        slurm_exclude=exclude,
+        slurm_array_parallelism=20,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
     with executor.batch():  # job array
         for env_name in [
-            "basketball-v2_ml5-2.5M",
-            "button-press-topdown-v2_ml5-2.5M",
-            "peg-insert-side-v2_ml5-2.5M"
+            # "antmaze-large-navigate-singletask-v0",
+            # "humanoidmaze-medium-navigate-singletask-v0",
+            # "antsoccer-arena-navigate-singletask-v0"
+            # "cube-single-play-singletask-task1-v0",
+            # "cube-single-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task3-v0",
+            # "cube-single-play-singletask-task4-v0",
+            # "cube-single-play-singletask-task5-v0",
+            # "cube-double-play-singletask-task1-v0",
+            # "cube-double-play-singletask-task2-v0",
+            # "cube-double-play-singletask-task3-v0",
+            # "cube-double-play-singletask-task4-v0",
+            # "cube-double-play-singletask-task5-v0",
+            "scene-play-singletask-task1-v0",
+            # "scene-play-singletask-task2-v0",
+            # "scene-play-singletask-task3-v0",
+            # "scene-play-singletask-task4-v0",
+            # "scene-play-singletask-task5-v0",
+            # "cheetah_run",
+            # "cheetah_run_backward",
+            # "cheetah_walk",
+            # "cheetah_walk_backward",
+            # "walker_walk",
+            # "walker_flip",
+            # "walker_stand",
+            # "walker_run",
+            # "quadruped_run",
+            # "quadruped_jump",
+            # "quadruped_stand",
+            # "quadruped_walk",
+            # "jaco_reach_top_left",
+            # "jaco_reach_top_right",
+            # "jaco_reach_bottom_left",
+            # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for discount in [0.99]:
-                    for alpha in [100, 10, 1.0, 0.1, 0.01]:
-                        for num_flow_steps in [10]:
-                            for distill_type in ["fwd_sample"]:
-                                for q_agg in ["mean", "min"]:
-                                    for normalize_q_loss in [False, True]:
-                                        for seed in [20]:
-                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_flow_steps={num_flow_steps}_distill_type={distill_type}_q_agg={q_agg}_normalize_q_loss={normalize_q_loss}"
+                for alpha in [300.0]:
+                    for num_flow_goals in [16]:
+                        for expectile in [0.99]:
+                            for actor_freq in [4]:
+                                for latent_dim in [128]:
+                                    for clip_flow_goals in [True]:
+                                        for seed in [100, 200, 300]:
+                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_hilp_fom_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_expectile={expectile}_actor_freq={actor_freq}_latent_dim={latent_dim}_clip_fg={clip_flow_goals}"
                                             log_dir = os.path.expanduser(
-                                                f"{log_root_dir}/exp_logs/ogbench_logs/fql/{exp_name}/{seed}")
+                                                f"{log_root_dir}/exp_logs/ogbench_logs/hilp_fom_offline2offline/{exp_name}/{seed}")
 
                                             # change the log folder of slurm executor
                                             submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -74,7 +110,7 @@ def main():
                                                 conda activate ogbench;
                                                 which python;
                                                 echo $CONDA_PREFIX;
-        
+            
                                                 echo job_id: $SLURM_ARRAY_JOB_ID;
                                                 echo task_id: $SLURM_ARRAY_TASK_ID;
                                                 squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
@@ -91,27 +127,30 @@ def main():
                                                 export D4RL_SUPPRESS_IMPORT_ERROR=1;
                                                 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
                                                 export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-        
+            
                                                 rm -rf {log_dir};
                                                 mkdir -p {log_dir};
-                                                python $PROJECT_DIR/impls/main_rl.py \
+                                                python $PROJECT_DIR/impls/main_offline2offline.py \
                                                     --enable_wandb=1 \
                                                     --env_name={env_name} \
                                                     --obs_norm_type={obs_norm_type} \
+                                                    --finetuning_size=500_000 \
+                                                    --finetuning_steps=500_000 \
+                                                    --eval_interval=50_000 \
                                                     --eval_episodes=50 \
-                                                    --agent=impls/agents/fql.py \
-                                                    --agent.discount={discount} \
+                                                    --dataset_class=GCDataset \
+                                                    --agent=impls/agents/hilp_fom.py \
+                                                    --agent.discount=0.99 \
+                                                    --agent.expectile={expectile} \
                                                     --agent.alpha={alpha} \
-                                                    --agent.num_flow_steps={num_flow_steps} \
-                                                    --agent.distill_type={distill_type} \
-                                                    --agent.q_agg={q_agg} \
-                                                    --agent.actor_layer_norm=False \
-                                                    --agent.vf_q_loss=False \
-                                                    --agent.normalize_q_loss={normalize_q_loss} \
+                                                    --agent.latent_dim={latent_dim} \
+                                                    --agent.actor_freq={actor_freq} \
+                                                    --agent.num_flow_goals={num_flow_goals} \
+                                                    --agent.clip_flow_goals={clip_flow_goals} \
                                                     --seed={seed} \
                                                     --save_dir={log_dir} \
                                                 2>&1 | tee {log_dir}/stream.log;
-        
+            
                                                 export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
                                                 echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
                                                 echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";

@@ -101,8 +101,8 @@ def main():
                                             for repr_noise_clip in [0.2]:
                                                 for repr_temp in [0.1]:
                                                     for target_repr_temp in [0.04]:
-                                                        for seed in [100, 200, 300]:
-                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_dino_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_actor_freq={actor_freq}_repr_noise={repr_noise}_repr_noise_clip={repr_noise_clip}_repr_temp={repr_temp}_target_repr_temp={target_repr_temp}"
+                                                        for seed in [100, 200, 300, 400]:
+                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_dino_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_actor_freq={actor_freq}_repr_noise={repr_noise}_repr_noise_clip={repr_noise_clip}_repr_temp={repr_temp}_target_repr_temp={target_repr_temp}"
                                                             log_dir = os.path.expanduser(
                                                                 f"{log_root_dir}/exp_logs/ogbench_logs/dino_rebrac_offline2offline/{exp_name}/{seed}")
 

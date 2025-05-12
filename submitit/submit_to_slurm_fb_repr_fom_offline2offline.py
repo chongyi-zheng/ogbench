@@ -12,19 +12,23 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
-    elif 'della' in cluster_name:
+        exclude = None
+    elif cluster_name == 'della':
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
+        exclude = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
+        exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
+        exclude = 'neu324,neu325,neu329,neu306,neu321'
     else:
         raise NotImplementedError
 
@@ -40,6 +44,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
+        slurm_exclude=exclude,
         slurm_array_parallelism=20,
     )
 
@@ -59,7 +64,7 @@ def main():
             # "cube-double-play-singletask-task3-v0",
             # "cube-double-play-singletask-task4-v0",
             # "cube-double-play-singletask-task5-v0",
-            # "scene-play-singletask-task1-v0",
+            "scene-play-singletask-task1-v0",
             # "scene-play-singletask-task2-v0",
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
@@ -69,11 +74,11 @@ def main():
             # "cheetah_walk",
             # "cheetah_walk_backward",
             # "walker_walk",
-            "walker_flip",
+            # "walker_flip",
             # "walker_stand",
             # "walker_run",
             # "quadruped_run",
-            "quadruped_jump",
+            # "quadruped_jump",
             # "quadruped_stand",
             # "quadruped_walk",
             # "jaco_reach_top_left",
@@ -82,14 +87,14 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for repr_alpha in [10.0, 1.0, 0.1]:
-                    for alpha in [0.3]:
+                for repr_alpha in [100.0, 10.0, 1.0]:
+                    for alpha in [300.0]:
                         for num_flow_goals in [16]:
-                            for expectile in [0.9]:
+                            for expectile in [0.99]:
                                 for actor_freq in [4]:
-                                    for latent_dim in [64]:
+                                    for latent_dim in [128]:
                                         for clip_flow_goals in [True]:
-                                            for seed in [100, 200, 300]:
+                                            for seed in [100, 200]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_fb_repr_fom_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_repr_alpha={repr_alpha}_alpha={alpha}_num_fg={num_flow_goals}_expectile={expectile}_actor_freq={actor_freq}_latent_dim={latent_dim}_clip_fg={clip_flow_goals}"
                                                 log_dir = os.path.expanduser(
                                                     f"{log_root_dir}/exp_logs/ogbench_logs/fb_repr_fom_offline2offline/{exp_name}/{seed}")
