@@ -51,7 +51,7 @@ def main():
             # "antsoccer-arena-navigate-singletask-v0"
             # "cube-single-play-singletask-task1-v0",
             # "cube-single-play-singletask-task2-v0",
-            # "cube-single-play-singlectask-task3-v0",
+            # "cube-single-play-singletask-task3-v0",
             # "cube-single-play-singletask-task4-v0",
             # "cube-single-play-singletask-task5-v0",
             # "cube-double-play-singletask-task1-v0",

@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -37,10 +37,10 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="8G",
+        slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=25,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -65,10 +65,10 @@ def main():
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
             "puzzle-4x4-play-singletask-task1-v0",
-            # "puzzle-4x4-play-singletask-task2-v0",
-            # "puzzle-4x4-play-singletask-task3-v0",
-            # "puzzle-4x4-play-singletask-task4-v0",
-            # "puzzle-4x4-play-singletask-task5-v0",
+            "puzzle-4x4-play-singletask-task2-v0",
+            "puzzle-4x4-play-singletask-task3-v0",
+            "puzzle-4x4-play-singletask-task4-v0",
+            "puzzle-4x4-play-singletask-task5-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
@@ -87,10 +87,10 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [10.0, 1.0, 0.1]:
+                for alpha in [3.0]:
                     for expectile in [0.9]:
                         for actor_freq in [4]:
-                            for seed in [100, 200]:
+                            for seed in [100, 200, 300, 400, 500]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_hilp_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha={alpha}_expectile={expectile}_actor_freq={actor_freq}"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/ogbench_logs/hilp_offline2offline/{exp_name}/{seed}")

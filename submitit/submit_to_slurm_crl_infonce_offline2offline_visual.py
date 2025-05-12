@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -70,10 +70,10 @@ def main():
             # "puzzle-4x4-play-singletask-task3-v0",
             # "puzzle-4x4-play-singletask-task4-v0",
             # "puzzle-4x4-play-singletask-task5-v0",
-            # "visual-cube-single-play-singletask-task1-v0",
-            # "visual-cube-double-play-singletask-task1-v0",
-            "visual-scene-play-singletask-task1-v0",
-            "visual-puzzle-4x4-play-singletask-task1-v0",
+            "visual-cube-single-play-singletask-task1-v0",
+            "visual-cube-double-play-singletask-task1-v0",
+            # "visual-scene-play-singletask-task1-v0",
+            # "visual-puzzle-4x4-play-singletask-task1-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
@@ -92,7 +92,7 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['none']:
-                for alpha in [3.0]:
+                for alpha in [30.0]:
                     for reward_type in ['state']:
                         for actor_freq in [4]:
                             for encoder in ['impala_small']:

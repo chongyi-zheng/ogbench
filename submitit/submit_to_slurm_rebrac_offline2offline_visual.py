@@ -71,7 +71,7 @@ def main():
             # "puzzle-4x4-play-singletask-task5-v0",
             # "visual-cube-single-play-singletask-task1-v0",
             # "visual-cube-double-play-singletask-task1-v0",
-            # "visual-scene-play-singletask-task1-v0",
+            "visual-scene-play-singletask-task1-v0",
             "visual-puzzle-4x4-play-singletask-task1-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
@@ -92,7 +92,7 @@ def main():
         ]:
             for obs_norm_type in ['none']:
                 for alpha_actor in [0.1]:
-                    for alpha_critic in [0.1]:
+                    for alpha_critic in [0.01]:
                         for actor_freq in [4]:
                             for encoder in ['impala_small']:
                                 for seed in [100, 200, 300]:

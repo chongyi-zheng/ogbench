@@ -61,7 +61,7 @@ def main():
             # "cube-double-play-singletask-task3-v0",
             # "cube-double-play-singletask-task4-v0",
             # "cube-double-play-singletask-task5-v0",
-            "scene-play-singletask-task1-v0",
+            # "scene-play-singletask-task1-v0",
             # "scene-play-singletask-task2-v0",
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
@@ -77,8 +77,8 @@ def main():
             # "cheetah_walk",
             # "cheetah_walk_backward",
             # "walker_walk",
-            # "walker_flip",
-            # "walker_stand",
+            "walker_flip",
+            "walker_stand",
             # "walker_run",
             # "quadruped_run",
             # "quadruped_jump",
@@ -90,14 +90,14 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [30.0]:
+                for alpha in [0.3]:
                     for num_flow_goals in [16]:
                         for actor_freq in [4]:
                             for expectile in [0.5]:
                                 for vector_field_time_sin_embedding in [False]:
                                     for actor_layer_norm in [False]:
                                         for clip_flow_goals in [True]:
-                                            for seed in [100, 200, 300, 400, 500]:
+                                            for seed in [100, 200, 300, 400]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_vf_time_emb={vector_field_time_sin_embedding}_actor_ln={actor_layer_norm}_clip_fgs={clip_flow_goals}"
                                                 log_dir = os.path.expanduser(
                                                     f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_offline2offline/{exp_name}/{seed}")
