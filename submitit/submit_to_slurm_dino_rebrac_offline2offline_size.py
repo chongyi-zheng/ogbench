@@ -81,7 +81,7 @@ def main():
             # "walker_flip",
             # "walker_stand",
             # "walker_run",
-            # "quadruped_jump",
+            "quadruped_jump",
             # "quadruped_run",
             # "quadruped_stand",
             # "quadruped_walk",
@@ -91,9 +91,9 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for finetuning_size in [500_000]:
-                    for finetuning_steps in [250_000]:
-                        for eval_interval in [1_000]:
+                for finetuning_size in [1_000, 5_000, 10_000, 50_000, 10_000, 25_000]:
+                    for finetuning_steps in [500_000]:
+                        for eval_interval in [10_000]:
                             for alpha_actor in [0.1]:
                                 for alpha_critic in [0.1]:
                                     for actor_freq in [4]:
@@ -101,7 +101,7 @@ def main():
                                             for repr_noise_clip in [0.2]:
                                                 for repr_temp in [0.1]:
                                                     for target_repr_temp in [0.04]:
-                                                        for seed in [100, 200, 300, 400]:
+                                                        for seed in [100, 200, 300]:
                                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_dino_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_actor_freq={actor_freq}_repr_noise={repr_noise}_repr_noise_clip={repr_noise_clip}_repr_temp={repr_temp}_target_repr_temp={target_repr_temp}"
                                                             log_dir = os.path.expanduser(
                                                                 f"{log_root_dir}/exp_logs/ogbench_logs/dino_rebrac_offline2offline/{exp_name}/{seed}")

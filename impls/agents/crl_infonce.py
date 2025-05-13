@@ -368,6 +368,7 @@ def get_config():
             actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
             actor_geom_start=1,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
             num_actor_goals=1,  # Number of actor goals to sample
+            gc_negative=True,  # Whether to use '0 if s == g else -1' (True) or '1 if s == g else 0' (False) as reward.
         )
     )
     return config

@@ -27,7 +27,7 @@ def main():
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
-        exclude = 'neu324,neu325,neu329,neu306'
+        exclude = 'neu324,neu325,neu329,neu306,neu321'
     else:
         raise NotImplementedError
 
