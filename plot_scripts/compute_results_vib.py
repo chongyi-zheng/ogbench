@@ -174,6 +174,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "cube-single-play-singletask-task1-v0", "20250508_crl_infonce_offline2offline_cube-single-play-singletask-task1-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cube-single-play-singletask-task1-v0", "20250509_td_infonce_offline2offline_cube-single-play-singletask-task1-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "cube-single-play-singletask-task1-v0", "20250507_dino_rebrac_offline2offline_cube-single-play-singletask-task1-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.04_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "cube-single-play-singletask-task1-v0", "20250511_fb_repr_offline2offline_cube-single-play-singletask-task1-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=1.0_expectile=0.9_actor_freq=4"),
             # # cube-single-play-singletask-task2-v0 
             # ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task2-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task2-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
             # ("iql_offline2offline", "cube-single-play-singletask-task2-v0", "20250420_iql_offline2offline_cube-single-play-singletask-task2-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -181,6 +182,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "cube-single-play-singletask-task2-v0", "20250508_crl_infonce_offline2offline_cube-single-play-singletask-task2-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cube-single-play-singletask-task2-v0", "20250509_td_infonce_offline2offline_cube-single-play-singletask-task2-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "cube-single-play-singletask-task2-v0", "20250507_dino_rebrac_offline2offline_cube-single-play-singletask-task2-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.04_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "cube-single-play-singletask-task2-v0", "20250511_fb_repr_offline2offline_cube-single-play-singletask-task2-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=1.0_expectile=0.9_actor_freq=4"),
             # # cube-single-play-singletask-task3-v0 
             # ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task3-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task3-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
             # ("iql_offline2offline", "cube-single-play-singletask-task3-v0", "20250420_iql_offline2offline_cube-single-play-singletask-task3-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -188,6 +190,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "cube-single-play-singletask-task3-v0", "20250508_crl_infonce_offline2offline_cube-single-play-singletask-task3-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cube-single-play-singletask-task3-v0", "20250509_td_infonce_offline2offline_cube-single-play-singletask-task3-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "cube-single-play-singletask-task3-v0", "20250507_dino_rebrac_offline2offline_cube-single-play-singletask-task3-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.04_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "cube-single-play-singletask-task3-v0", "20250511_fb_repr_offline2offline_cube-single-play-singletask-task3-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=1.0_expectile=0.9_actor_freq=4"),
             # # cube-single-play-singletask-task4-v0 
             # ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task4-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task4-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
             # ("iql_offline2offline", "cube-single-play-singletask-task4-v0", "20250420_iql_offline2offline_cube-single-play-singletask-task4-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -195,6 +198,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "cube-single-play-singletask-task4-v0", "20250508_crl_infonce_offline2offline_cube-single-play-singletask-task4-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cube-single-play-singletask-task4-v0", "20250509_td_infonce_offline2offline_cube-single-play-singletask-task4-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "cube-single-play-singletask-task4-v0", "20250507_dino_rebrac_offline2offline_cube-single-play-singletask-task4-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.04_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "cube-single-play-singletask-task4-v0", "20250511_fb_repr_offline2offline_cube-single-play-singletask-task4-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=1.0_expectile=0.9_actor_freq=4"),
             # # cube-single-play-singletask-task5-v0 
             # ("sarsa_ifql_vib_gpi_offline2offline", "cube-single-play-singletask-task5-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-single-play-singletask-task5-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.05_latent_dim=64_clip_fg=True"),
             # ("iql_offline2offline", "cube-single-play-singletask-task5-v0", "20250420_iql_offline2offline_cube-single-play-singletask-task5-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -202,6 +206,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "cube-single-play-singletask-task5-v0", "20250508_crl_infonce_offline2offline_cube-single-play-singletask-task5-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cube-single-play-singletask-task5-v0", "20250509_td_infonce_offline2offline_cube-single-play-singletask-task5-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "cube-single-play-singletask-task5-v0", "20250507_dino_rebrac_offline2offline_cube-single-play-singletask-task5-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.04_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "cube-single-play-singletask-task5-v0", "20250511_fb_repr_offline2offline_cube-single-play-singletask-task5-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=1.0_expectile=0.9_actor_freq=4"),
             
             # # cube-double-play-singletask-task1-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task1-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task1-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.025_latent_dim=128_clip_fg=True"),
@@ -210,6 +215,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "cube-double-play-singletask-task1-v0", "20250508_crl_infonce_offline2offline_cube-double-play-singletask-task1-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cube-double-play-singletask-task1-v0", "20250509_td_infonce_offline2offline_cube-double-play-singletask-task1-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "cube-double-play-singletask-task1-v0", "20250507_dino_rebrac_offline2offline_cube-double-play-singletask-task1-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "cube-double-play-singletask-task1-v0", "20250511_fb_repr_offline2offline_cube-double-play-singletask-task1-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=1.0_expectile=0.9_actor_freq=4"),
             # # cube-double-play-singletask-task2-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task2-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task2-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.025_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "cube-double-play-singletask-task2-v0", "20250420_iql_offline2offline_cube-double-play-singletask-task2-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -217,6 +223,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "cube-double-play-singletask-task2-v0", "20250508_crl_infonce_offline2offline_cube-double-play-singletask-task2-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cube-double-play-singletask-task2-v0", "20250509_td_infonce_offline2offline_cube-double-play-singletask-task2-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "cube-double-play-singletask-task2-v0", "20250507_dino_rebrac_offline2offline_cube-double-play-singletask-task2-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.04_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "cube-double-play-singletask-task2-v0", "20250511_fb_repr_offline2offline_cube-double-play-singletask-task2-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=1.0_expectile=0.9_actor_freq=4"),
             # # cube-double-play-singletask-task3-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task3-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task3-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.025_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "cube-double-play-singletask-task3-v0", "20250420_iql_offline2offline_cube-double-play-singletask-task3-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -224,6 +231,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "cube-double-play-singletask-task3-v0", "20250508_crl_infonce_offline2offline_cube-double-play-singletask-task3-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cube-double-play-singletask-task3-v0", "20250509_td_infonce_offline2offline_cube-double-play-singletask-task3-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "cube-double-play-singletask-task3-v0", "20250507_dino_rebrac_offline2offline_cube-double-play-singletask-task3-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.04_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "cube-double-play-singletask-task3-v0", "20250511_fb_repr_offline2offline_cube-double-play-singletask-task3-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=1.0_expectile=0.9_actor_freq=4"),
             # # cube-double-play-singletask-task4-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task4-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task4-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.025_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "cube-double-play-singletask-task4-v0", "20250420_iql_offline2offline_cube-double-play-singletask-task4-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -231,6 +239,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "cube-double-play-singletask-task4-v0", "20250508_crl_infonce_offline2offline_cube-double-play-singletask-task4-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cube-double-play-singletask-task4-v0", "20250509_td_infonce_offline2offline_cube-double-play-singletask-task4-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "cube-double-play-singletask-task4-v0", "20250507_dino_rebrac_offline2offline_cube-double-play-singletask-task4-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.04_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "cube-double-play-singletask-task4-v0", "20250511_fb_repr_offline2offline_cube-double-play-singletask-task4-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=1.0_expectile=0.9_actor_freq=4"),
             # # cube-double-play-singletask-task5-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "cube-double-play-singletask-task5-v0", "20250508_sarsa_ifql_vib_gpi_offline2offline_cube-double-play-singletask-task5-v0_obs_norm=normal_alpha=30.0_num_fg=16_actor_freq=4_expectile=0.9_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.025_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "cube-double-play-singletask-task5-v0", "20250420_iql_offline2offline_cube-double-play-singletask-task5-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -238,6 +247,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "cube-double-play-singletask-task5-v0", "20250508_crl_infonce_offline2offline_cube-double-play-singletask-task5-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "cube-double-play-singletask-task5-v0", "20250509_td_infonce_offline2offline_cube-double-play-singletask-task5-v0_obs_norm_type=normal_alpha=30.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "cube-double-play-singletask-task5-v0", "20250507_dino_rebrac_offline2offline_cube-double-play-singletask-task5-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.04_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "cube-double-play-singletask-task5-v0", "20250511_fb_repr_offline2offline_cube-double-play-singletask-task5-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=1.0_expectile=0.9_actor_freq=4"),
             
             # # scene-play-singletask-task1-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task1-v0", "20250509_sarsa_ifql_vib_gpi_offline2offline_scene-play-singletask-task1-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.99_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.2_latent_dim=128_clip_fg=True"),
@@ -246,6 +256,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "scene-play-singletask-task1-v0", "20250508_crl_infonce_offline2offline_scene-play-singletask-task1-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "scene-play-singletask-task1-v0", "20250509_td_infonce_offline2offline_scene-play-singletask-task1-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "scene-play-singletask-task1-v0", "20250507_dino_rebrac_offline2offline_scene-play-singletask-task1-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "scene-play-singletask-task1-v0", "20250511_fb_repr_offline2offline_scene-play-singletask-task1-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=10.0_expectile=0.9_actor_freq=4"),
             # # scene-play-singletask-task2-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task2-v0", "20250509_sarsa_ifql_vib_gpi_offline2offline_scene-play-singletask-task2-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.99_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "scene-play-singletask-task2-v0", "20250420_iql_offline2offline_scene-play-singletask-task2-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -253,6 +264,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "scene-play-singletask-task2-v0", "20250508_crl_infonce_offline2offline_scene-play-singletask-task2-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "scene-play-singletask-task2-v0", "20250509_td_infonce_offline2offline_scene-play-singletask-task2-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "scene-play-singletask-task2-v0", "20250507_dino_rebrac_offline2offline_scene-play-singletask-task2-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "scene-play-singletask-task2-v0", "20250511_fb_repr_offline2offline_scene-play-singletask-task2-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=10.0_expectile=0.9_actor_freq=4"),
             # # scene-play-singletask-task3-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task3-v0", "20250509_sarsa_ifql_vib_gpi_offline2offline_scene-play-singletask-task3-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.99_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "scene-play-singletask-task3-v0", "20250420_iql_offline2offline_scene-play-singletask-task3-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -260,6 +272,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "scene-play-singletask-task3-v0", "20250508_crl_infonce_offline2offline_scene-play-singletask-task3-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "scene-play-singletask-task3-v0", "20250509_td_infonce_offline2offline_scene-play-singletask-task3-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "scene-play-singletask-task3-v0", "20250507_dino_rebrac_offline2offline_scene-play-singletask-task3-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "scene-play-singletask-task3-v0", "20250511_fb_repr_offline2offline_scene-play-singletask-task3-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=10.0_expectile=0.9_actor_freq=4"),
             # # scene-play-singletask-task4-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task4-v0", "20250509_sarsa_ifql_vib_gpi_offline2offline_scene-play-singletask-task4-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.99_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "scene-play-singletask-task4-v0", "20250420_iql_offline2offline_scene-play-singletask-task4-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -267,6 +280,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "scene-play-singletask-task4-v0", "20250508_crl_infonce_offline2offline_scene-play-singletask-task4-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "scene-play-singletask-task4-v0", "20250509_td_infonce_offline2offline_scene-play-singletask-task4-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "scene-play-singletask-task4-v0", "20250507_dino_rebrac_offline2offline_scene-play-singletask-task4-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "scene-play-singletask-task4-v0", "20250511_fb_repr_offline2offline_scene-play-singletask-task4-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=10.0_expectile=0.9_actor_freq=4"),
             # # scene-play-singletask-task5-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "scene-play-singletask-task5-v0", "20250509_sarsa_ifql_vib_gpi_offline2offline_scene-play-singletask-task5-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.99_critic_z_type=prior_vf_time_emb=False_actor_ln=False_kl_weight=0.2_latent_dim=128_clip_fg=True"),
             # ("iql_offline2offline", "scene-play-singletask-task5-v0", "20250420_iql_offline2offline_scene-play-singletask-task5-v0_obs_norm_type=normal_alpha=1.0_expectile=0.99_actor_freq=4"),
@@ -274,6 +288,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "scene-play-singletask-task5-v0", "20250508_crl_infonce_offline2offline_scene-play-singletask-task5-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "scene-play-singletask-task5-v0", "20250509_td_infonce_offline2offline_scene-play-singletask-task5-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "scene-play-singletask-task5-v0", "20250507_dino_rebrac_offline2offline_scene-play-singletask-task5-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "scene-play-singletask-task5-v0", "20250511_fb_repr_offline2offline_scene-play-singletask-task5-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=10.0_expectile=0.9_actor_freq=4"),
             
             # # puzzle-4x4-play-singletask-task1-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "puzzle-4x4-play-singletask-task1-v0", "20250507_sarsa_ifql_vib_gpi_offline2offline_puzzle-4x4-play-singletask-task1-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.1_latent_dim=128_clip_fg=False"),
@@ -282,6 +297,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "puzzle-4x4-play-singletask-task1-v0", "20250509_crl_infonce_offline2offline_puzzle-4x4-play-singletask-task1-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "puzzle-4x4-play-singletask-task1-v0", "20250509_td_infonce_offline2offline_puzzle-4x4-play-singletask-task1-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "puzzle-4x4-play-singletask-task1-v0", "20250507_dino_rebrac_offline2offline_puzzle-4x4-play-singletask-task1-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "puzzle-4x4-play-singletask-task1-v0", "20250511_fb_repr_offline2offline_puzzle-4x4-play-singletask-task1-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=10.0_expectile=0.9_actor_freq=4"),
             # # puzzle-4x4-play-singletask-task2-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "puzzle-4x4-play-singletask-task2-v0", "20250507_sarsa_ifql_vib_gpi_offline2offline_puzzle-4x4-play-singletask-task2-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.1_latent_dim=128_clip_fg=False"),
             # ("iql_offline2offline", "puzzle-4x4-play-singletask-task2-v0", "20250507_iql_offline2offline_puzzle-4x4-play-singletask-task2-v0_obs_norm_type=normal_alpha=10.0_expectile=0.9_actor_freq=4"),
@@ -289,6 +305,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "puzzle-4x4-play-singletask-task2-v0", "20250509_crl_infonce_offline2offline_puzzle-4x4-play-singletask-task2-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "puzzle-4x4-play-singletask-task2-v0", "20250509_td_infonce_offline2offline_puzzle-4x4-play-singletask-task2-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "puzzle-4x4-play-singletask-task2-v0", "20250507_dino_rebrac_offline2offline_puzzle-4x4-play-singletask-task2-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "puzzle-4x4-play-singletask-task2-v0", "20250511_fb_repr_offline2offline_puzzle-4x4-play-singletask-task2-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=10.0_expectile=0.9_actor_freq=4"),
             # # puzzle-4x4-play-singletask-task3-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "puzzle-4x4-play-singletask-task3-v0", "20250507_sarsa_ifql_vib_gpi_offline2offline_puzzle-4x4-play-singletask-task3-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.1_latent_dim=128_clip_fg=False"),
             # ("iql_offline2offline", "puzzle-4x4-play-singletask-task3-v0", "20250507_iql_offline2offline_puzzle-4x4-play-singletask-task3-v0_obs_norm_type=normal_alpha=10.0_expectile=0.9_actor_freq=4"),
@@ -296,6 +313,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "puzzle-4x4-play-singletask-task3-v0", "20250509_crl_infonce_offline2offline_puzzle-4x4-play-singletask-task3-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "puzzle-4x4-play-singletask-task3-v0", "20250509_td_infonce_offline2offline_puzzle-4x4-play-singletask-task3-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "puzzle-4x4-play-singletask-task3-v0", "20250507_dino_rebrac_offline2offline_puzzle-4x4-play-singletask-task3-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "puzzle-4x4-play-singletask-task3-v0", "20250511_fb_repr_offline2offline_puzzle-4x4-play-singletask-task3-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=10.0_expectile=0.9_actor_freq=4"),
             # # puzzle-4x4-play-singletask-task4-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "puzzle-4x4-play-singletask-task4-v0", "20250507_sarsa_ifql_vib_gpi_offline2offline_puzzle-4x4-play-singletask-task4-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.1_latent_dim=128_clip_fg=False"),
             # ("iql_offline2offline", "puzzle-4x4-play-singletask-task4-v0", "20250507_iql_offline2offline_puzzle-4x4-play-singletask-task4-v0_obs_norm_type=normal_alpha=10.0_expectile=0.9_actor_freq=4"),
@@ -303,6 +321,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "puzzle-4x4-play-singletask-task4-v0", "20250509_crl_infonce_offline2offline_puzzle-4x4-play-singletask-task4-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "puzzle-4x4-play-singletask-task4-v0", "20250509_td_infonce_offline2offline_puzzle-4x4-play-singletask-task4-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "puzzle-4x4-play-singletask-task4-v0", "20250507_dino_rebrac_offline2offline_puzzle-4x4-play-singletask-task4-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "puzzle-4x4-play-singletask-task4-v0", "20250511_fb_repr_offline2offline_puzzle-4x4-play-singletask-task4-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=10.0_expectile=0.9_actor_freq=4"),
             # # puzzle-4x4-play-singletask-task5-v0
             # ("sarsa_ifql_vib_gpi_offline2offline", "puzzle-4x4-play-singletask-task5-v0", "20250507_sarsa_ifql_vib_gpi_offline2offline_puzzle-4x4-play-singletask-task5-v0_obs_norm=normal_alpha=300.0_num_fg=16_actor_freq=4_expectile=0.95_critic_z_type=prior_vf_time_emb=False_transition_ln=True_kl_weight=0.1_latent_dim=128_clip_fg=False"),
             # ("iql_offline2offline", "puzzle-4x4-play-singletask-task5-v0", "20250507_iql_offline2offline_puzzle-4x4-play-singletask-task5-v0_obs_norm_type=normal_alpha=10.0_expectile=0.9_actor_freq=4"),
@@ -310,6 +329,7 @@ def parse_args() -> argparse.Namespace:
             # ("crl_infonce_offline2offline", "puzzle-4x4-play-singletask-task5-v0", "20250509_crl_infonce_offline2offline_puzzle-4x4-play-singletask-task5-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("td_infonce_offline2offline", "puzzle-4x4-play-singletask-task5-v0", "20250509_td_infonce_offline2offline_puzzle-4x4-play-singletask-task5-v0_obs_norm_type=normal_alpha=3.0_reward_type=state_actor_freq=4"),
             # ("dino_rebrac_offline2offline", "puzzle-4x4-play-singletask-task5-v0", "20250507_dino_rebrac_offline2offline_puzzle-4x4-play-singletask-task5-v0_obs_norm_type=normal_alpha_actor=1.0_alpha_critic=1.0_actor_freq=4_repr_noise=0.2_repr_noise_clip=0.2_repr_temp=0.1_target_repr_temp=0.04"),
+            # ("fb_repr_offline2offline", "puzzle-4x4-play-singletask-task5-v0", "20250511_fb_repr_offline2offline_puzzle-4x4-play-singletask-task5-v0_obs_norm_type=normal_repr_alpha=10.0_awr_alpha=10.0_expectile=0.9_actor_freq=4"),
         ]
     )
     p.add_argument(

@@ -372,6 +372,8 @@ class ForwardBackwardRepresentationAgent(flax.struct.PyTreeNode):
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
+            encoders['value'] = encoder_module()
+            encoders['critic'] = encoder_module()
             encoders['forward_repr'] = encoder_module()
             encoders['backward_repr'] = encoder_module()
             encoders['actor'] = GCEncoder(state_encoder=encoder_module())

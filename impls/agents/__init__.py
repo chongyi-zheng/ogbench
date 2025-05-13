@@ -20,6 +20,7 @@ from agents.hiql import HIQLAgent
 from agents.ifac import IFACAgent
 from agents.iql import IQLAgent
 from agents.mcfac import MCFACAgent
+from agents.mbpo_rebrac import MBPOReBRACAgent
 from agents.qrl import QRLAgent
 from agents.rebrac import ReBRACAgent
 from agents.rg_fmrl import RewardGuidedFMRLAgent
@@ -53,6 +54,7 @@ agents = dict(
     hilp_fom=HILPFOMAgent,
     hiql=HIQLAgent,
     mcfac=MCFACAgent,
+    mbpo_rebrac=MBPOReBRACAgent,
     ifac=IFACAgent,
     iql=IQLAgent,
     qrl=QRLAgent,

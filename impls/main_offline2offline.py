@@ -187,7 +187,8 @@ def main(_):
                         inference_batch[k].append(v)
                     num_samples += config['batch_size']
                 for k, v in inference_batch.items():
-                    inference_batch[k] = np.concatenate(v, axis=0)[:config['num_latent_inference_samples']]
+                    if k not in ['observation_min', 'observation_max']:
+                        inference_batch[k] = np.concatenate(v, axis=0)[:config['num_latent_inference_samples']]
 
                 inferred_latent = agent.infer_latent(inference_batch)
                 inferred_latent = np.array(inferred_latent)

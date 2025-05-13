@@ -12,7 +12,8 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
-    elif 'della' in cluster_name:
+        exclude = None
+    elif cluster_name == 'della':
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
@@ -21,10 +22,12 @@ def main():
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
+        exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
+        exclude = 'neu324,neu325,neu329,neu306,neu321'
     else:
         raise NotImplementedError
 
@@ -40,7 +43,8 @@ def main():
         slurm_mem="80G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=10,
+        slurm_exclude=exclude,
+        slurm_array_parallelism=25,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
