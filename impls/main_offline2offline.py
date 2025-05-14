@@ -86,16 +86,11 @@ def main(_):
     # Set up datasets.
     pretraining_train_dataset = Dataset.create(**pretraining_train_dataset)
     finetuning_train_dataset = Dataset.create(**finetuning_train_dataset)
-    # if FLAGS.balanced_sampling:
-    #     # Create a separate replay buffer so that we can sample from both the training dataset and the replay buffer.
-    #     example_transition = {k: v[0] for k, v in train_dataset.items()}
-    #     replay_buffer = ReplayBuffer.create(example_transition, size=FLAGS.buffer_size)
-    # else:
-    #     # Use the training dataset as the replay buffer.
-    #     train_dataset = ReplayBuffer.create_from_initial_dataset(
-    #         dict(train_dataset), size=max(FLAGS.buffer_size, train_dataset.size + 1)
-    #     )
-    #     replay_buffer = train_dataset
+    if config['agent_name'] in ['mbpo_rebrac']:
+        # Create a separate replay buffer so that we can sample from both the training dataset and the replay buffer.
+        example_transition = {k: v[0] for k, v in finetuning_train_dataset.items()}
+        finetuning_replay_buffer = ReplayBuffer.create(example_transition, size=100)
+        finetuning_replay_buffer.return_next_actions = True
     # Set p_aug and frame_stack.
     for dataset in [pretraining_train_dataset, pretraining_val_dataset,
                     finetuning_train_dataset, finetuning_val_dataset]:
@@ -105,7 +100,7 @@ def main(_):
             dataset.num_aug = FLAGS.num_aug
             dataset.inplace_aug = FLAGS.inplace_aug
             dataset.frame_stack = FLAGS.frame_stack
-            if config['agent_name'] in ['rebrac', 'dino_rebrac', 'td_infonce',
+            if config['agent_name'] in ['rebrac', 'dino_rebrac', 'mbpo_rebrac', 'td_infonce',
                                         'sarsa_ifac_q', 'sarsa_ifql', 'sarsa_ifql_gpi',
                                         'sarsa_ifql_vib_gpi', 'sarsa_ifql_vfm_gpi',
                                         'fb_repr_fom', 'hilp_fom']:
@@ -167,7 +162,7 @@ def main(_):
     last_time = time.time()
 
     inferred_latent = None  # Only for HILP and FB.
-    expl_metrics = dict()
+    rng = jax.random.PRNGKey(FLAGS.seed)  # Only for MBPO
     for i in tqdm.tqdm(range(1, FLAGS.pretraining_steps + FLAGS.finetuning_steps + 1), smoothing=0.1, dynamic_ncols=True):
         if i <= FLAGS.pretraining_steps:
             # Offline pre-training.
@@ -198,7 +193,15 @@ def main(_):
             #     agent = agent.update_dataset(finetuning_train_dataset)
 
             # Offline fine-tuning.
-            batch = finetuning_train_dataset.sample(config['batch_size'])
+            if (config['agent_name'] in ['mbpo_rebrac']) and (finetuning_replay_buffer.size > config['batch_size']):
+                # Half-and-half sampling from the training dataset and the replay buffer.
+                batch = finetuning_train_dataset.sample(config['batch_size'])
+                replay_batch = finetuning_replay_buffer.sample(config['batch_size'])
+                for k, v in replay_batch.items():
+                    batch[f'model_{k}'] = v
+            else:
+                # batch = pretraining_train_dataset.sample(config['batch_size'])
+                batch = finetuning_train_dataset.sample(config['batch_size'])
             train_logger = finetuning_train_logger
             eval_logger = finetuning_eval_logger
 
@@ -206,6 +209,28 @@ def main(_):
                 batch['latents'] = np.tile(inferred_latent, (batch['observations'].shape[0], 1))
 
             agent, update_info = agent.finetune(batch, full_update=(i % config['actor_freq'] == 0))
+
+        # MBPO imaginary rollouts
+        if config['agent_name'] in ['mbpo_rebrac'] and (i > FLAGS.pretraining_steps):
+            batch = finetuning_train_dataset.sample(config['num_model_rollouts'])
+            observations = batch['observations']
+            for _ in range(config['num_model_rollout_steps']):
+                rng, actor_rng = jax.random.split(rng)
+
+                actions = agent.sample_actions(observations=observations, temperature=1, seed=actor_rng)
+                rewards = agent.predict_rewards(observations=observations, actions=actions)
+                next_observations = agent.predict_next_observations(observations=observations, actions=actions)
+
+                finetuning_replay_buffer.add_transitions(
+                    dict(
+                        observations=observations,
+                        actions=actions,
+                        rewards=rewards,
+                        terminals=np.zeros_like(rewards),
+                        masks=np.ones_like(rewards),
+                        next_observations=next_observations,
+                    )
+                )
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
@@ -227,7 +252,6 @@ def main(_):
 
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval
             train_metrics['time/total_time'] = time.time() - first_time
-            train_metrics.update(expl_metrics)
             last_time = time.time()
             if FLAGS.enable_wandb:
                 wandb.log(train_metrics, step=i)

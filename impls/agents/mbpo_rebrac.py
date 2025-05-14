@@ -23,10 +23,46 @@ class MBPOReBRACAgent(flax.struct.PyTreeNode):
     network: Any
     config: Any = nonpytree_field()
 
+    def transition_loss(self, batch, grad_params):
+        observations = batch['observations']
+        actions = batch['actions']
+        next_observations = batch['next_observations']
+
+        obs_res_preds = self.network.select('transition')(
+            observations, actions=actions,
+            params=grad_params
+        )
+
+        transition_loss = jnp.square(obs_res_preds - (next_observations - observations)).mean()
+
+        return transition_loss, {
+            'transition_loss': transition_loss,
+            'obs_res': jnp.mean((next_observations - observations)),
+        }
+
+    def reward_loss(self, batch, grad_params):
+        observations = batch['observations']
+        if self.config['reward_type'] == 'state_action':
+            actions = batch['actions']
+        else:
+            actions = None
+        rewards = batch['rewards']
+
+        reward_preds = self.network.select('reward')(
+            observations, actions=actions,
+            params=grad_params,
+        )
+
+        reward_loss = jnp.square(reward_preds - rewards).mean()
+
+        return reward_loss, {
+            'reward_loss': reward_loss
+        }
+
     def critic_loss(self, batch, grad_params, rng):
         """Compute the ReBRAC critic loss."""
         rng, sample_rng = jax.random.split(rng)
-        next_dist = self.network.select('target_actor')(batch['next_observations'])
+        next_dist = self.network.select('target_actor')(batch['model_next_observations'])
         next_actions = next_dist.mode()
         noise = jnp.clip(
             (jax.random.normal(sample_rng, next_actions.shape) * self.config['actor_noise']),
@@ -35,15 +71,15 @@ class MBPOReBRACAgent(flax.struct.PyTreeNode):
         )
         next_actions = jnp.clip(next_actions + noise, -1, 1)
 
-        next_qs = self.network.select('target_critic')(batch['next_observations'], actions=next_actions)
+        next_qs = self.network.select('target_critic')(batch['model_next_observations'], actions=next_actions)
         next_q = next_qs.min(axis=0)
 
-        mse = jnp.square(next_actions - batch['next_actions']).sum(axis=-1)
+        mse = jnp.square(next_actions - batch['model_next_actions']).sum(axis=-1)
         next_q = next_q - self.config['alpha_critic'] * mse
 
-        target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
+        target_q = batch['model_rewards'] + self.config['discount'] * batch['model_masks'] * next_q
 
-        q = self.network.select('critic')(batch['observations'], actions=batch['actions'], params=grad_params)
+        q = self.network.select('critic')(batch['model_observations'], actions=batch['model_actions'], params=grad_params)
         critic_loss = jnp.square(q - target_q).mean()
 
         return critic_loss, {
@@ -70,15 +106,15 @@ class MBPOReBRACAgent(flax.struct.PyTreeNode):
 
     def actor_loss(self, batch, grad_params, rng):
         """Compute the ReBRAC actor loss."""
-        dist = self.network.select('actor')(batch['observations'], params=grad_params)
+        dist = self.network.select('actor')(batch['model_observations'], params=grad_params)
         actions = dist.mode()
 
         # Q loss.
-        qs = self.network.select('critic')(batch['observations'], actions=actions)
+        qs = self.network.select('critic')(batch['model_observations'], actions=actions)
         q = jnp.min(qs, axis=0)
 
         # BC loss.
-        mse = jnp.square(actions - batch['actions']).sum(axis=-1)
+        mse = jnp.square(actions - batch['model_actions']).sum(axis=-1)
 
         # Normalize Q values by the absolute mean to make the loss scale invariant.
         lam = jax.lax.stop_gradient(1 / jnp.abs(q).mean())
@@ -104,11 +140,15 @@ class MBPOReBRACAgent(flax.struct.PyTreeNode):
     def pretraining_loss(self, batch, grad_params, rng=None):
         info = {}
 
+        transition_loss, transition_info = self.transition_loss(batch, grad_params)
+        for k, v in transition_info.items():
+            info[f'transition/{k}'] = v
+
         bc_loss, bc_info = self.behavioral_cloning_loss(batch, grad_params)
         for k, v in bc_info.items():
             info[f'bc/{k}'] = v
 
-        loss = bc_loss
+        loss = transition_loss + bc_loss
         return loss, info
 
     @partial(jax.jit, static_argnames=('full_update',))
@@ -119,20 +159,32 @@ class MBPOReBRACAgent(flax.struct.PyTreeNode):
 
         rng, actor_rng, critic_rng = jax.random.split(rng, 3)
 
-        critic_loss, critic_info = self.critic_loss(batch, grad_params, critic_rng)
+        model_batch = {k: v for k, v in batch.items() if 'model_' in k}
+        if not model_batch:
+            model_batch = {'model_' + k: v for k, v in batch.items()}
+
+        reward_loss, reward_info = self.reward_loss(batch, grad_params)
+        for k, v in reward_info.items():
+            info[f'reward/{k}'] = v
+
+        transition_loss, transition_info = self.transition_loss(batch, grad_params)
+        for k, v in transition_info.items():
+            info[f'transition/{k}'] = v
+
+        critic_loss, critic_info = self.critic_loss(model_batch, grad_params, critic_rng)
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
         if full_update:
             # Update the actor.
-            actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
+            actor_loss, actor_info = self.actor_loss(model_batch, grad_params, actor_rng)
             for k, v in actor_info.items():
                 info[f'actor/{k}'] = v
         else:
             # Skip actor update.
             actor_loss = 0.0
 
-        loss = critic_loss + actor_loss
+        loss = reward_loss + transition_loss + critic_loss + actor_loss
         return loss, info
 
     def target_update(self, network, module_name):
@@ -189,6 +241,21 @@ class MBPOReBRACAgent(flax.struct.PyTreeNode):
         return self.replace(network=new_network, rng=new_rng), info
 
     @jax.jit
+    def predict_rewards(self, observations, actions=None):
+        if self.config['reward_type'] == 'state':
+            actions = None
+        rewards = self.network.select('reward')(observations, actions=actions)
+
+        return rewards
+
+    @jax.jit
+    def predict_next_observations(self, observations, actions):
+        observation_residuals = self.network.select('transition')(observations, actions)
+        next_observations = observation_residuals + observations
+        
+        return next_observations
+
+    @jax.jit
     def sample_actions(
         self,
         observations,
@@ -226,11 +293,14 @@ class MBPOReBRACAgent(flax.struct.PyTreeNode):
         rng, init_rng = jax.random.split(rng, 2)
 
         action_dim = ex_actions.shape[-1]
+        obs_dim = ex_observations.shape[-1]
 
         # Define encoders.
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
+            encoders['transition'] = encoder_module()
+            encoders['reward'] = encoder_module()
             encoders['critic'] = encoder_module()
             encoders['actor'] = GCEncoder(state_encoder=encoder_module())
 
@@ -239,7 +309,12 @@ class MBPOReBRACAgent(flax.struct.PyTreeNode):
             hidden_dims=config['transition_hidden_dims'],
             output_dim=obs_dim,
             layer_norm=config['layer_norm'],
-            encoder=encoders.get('value'),
+            encoder=encoders.get('transition'),
+        )
+        reward_def = Value(
+            hidden_dims=config['reward_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            encoder=encoders.get('reward'),
         )
         critic_def = Value(
             hidden_dims=config['value_hidden_dims'],
@@ -259,11 +334,20 @@ class MBPOReBRACAgent(flax.struct.PyTreeNode):
         )
 
         network_info = dict(
+            transition=(transition_def, (ex_observations, ex_actions)),
             critic=(critic_def, (ex_observations, ex_actions)),
             target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_actions)),
             actor=(actor_def, (ex_observations,)),
             target_actor=(copy.deepcopy(actor_def), (ex_observations,)),
         )
+        if config['reward_type'] == 'state':
+            network_info.update(
+                reward=(reward_def, (ex_observations, )),
+            )
+        else:
+            network_info.update(
+                reward=(reward_def, (ex_observations, ex_actions)),
+            )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
 
@@ -285,6 +369,8 @@ def get_config():
             agent_name='mbpo_rebrac',  # Agent name.
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
+            transition_hidden_dims=(512, 512, 512, 512),  # Transition network hidden dimensions.
+            reward_hidden_dims=(512, 512, 512, 512),  # Reward network hidden dimensions.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
@@ -293,6 +379,9 @@ def get_config():
             tau=0.005,  # Target network update rate.
             tanh_squash=True,  # Whether to squash actions with tanh.
             actor_fc_scale=0.01,  # Final layer initialization scale for actor.
+            reward_type='state',  # Reward type. ('state', 'state_action')
+            num_model_rollouts=256,  # Number of imaginary rollouts
+            num_model_rollout_steps=1,  # Number of imaginary rollout steps
             alpha_actor=0.0,  # Actor BC coefficient.
             alpha_critic=0.0,  # Critic BC coefficient.
             actor_freq=2,  # Actor update frequency.

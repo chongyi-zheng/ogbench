@@ -172,13 +172,13 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
     def pretraining_loss(self, batch, grad_params, rng=None):
         info = {}
 
-        bc_loss, bc_info = self.behavioral_cloning_loss(batch, grad_params)
-        for k, v in bc_info.items():
-            info[f'bc/{k}'] = v
-
         critic_loss, critic_info = self.contrastive_loss(batch, grad_params)
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
+
+        bc_loss, bc_info = self.behavioral_cloning_loss(batch, grad_params)
+        for k, v in bc_info.items():
+            info[f'bc/{k}'] = v
 
         loss = critic_loss + bc_loss
         return loss, info
@@ -318,10 +318,17 @@ class CRLInfoNCEAgent(flax.struct.PyTreeNode):
         )
 
         network_info = dict(
-            reward=(reward_def, (ex_observations, )),
             critic=(critic_def, (ex_observations, ex_goals, ex_actions)),
             actor=(actor_def, (ex_observations, )),
         )
+        if config['reward_type'] == 'state':
+            network_info.update(
+                reward=(reward_def, (ex_observations, )),
+            )
+        else:
+            network_info.update(
+                reward=(reward_def, (ex_observations, ex_actions)),
+            )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
 

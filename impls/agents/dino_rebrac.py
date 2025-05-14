@@ -249,6 +249,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
             return self.pretraining_loss(batch, grad_params, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
+        self.target_update(new_network, 'encoder')
 
         return self.replace(network=new_network, rng=new_rng), info
 

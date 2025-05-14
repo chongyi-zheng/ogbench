@@ -286,6 +286,22 @@ class ReplayBuffer(Dataset):
         self.terminal_locs = np.nonzero(self['terminals'] > 0)[0]
         self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
 
+    def add_transitions(self, transitions):
+        batch_size = transitions['observations'].shape[0]
+        idxs = (np.arange(batch_size) + self.pointer) % self.max_size  # (B,)
+
+        def set_idxs(buffer, new_elements):
+            buffer[idxs] = new_elements
+
+        jax.tree_util.tree_map(set_idxs, self._dict, transitions)
+
+        self.pointer = (self.pointer + batch_size) % self.max_size
+        self.size = min(self.max_size, self.size + batch_size)
+
+        # Update terminal and initial locations.
+        self.terminal_locs = np.nonzero(self['terminals'] > 0)[0]
+        self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
+
     def clear(self):
         """Clear the replay buffer."""
         self.size = self.pointer = 0
