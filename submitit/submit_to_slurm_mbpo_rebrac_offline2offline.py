@@ -33,7 +33,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="rebrac_offline2offline",
+        slurm_name="mbpo_rebrac_offline2offline",
         slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
@@ -97,9 +97,9 @@ def main():
                             for num_model_rollout_steps in [1, 2]:
                                 for actor_freq in [4]:
                                     for seed in [100, 200, 300]:
-                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_num_model_rollouts={num_model_rollouts}_num_model_rollout_steps={num_model_rollout_steps}_actor_freq={actor_freq}"
+                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_mbpo_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_num_model_rollouts={num_model_rollouts}_num_model_rollout_steps={num_model_rollout_steps}_actor_freq={actor_freq}"
                                         log_dir = os.path.expanduser(
-                                            f"{log_root_dir}/exp_logs/ogbench_logs/rebrac_offline2offline/{exp_name}/{seed}")
+                                            f"{log_root_dir}/exp_logs/ogbench_logs/mbpo_rebrac_offline2offline/{exp_name}/{seed}")
 
                                         # change the log folder of slurm executor
                                         submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -141,7 +141,7 @@ def main():
                                                 --finetuning_steps=500_000 \
                                                 --eval_interval=50_000 \
                                                 --eval_episodes=50 \
-                                                --agent=impls/agents/rebrac.py \
+                                                --agent=impls/agents/mbpo_rebrac.py \
                                                 --agent.discount=0.99 \
                                                 --agent.alpha_actor={alpha_actor} \
                                                 --agent.alpha_critic={alpha_critic} \
