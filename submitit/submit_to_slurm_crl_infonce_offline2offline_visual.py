@@ -141,7 +141,6 @@ def main():
                                             --enable_wandb=1 \
                                             --env_name={env_name} \
                                             --obs_norm_type={obs_norm_type} \
-                                            --finetuning_size=500_000 \
                                             --pretraining_steps=250_000 \
                                             --finetuning_steps=100_000 \
                                             --eval_interval=50_000 \

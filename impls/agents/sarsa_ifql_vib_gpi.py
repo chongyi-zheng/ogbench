@@ -136,7 +136,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         # latents = self.compute_rev_flow_transitions(next_actions, next_observations)
         rng, latent_rng = jax.random.split(rng)
         latent_dist = self.network.select('transition_encoder')(
-            next_observations, next_actions, params=grad_params)
+            batch['next_observations'], next_actions, params=grad_params)
         latents = latent_dist.sample(seed=latent_rng)
 
         means = latent_dist.mean()
@@ -631,7 +631,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
                 ex_observations, ex_times,
                 ex_observations, ex_actions, ex_latents)),
             transition_encoder=(transition_encoder_def, (
-                ex_observations, ex_actions)),
+                ex_orig_observations, ex_actions)),
             actor=(actor_def, (ex_orig_observations, )),
             reward=(reward_def, (ex_observations,)),
         )
