@@ -21,7 +21,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
         exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
@@ -44,7 +44,7 @@ def main():
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_exclude=exclude,
-        slurm_array_parallelism=10,
+        slurm_array_parallelism=20,
     )
 
     # ddpgbc hyperparameters: discount, alpha, num_flow_steps, normalize_q_loss
@@ -68,17 +68,17 @@ def main():
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
-            # "puzzle-4x4-play-singletask-task1-v0",
-            # "puzzle-4x4-play-singletask-task2-v0",
-            # "puzzle-4x4-play-singletask-task3-v0",
-            # "puzzle-4x4-play-singletask-task4-v0",
-            # "puzzle-4x4-play-singletask-task5-v0",
-            "cheetah_run",
+            "puzzle-4x4-play-singletask-task1-v0",
+            "puzzle-4x4-play-singletask-task2-v0",
+            "puzzle-4x4-play-singletask-task3-v0",
+            "puzzle-4x4-play-singletask-task4-v0",
+            "puzzle-4x4-play-singletask-task5-v0",
+            # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
             # "walker_walk",
-            "walker_flip",
+            # "walker_flip",
             # "walker_stand",
             # "walker_run",
             # "quadruped_run",
@@ -93,8 +93,8 @@ def main():
             for obs_norm_type in ['normal']:
                 for alpha_actor in [0.1]:
                     for alpha_critic in [0.1]:
-                        for num_model_rollouts in [64, 128, 256]:
-                            for num_model_rollout_steps in [1, 2]:
+                        for num_model_rollouts in [256]:
+                            for num_model_rollout_steps in [2]:
                                 for actor_freq in [4]:
                                     for seed in [100, 200, 300]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_mbpo_rebrac_offline2offline_{env_name}_obs_norm_type={obs_norm_type}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_num_model_rollouts={num_model_rollouts}_num_model_rollout_steps={num_model_rollout_steps}_actor_freq={actor_freq}"
