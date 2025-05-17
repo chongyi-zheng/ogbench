@@ -76,7 +76,7 @@ def main():
             # "walker_flip",
             # "walker_stand",
             # "walker_run",
-            "quadruped_run",
+            # "quadruped_run",
             "quadruped_jump",
             # "quadruped_stand",
             # "quadruped_walk",

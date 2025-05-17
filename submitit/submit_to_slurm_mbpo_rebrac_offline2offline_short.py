@@ -82,7 +82,7 @@ def main():
             # "walker_stand",
             # "walker_run",
             # "quadruped_run",
-            # "quadruped_jump",
+            "quadruped_jump",
             # "quadruped_stand",
             # "quadruped_walk",
             # "jaco_reach_top_left",
