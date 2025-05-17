@@ -460,6 +460,12 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         loss = reward_loss + critic_loss + flow_occupancy_loss + actor_loss
         return loss, info
 
+    def target_reset(self):
+        params = self.network.params
+        if self.config['encoder'] is not None:
+            params['modules_target_critic_vf_encoder'] = params['modules_critic_vf_encoder']
+        params['modules_target_critic_vf'] = params['modules_critic_vf']
+
     def target_update(self, network, module_name):
         """Update the target network."""
         new_target_params = jax.tree_util.tree_map(
