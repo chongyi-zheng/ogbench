@@ -73,7 +73,7 @@ class Dataset(FrozenDict):
         self.inplace_aug = False  # Whether to replace the original image after applying augmentations.
         self.return_next_actions = False  # Whether to additionally return next actions; set outside the class.
 
-        # self._prestacked = False
+        self._prestacked = False
 
         # observation statistics
         self.obs_mean = None
@@ -182,8 +182,8 @@ class Dataset(FrozenDict):
         """Sample a batch of transitions."""
         # prestack frames for faster batch sampling
         # warning: require a large amount of cpu mems
-        # if (self.frame_stack is not None) and (not self._prestacked):
-        #     self._prestack_frames()
+        if (self.frame_stack is not None) and (not self._prestacked):
+            self._prestack_frames()
         if idxs is None:
             idxs = self.get_random_idxs(batch_size)
         batch = self.get_subset(idxs)
