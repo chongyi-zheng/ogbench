@@ -48,7 +48,7 @@ def main():
         slurm_mem="150G",
         slurm_gpus_per_node=1,
         slurm_nodelist=nodelist,
-        slrum_exclude=exclude,
+        slurm_exclude=exclude,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=20,
     )
@@ -59,17 +59,17 @@ def main():
             # "humanoidmaze-medium-navigate-singletask-v0",
             # "antsoccer-arena-navigate-singletask-v0"
             "visual-cube-single-play-singletask-task1-v0",
-            "visual-cube-double-play-singletask-task1-v0",
+            # "visual-cube-double-play-singletask-task1-v0",
             # "visual-scene-play-singletask-task1-v0",
             # "visual-puzzle-4x4-play-singletask-task1-v0",
         ]:
             for obs_norm_type in ['none']:
                 for alpha in [30.0]:
                     for num_flow_goals in [16]:
-                        for actor_freq in [4]:
+                        for actor_freq in [1]:
                             for expectile in [0.9]:
                                 for kl_weight in [0.1, 0.05, 0.025]:
-                                    for latent_dim in [128]:
+                                    for latent_dim in [512]:
                                         for encoder in ['impala_small']:
                                             for seed in [100, 200, 300]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifac_q_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_encoder={encoder}"
