@@ -147,7 +147,8 @@ def main():
                                                             --finetuning_size=500_000 \
                                                             --pretraining_steps=250_000 \
                                                             --finetuning_steps=100_000 \
-                                                            --eval_interval=50_000 \
+                                                            --eval_interval=10_000 \
+                                                            --save_interval=750_000 \
                                                             --eval_episodes=50 \
                                                             --p_aug=1.0 \
                                                             --frame_stack=3 \

@@ -13,22 +13,26 @@ def main():
         partition = 'gpu'
         account = None
         nodelist = None
+        exclude = None
     elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
         nodelist = None
+        exclude = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
         nodelist = "node205,node206,node207"
+        exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
         nodelist = None
+        exclude = 'neu324,neu325,neu329,neu306,neu321'
     else:
         raise NotImplementedError
 
@@ -40,10 +44,11 @@ def main():
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
-        slurm_cpus_per_task=8,
+        slurm_cpus_per_task=16,
         slurm_mem="150G",
         slurm_gpus_per_node=1,
         slurm_nodelist=nodelist,
+        slrum_exclude=exclude,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=20,
     )
@@ -111,9 +116,10 @@ def main():
                                                         --eval_episodes=50 \
                                                         --p_aug=0.5 \
                                                         --frame_stack=3 \
+                                                        --finetuning_size=500_000 \
                                                         --pretraining_steps=250_000 \
                                                         --finetuning_steps=100_000 \
-                                                        --eval_interval=50_000 \
+                                                        --eval_interval=10_000 \
                                                         --save_interval=750_000 \
                                                         --agent=impls/agents/sarsa_ifql_vib_gpi.py \
                                                         --agent.batch_size=256 \
