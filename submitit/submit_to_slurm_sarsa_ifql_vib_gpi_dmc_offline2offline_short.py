@@ -77,7 +77,7 @@ def main():
             # "puzzle-4x4-play-singletask-task3-v0",
             # "puzzle-4x4-play-singletask-task4-v0",
             # "puzzle-4x4-play-singletask-task5-v0",
-            "cheetah_run",
+            # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
             # "cheetah_walk_backward",
@@ -86,14 +86,14 @@ def main():
             # "walker_stand",
             # "walker_run",
             # "quadruped_run",
-            # "quadruped_jump",
+            "quadruped_jump",
             # "quadruped_walk",
             # "jaco_reach_top_left",
             # "jaco_reach_top_right",
             # "jaco_reach_bottom_left",
             # "jaco_reach_bottom_right",
         ]:
-            for obs_norm_type in ['normal']:
+            for obs_norm_type in ['normal', 'none']:
                 for alpha in [0.3]:
                     for finetuning_size in [500_000]:
                         for finetuning_steps in [250_000]:
@@ -101,9 +101,9 @@ def main():
                                 for num_flow_goals in [16]:
                                     for actor_freq in [1, 4]:
                                         for expectile in [0.9]:
-                                            for kl_weight in [0.05]:
-                                                for latent_dim in [128]:
-                                                    for seed in [100, 200, 300, 400, 500]:
+                                            for kl_weight in [0.005]:
+                                                for latent_dim in [512]:
+                                                    for seed in [100, 200, 300, 400]:
                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_ft_size={finetuning_size}_ft_steps={finetuning_steps}_eval_freq={eval_interval}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_actor_ln=False_kl_weight={kl_weight}_latent_dim={latent_dim}"
                                                         log_dir = os.path.expanduser(
                                                             f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_vib_gpi_offline2offline/{exp_name}/{seed}")
