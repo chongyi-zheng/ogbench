@@ -40,7 +40,7 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=16,
-        slurm_mem="80G",
+        slurm_mem="160G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_exclude=exclude,
@@ -74,10 +74,10 @@ def main():
             # "puzzle-4x4-play-singletask-task3-v0",
             # "puzzle-4x4-play-singletask-task4-v0",
             # "puzzle-4x4-play-singletask-task5-v0",
-            "visual-cube-single-play-singletask-task1-v0",
-            "visual-cube-double-play-singletask-task1-v0",
-            # "visual-scene-play-singletask-task1-v0",
-            # "visual-puzzle-4x4-play-singletask-task1-v0",
+            # "visual-cube-single-play-singletask-task1-v0",
+            # "visual-cube-double-play-singletask-task1-v0",
+            "visual-scene-play-singletask-task1-v0",
+            "visual-puzzle-4x4-play-singletask-task1-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
@@ -96,7 +96,7 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['none']:
-                for alpha in [30.0]:
+                for alpha in [3.0]:
                     for reward_type in ['state']:
                         for actor_freq in [4]:
                             for encoder in ['impala_small']:
