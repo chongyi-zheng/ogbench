@@ -106,7 +106,7 @@ class Dataset(FrozenDict):
                 normalizer_type))
 
     def normalize_observations(self, observations=None):
-        if observations is None and self.obs_norm_type != 'none':
+        if observations is None:
             self.obs_mean = np.mean(self['observations'], axis=0)
             self.obs_var = np.var(self['observations'], axis=0)
             self.obs_max = np.max(self['observations'], axis=0)

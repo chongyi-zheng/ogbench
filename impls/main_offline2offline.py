@@ -172,7 +172,7 @@ def main(_):
 
             agent, update_info = agent.pretrain(batch)
         else:
-            if (i == FLAGS.pretraining_steps + 1) and config['agent_name'] in ['sarsa_ifql_vib_gpi']:
+            if (i == (FLAGS.pretraining_steps + 1)) and config['agent_name'] in ['sarsa_ifql_vib_gpi']:
                 agent.target_reset()
 
             if (i == (FLAGS.pretraining_steps + 1)) and config['agent_name'] in ['hilp', 'fb_repr']:
