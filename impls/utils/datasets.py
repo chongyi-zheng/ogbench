@@ -189,7 +189,7 @@ class Dataset(FrozenDict):
         batch = self.get_subset(idxs)
         batch['observation_min'] = self.normalized_obs_min
         batch['observation_max'] = self.normalized_obs_max
-        if self.frame_stack is not None:
+        if (self.frame_stack is not None) and (not self._prestacked):
             # Stack frames.
             initial_state_idxs = self.initial_locs[np.searchsorted(self.initial_locs, idxs, side='right') - 1]
             obs = []  # Will be [ob[t - frame_stack + 1], ..., ob[t]].
