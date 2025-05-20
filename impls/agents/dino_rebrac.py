@@ -197,6 +197,10 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         loss = critic_loss + actor_loss
         return loss, info
 
+    def target_reset(self):
+        params = self.network.params
+        params['modules_target_encoder'] = params['modules_encoder']
+
     def target_update(self, network, module_name):
         """Update the target network."""
         new_target_params = jax.tree_util.tree_map(
