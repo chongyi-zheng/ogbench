@@ -232,6 +232,7 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
     """
 
     if 'singletask' in env_name:
+        from utils import ogbench_utils
         # OGBench.
         # if reward_free:
         #     dataset_env_name = '-'.join([*(env_name.split('-')[:3] if 'visual' in env_name else env_name.split('-')[:2]),
@@ -240,7 +241,7 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
         # else:
         #     dataset_env_name = env_name
         #     add_info = False
-        _, train_dataset, val_dataset = ogbench.make_env_and_datasets(env_name)
+        _, train_dataset, val_dataset = ogbench_utils.make_env_and_datasets(env_name)
         # _, train_dataset, val_dataset = ogbench.make_env_and_datasets(
         #     dataset_env_name, add_info=add_info)
         if train_dataset['observations'].shape[0] > max_size:
@@ -264,8 +265,8 @@ def make_env_and_datasets(env_name, frame_stack=None, action_clip_eps=1e-5,
         #         if k in val_dataset:
         #             del val_dataset[k]
 
-        env = ogbench.make_env_and_datasets(env_name, env_only=True)
-        eval_env = ogbench.make_env_and_datasets(env_name, env_only=True)
+        env = ogbench_utils.make_env_and_datasets(env_name, env_only=True)
+        eval_env = ogbench_utils.make_env_and_datasets(env_name, env_only=True)
         env = EpisodeMonitor(env, filter_regexes=['.*privileged.*', '.*proprio.*'])
         eval_env = EpisodeMonitor(eval_env, filter_regexes=['.*privileged.*', '.*proprio.*'])
 

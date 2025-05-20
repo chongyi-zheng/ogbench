@@ -51,11 +51,11 @@ def main():
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
-            # "cube-single-play-singletask-task1-v0",
-            # "cube-single-play-singletask-task2-v0",
-            # "cube-single-play-singletask-task3-v0",
-            # "cube-single-play-singletask-task4-v0",
-            # "cube-single-play-singletask-task5-v0",
+            "cube-single-play-singletask-task1-v0",
+            "cube-single-play-singletask-task2-v0",
+            "cube-single-play-singletask-task3-v0",
+            "cube-single-play-singletask-task4-v0",
+            "cube-single-play-singletask-task5-v0",
             # "cube-double-play-singletask-task1-v0",
             # "cube-double-play-singletask-task2-v0",
             # "cube-double-play-singletask-task3-v0",
@@ -66,12 +66,12 @@ def main():
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
-            "puzzle-3x3-play-singletask-task1-v0"
-            "puzzle-4x4-play-singletask-task1-v0",
-            "puzzle-4x4-play-singletask-task2-v0",
-            "puzzle-4x4-play-singletask-task3-v0",
-            "puzzle-4x4-play-singletask-task4-v0",
-            "puzzle-4x4-play-singletask-task5-v0",
+            # "puzzle-3x3-play-singletask-task1-v0"
+            # "puzzle-4x4-play-singletask-task1-v0",
+            # "puzzle-4x4-play-singletask-task2-v0",
+            # "puzzle-4x4-play-singletask-task3-v0",
+            # "puzzle-4x4-play-singletask-task4-v0",
+            # "puzzle-4x4-play-singletask-task5-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
@@ -90,14 +90,14 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [300.0]:
+                for alpha in [30.0]:
                     for num_flow_goals in [16]:
                         for actor_freq in [4]:
                             for expectile in [0.95]:
                                 for critic_latent_type in ['prior']:
                                     for vector_field_time_sin_embedding in [False]:
                                         for value_layer_norm in [True]:
-                                            for kl_weight in [0.1]:
+                                            for kl_weight in [0.05]:
                                                 for latent_dim in [128, 512]:
                                                     for clip_flow_goals in [True]:
                                                         for seed in [100, 200, 300, 400, 500]:

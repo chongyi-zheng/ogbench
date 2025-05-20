@@ -74,8 +74,18 @@ def main(_):
     config = FLAGS.agent
     _, _, pretraining_train_dataset, pretraining_val_dataset = make_env_and_datasets(
         FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=10_000_000, reward_free=True)
-    _, eval_env, finetuning_train_dataset, finetuning_val_dataset = make_env_and_datasets(
-        FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=FLAGS.finetuning_size, reward_free=False)
+    if ('cube-single-play' in FLAGS.env_name or 'cube-double-play' in FLAGS.env_name
+            or 'scene-play' in FLAGS.env_name or 'puzzle-4x4-play' in FLAGS.env_name):
+        # "cube-double-play-singletask-task1-v0"
+        splits = FLAGS.env_name.split('-')
+        pos = splits.index('singletask')
+        env_name = '-'.join(splits[: pos] + ['ft'] + splits[pos:])
+        _, eval_env, finetuning_train_dataset, finetuning_val_dataset = make_env_and_datasets(
+            env_name, frame_stack=FLAGS.frame_stack, max_size=FLAGS.finetuning_size, reward_free=False)
+    else:
+        _, eval_env, finetuning_train_dataset, finetuning_val_dataset = make_env_and_datasets(
+            FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=FLAGS.finetuning_size, reward_free=False)
+
     if FLAGS.video_episodes > 0:
         assert 'singletask' in FLAGS.env_name, 'Rendering is currently only supported for OGBench environments.'
 
