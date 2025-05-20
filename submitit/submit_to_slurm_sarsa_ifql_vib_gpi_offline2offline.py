@@ -90,18 +90,18 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [300.0]:
+                for alpha in [30.0]:
                     for num_flow_goals in [16]:
-                        for actor_freq in [4]:
-                            for expectile in [0.99]:
+                        for actor_freq in [1, 4]:
+                            for expectile in [0.95]:
                                 for critic_latent_type in ['prior']:
                                     for vector_field_time_sin_embedding in [False]:
-                                        for actor_layer_norm in [False]:
-                                            for kl_weight in [0.1, 0.05, 0.025]:
-                                                for latent_dim in [128]:
+                                        for value_layer_norm in [True]:
+                                            for kl_weight in [0.05]:
+                                                for latent_dim in [512]:
                                                     for clip_flow_goals in [True]:
                                                         for seed in [100, 200, 300, 400, 500]:
-                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_critic_z_type={critic_latent_type}_vf_time_emb={vector_field_time_sin_embedding}_actor_ln={actor_layer_norm}_kl_weight={kl_weight}_latent_dim={latent_dim}_clip_fg={clip_flow_goals}"
+                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_critic_z_type={critic_latent_type}_vf_time_emb={vector_field_time_sin_embedding}_value_ln={value_layer_norm}_kl_weight={kl_weight}_latent_dim={latent_dim}_clip_fg={clip_flow_goals}"
                                                             log_dir = os.path.expanduser(
                                                                 f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_vib_gpi_offline2offline/{exp_name}/{seed}")
 
@@ -168,8 +168,8 @@ def main():
                                                                     --agent.q_agg=min \
                                                                     --agent.transition_layer_norm=True \
                                                                     --agent.reward_layer_norm=True \
-                                                                    --agent.actor_layer_norm={actor_layer_norm} \
-                                                                    --agent.value_layer_norm=False \
+                                                                    --agent.actor_layer_norm=False \
+                                                                    --agent.value_layer_norm={value_layer_norm} \
                                                                     --agent.normalize_q_loss=False \
                                                                     --agent.use_mixup=False \
                                                                     --agent.mixup_alpha=2.0 \
