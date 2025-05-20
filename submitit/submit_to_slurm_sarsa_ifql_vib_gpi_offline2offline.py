@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=25,
+        slurm_array_parallelism=20,
     )
 
     with executor.batch():  # job array
@@ -51,11 +51,11 @@ def main():
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
-            "cube-single-play-singletask-task1-v0",
-            "cube-single-play-singletask-task2-v0",
-            "cube-single-play-singletask-task3-v0",
-            "cube-single-play-singletask-task4-v0",
-            "cube-single-play-singletask-task5-v0",
+            # "cube-single-play-singletask-task1-v0",
+            # "cube-single-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task3-v0",
+            # "cube-single-play-singletask-task4-v0",
+            # "cube-single-play-singletask-task5-v0",
             # "cube-double-play-singletask-task1-v0",
             # "cube-double-play-singletask-task2-v0",
             # "cube-double-play-singletask-task3-v0",
@@ -66,12 +66,12 @@ def main():
             # "scene-play-singletask-task3-v0",
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
-            # "puzzle-3x3-play-singletask-task1-v0"
-            # "puzzle-4x4-play-singletask-task1-v0",
-            # "puzzle-4x4-play-singletask-task2-v0",
-            # "puzzle-4x4-play-singletask-task3-v0",
-            # "puzzle-4x4-play-singletask-task4-v0",
-            # "puzzle-4x4-play-singletask-task5-v0",
+            "puzzle-3x3-play-singletask-task1-v0"
+            "puzzle-4x4-play-singletask-task1-v0",
+            "puzzle-4x4-play-singletask-task2-v0",
+            "puzzle-4x4-play-singletask-task3-v0",
+            "puzzle-4x4-play-singletask-task4-v0",
+            "puzzle-4x4-play-singletask-task5-v0",
             # "cheetah_run",
             # "cheetah_run_backward",
             # "cheetah_walk",
@@ -90,15 +90,15 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [30.0]:
+                for alpha in [300.0]:
                     for num_flow_goals in [16]:
-                        for actor_freq in [1, 4]:
+                        for actor_freq in [4]:
                             for expectile in [0.95]:
                                 for critic_latent_type in ['prior']:
                                     for vector_field_time_sin_embedding in [False]:
                                         for value_layer_norm in [True]:
-                                            for kl_weight in [0.05]:
-                                                for latent_dim in [512]:
+                                            for kl_weight in [0.1]:
+                                                for latent_dim in [128, 512]:
                                                     for clip_flow_goals in [True]:
                                                         for seed in [100, 200, 300, 400, 500]:
                                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_critic_z_type={critic_latent_type}_vf_time_emb={vector_field_time_sin_embedding}_value_ln={value_layer_norm}_kl_weight={kl_weight}_latent_dim={latent_dim}_clip_fg={clip_flow_goals}"
