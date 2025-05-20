@@ -332,6 +332,10 @@ class TDInfoNCEAgent(flax.struct.PyTreeNode):
 
         return self.replace(network=new_network, rng=new_rng), info
 
+    def target_reset(self):
+        params = self.network.params
+        params['modules_target_critic'] = params['modules_critic']
+
     def target_update(self, network, module_name):
         """Update the target network."""
         new_target_params = jax.tree_util.tree_map(
@@ -466,6 +470,7 @@ def get_config():
             actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
             actor_geom_start=1,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
             num_actor_goals=1,  # Number of actor goals to sample
+            gc_negative=True,  # Whether to use '0 if s == g else -1' (True) or '1 if s == g else 0' (False) as reward.
         )
     )
     return config

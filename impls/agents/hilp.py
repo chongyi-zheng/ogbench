@@ -180,6 +180,10 @@ class HILPAgent(flax.struct.PyTreeNode):
         loss = skill_value_loss + skill_critic_loss + skill_actor_loss
         return loss, info
 
+    def target_reset(self):
+        params = self.network.params
+        params['modules_target_skill_critic'] = params['modules_skill_critic']
+
     def target_update(self, network, module_name):
         """Update the target network."""
         new_target_params = jax.tree_util.tree_map(
