@@ -51,11 +51,11 @@ def main():
             # "antmaze-medium-play-v2",
             # "pen-human-v1",
             # "door-human-v1",
-            "cube-single-play-singletask-task1-v0",
-            "cube-single-play-singletask-task2-v0",
-            "cube-single-play-singletask-task3-v0",
-            "cube-single-play-singletask-task4-v0",
-            "cube-single-play-singletask-task5-v0",
+            # "cube-single-play-singletask-task1-v0",
+            # "cube-single-play-singletask-task2-v0",
+            # "cube-single-play-singletask-task3-v0",
+            # "cube-single-play-singletask-task4-v0",
+            # "cube-single-play-singletask-task5-v0",
             # "cube-double-play-singletask-task1-v0",
             # "cube-double-play-singletask-task2-v0",
             # "cube-double-play-singletask-task3-v0",
@@ -81,7 +81,7 @@ def main():
             # "walker_stand",
             # "walker_run",
             # "quadruped_run",
-            # "quadruped_jump",
+            "quadruped_jump",
             # "quadruped_stand",
             # "quadruped_walk",
             # "jaco_reach_top_left",
@@ -90,18 +90,18 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [30.0]:
+                for alpha in [300, 3, 30]:
                     for num_flow_goals in [16]:
                         for actor_freq in [4]:
-                            for expectile in [0.95]:
-                                for critic_latent_type in ['prior']:
+                            for expectile in [0.9]:
+                                for num_flow_steps in [10]:
                                     for vector_field_time_sin_embedding in [False]:
                                         for value_layer_norm in [True]:
-                                            for kl_weight in [0.05]:
-                                                for latent_dim in [128, 512]:
+                                            for kl_weight in [0.005]:
+                                                for latent_dim in [512]:
                                                     for clip_flow_goals in [True]:
-                                                        for seed in [100, 200, 300, 400, 500]:
-                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_critic_z_type={critic_latent_type}_vf_time_emb={vector_field_time_sin_embedding}_value_ln={value_layer_norm}_kl_weight={kl_weight}_latent_dim={latent_dim}_clip_fg={clip_flow_goals}"
+                                                        for seed in [100, 200, 300, 400]:
+                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_num_flow_steps={num_flow_steps}_vf_time_emb={vector_field_time_sin_embedding}_value_ln={value_layer_norm}_kl_weight={kl_weight}_latent_dim={latent_dim}_clip_fg={clip_flow_goals}_hyperparam_ablation"
                                                             log_dir = os.path.expanduser(
                                                                 f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_vib_gpi_offline2offline/{exp_name}/{seed}")
 
@@ -154,15 +154,14 @@ def main():
                                                                     --agent.network_type=mlp \
                                                                     --agent.num_residual_blocks=1 \
                                                                     --agent.alpha={alpha} \
-                                                                    --agent.num_flow_steps=10 \
+                                                                    --agent.num_flow_steps={num_flow_steps} \
                                                                     --agent.critic_noise_type=normal \
                                                                     --agent.critic_fm_loss_type=sarsa_squared \
-                                                                    --agent.num_flow_goals={num_flow_goals} \
                                                                     --agent.actor_freq={actor_freq} \
                                                                     --agent.clip_flow_goals={clip_flow_goals} \
                                                                     --agent.expectile={expectile} \
                                                                     --agent.kl_weight={kl_weight} \
-                                                                    --agent.critic_latent_type={critic_latent_type} \
+                                                                    --agent.critic_latent_type=prior \
                                                                     --agent.vector_field_time_sin_embedding={vector_field_time_sin_embedding} \
                                                                     --agent.latent_dim={latent_dim} \
                                                                     --agent.q_agg=min \
