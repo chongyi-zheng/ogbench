@@ -158,7 +158,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         current_vf_pred = self.network.select('critic_vf')(
             current_path_sample.x_t,
             times,
-            jax.lax.stop_gradient(observations), actions, latents,
+            observations, actions, latents,
             params=grad_params,
         )
         # stop gradient for the image encoder
