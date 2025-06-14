@@ -194,6 +194,52 @@ class Value(nn.Module):
         return v
 
 
+class ValueVectorField(nn.Module):
+    """Value vector field network for flow matching.
+
+    Attributes:
+        hidden_dims: Hidden layer dimensions.
+        value_dim: Value dimension.
+        layer_norm: Whether to apply layer normalization.
+        encoder: Optional encoder module to encode the inputs.
+    """
+
+    hidden_dims: Sequence[int]
+    value_dim: int = 1
+    layer_norm: bool = False
+    num_ensembles: int = 2
+    encoder: nn.Module = None
+
+    def setup(self) -> None:
+        mlp_class = MLP
+        if self.num_ensembles > 1:
+            mlp_class = ensemblize(mlp_class, self.num_ensembles)
+        value_net = mlp_class((*self.hidden_dims, 1), activate_final=False, layer_norm=self.layer_norm)
+
+        self.value_net = value_net
+
+    @nn.compact
+    def __call__(self, returns, times, observations, actions, is_encoded=False):
+        """Return the vectors at the given states, actions, and times.
+
+        Args:
+            returns: Returns.
+            times: Times.
+            observations: Observations.
+            actions: Actions.
+            is_encoded: Whether the observations are already encoded.
+        """
+        if not is_encoded and self.encoder is not None:
+            observations = self.encoder(observations)
+        inputs = jnp.concatenate([returns, times, observations, actions], axis=-1)
+
+        v = self.value_net(inputs)
+        # if self.value_dim == 1:
+        #     v = v.squeeze(-1)
+
+        return v
+
+
 class ActorVectorField(nn.Module):
     """Actor vector field network for flow matching.
 
