@@ -53,7 +53,7 @@ def main():
                             for seed in [10, 20]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_alpha={alpha}_discount={discount}_squared_transition_loss={squared_transition_loss}"
                                 log_dir = os.path.expanduser(
-                                    f"{log_root_dir}/exp_logs/ogbench_logs/fdrl/{exp_name}/{seed}")
+                                    f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
 
                                 # change the log folder of slurm executor
                                 submitit_log_dir = os.path.join(os.path.dirname(log_dir),
