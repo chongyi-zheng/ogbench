@@ -31,7 +31,7 @@ def main():
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
         slurm_name="qrl",
-        slurm_time=int(6 * 60),  # minute
+        slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
         slurm_nodes=1,
@@ -94,7 +94,6 @@ def main():
                                     --eval_interval=100_000 \
                                     --save_interval=1_000_000 \
                                     --eval_episodes=50 \
-                                    --dataset_class=GCDataset \
                                     --agent=impls/agents/qrl.py \
                                     --agent.alpha={alpha} \
                                     --agent.discount={discount} \

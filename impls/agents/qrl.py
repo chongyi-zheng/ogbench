@@ -69,6 +69,10 @@ class QRLAgent(flax.struct.PyTreeNode):
 
         dist1 = self.network.select('value')(next_ob_reps, pred_next_ob_reps, is_phi=True, params=grad_params)
         dist2 = self.network.select('value')(pred_next_ob_reps, next_ob_reps, is_phi=True, params=grad_params)
+        if self.config['squared_transition_loss']:
+            dynamics_loss = (dist1 ** 2 + dist2 ** 2).mean() / 2
+        else:
+            dynamics_loss = (dist1 + dist2).mean() / 2
         dynamics_loss = (dist1 + dist2).mean() / 2
 
         return dynamics_loss, {
@@ -305,6 +309,7 @@ def get_config():
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor (unused by default; can be used for geometric goal sampling in GCDataset).
             eps=0.05,  # Margin for the dual lambda loss.
+            squared_transition_loss=False,  # Whether to use the distance or the squared distance for the transition loss.
             actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').
             alpha=0.003,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.
