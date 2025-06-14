@@ -8,7 +8,7 @@ import numpy as np
 import optax
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import MLP, GCActor, GCDiscreteActor, GCIQEValue, GCMRNValue, LogParam
+from utils.networks import MLP, GCActor, GCIQEValue, GCMRNValue, LogParam
 
 
 class QRLAgent(flax.struct.PyTreeNode):
@@ -69,7 +69,10 @@ class QRLAgent(flax.struct.PyTreeNode):
 
         dist1 = self.network.select('value')(next_ob_reps, pred_next_ob_reps, is_phi=True, params=grad_params)
         dist2 = self.network.select('value')(pred_next_ob_reps, next_ob_reps, is_phi=True, params=grad_params)
-        dynamics_loss = (dist1 + dist2).mean() / 2
+        if self.config['squared_transition_loss']:
+            dynamics_loss = (dist1 ** 2 + dist2 ** 2).mean() / 2
+        else:
+            dynamics_loss = (dist1 + dist2).mean() / 2
 
         return dynamics_loss, {
             'dynamics_loss': dynamics_loss,
@@ -95,20 +98,13 @@ class QRLAgent(flax.struct.PyTreeNode):
                 'actor_loss': actor_loss,
                 'adv': adv.mean(),
                 'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
             }
-            if not self.config['discrete']:
-                actor_info.update(
-                    {
-                        'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
-                        'std': jnp.mean(dist.scale_diag),
-                    }
-                )
 
             return actor_loss, actor_info
         elif self.config['actor_loss'] == 'ddpgbc':
             # Compute DDPG+BC loss based on latent dynamics model.
-            assert not self.config['discrete']
-
             dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
             if self.config['const_std']:
                 q_actions = jnp.clip(dist.mode(), -1, 1)
@@ -190,8 +186,7 @@ class QRLAgent(flax.struct.PyTreeNode):
         """Sample actions from the actor."""
         dist = self.network.select('actor')(observations, goals, temperature=temperature)
         actions = dist.sample(seed=seed)
-        if not self.config['discrete']:
-            actions = jnp.clip(actions, -1, 1)
+        actions = jnp.clip(actions, -1, 1)
         return actions
 
     @classmethod
@@ -215,10 +210,7 @@ class QRLAgent(flax.struct.PyTreeNode):
 
         ex_goals = ex_observations
         ex_latents = np.zeros((ex_observations.shape[0], config['latent_dim']), dtype=np.float32)
-        if config['discrete']:
-            action_dim = ex_actions.max() + 1
-        else:
-            action_dim = ex_actions.shape[-1]
+        action_dim = ex_actions.shape[-1]
 
         # Define encoders.
         encoders = dict()
@@ -253,20 +245,13 @@ class QRLAgent(flax.struct.PyTreeNode):
                 layer_norm=config['layer_norm'],
             )
 
-        if config['discrete']:
-            actor_def = GCDiscreteActor(
-                hidden_dims=config['actor_hidden_dims'],
-                action_dim=action_dim,
-                gc_encoder=encoders.get('actor'),
-            )
-        else:
-            actor_def = GCActor(
-                hidden_dims=config['actor_hidden_dims'],
-                action_dim=action_dim,
-                state_dependent_std=False,
-                const_std=config['const_std'],
-                gc_encoder=encoders.get('actor'),
-            )
+        actor_def = GCActor(
+            hidden_dims=config['actor_hidden_dims'],
+            action_dim=action_dim,
+            state_dependent_std=False,
+            const_std=config['const_std'],
+            gc_encoder=encoders.get('actor'),
+        )
 
         # Define the dual lambda variable.
         lam_def = LogParam()
@@ -305,21 +290,25 @@ def get_config():
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor (unused by default; can be used for geometric goal sampling in GCDataset).
             eps=0.05,  # Margin for the dual lambda loss.
+            squared_transition_loss=False,  # Whether to use the distance or the squared distance for the transition loss.
             actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').
             alpha=0.003,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.
-            discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             # Dataset hyperparameters.
-            dataset_class='GCDataset',  # Dataset class name.
+            relabel_reward=True,  # Whether to relabel the reward.
             value_p_curgoal=0.0,  # Probability of using the current state as the value goal.
             value_p_trajgoal=0.0,  # Probability of using a future state in the same trajectory as the value goal.
             value_p_randomgoal=1.0,  # Probability of using a random state as the value goal.
             value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
+            value_geom_start=1,  # Whether the support of the geometric sampling is [0, inf) or [1, inf)
+            num_value_goals=1,  # Number of value goals to sample
             actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
             actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
             actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
             actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
+            actor_geom_start=1,  # Whether the support the geometric sampling is [0, inf) or [1, inf)
+            num_actor_goals=1,  # Number of actor goals to sample
             gc_negative=False,  # Unused (defined for compatibility with GCDataset).
             p_aug=0.0,  # Probability of applying image augmentation.
             frame_stack=ml_collections.config_dict.placeholder(int),  # Number of frames to stack.
