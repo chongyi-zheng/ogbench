@@ -4,7 +4,7 @@ from datetime import datetime
 
 import absl.flags as flags
 import ml_collections
-import numpy as npc
+import numpy as np
 import wandb
 import wandb_osh
 from wandb_osh.hooks import TriggerWandbSyncHook
