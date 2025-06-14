@@ -94,7 +94,7 @@ def main():
                                     --eval_interval=100_000 \
                                     --save_interval=1_000_000 \
                                     --eval_episodes=50 \
-                                    --agent=agents/qrl.py \
+                                    --agent=impls/agents/qrl.py \
                                     --agent.alpha={alpha} \
                                     --agent.discount={discount} \
                                     --agent.squared_transition_loss={squared_transition_loss} \
