@@ -51,7 +51,7 @@ def main():
                     for normalize_q_loss in [True]:
                         for const_std in [True, False]:
                             for seed in [10, 20]:
-                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_alpha={alpha}_discount={discount}_squared_transition_loss={squared_transition_loss}"
+                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_alpha={alpha}_discount={discount}_normalize_q_loss={normalize_q_loss}_const_std={const_std}"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
 
@@ -87,7 +87,7 @@ def main():
     
                                     rm -rf {log_dir};
                                     mkdir -p {log_dir};
-                                    python $PROJECT_DIR/impls/main.py \
+                                    python $PROJECT_DIR/main.py \
                                         --enable_wandb=1 \
                                         --env_name={env_name} \
                                         --train_steps=1_000_000 \
