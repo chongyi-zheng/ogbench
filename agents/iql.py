@@ -6,16 +6,14 @@ import jax
 import jax.numpy as jnp
 import ml_collections
 import optax
-from utils.encoders import GCEncoder, encoder_modules
+
+from utils.encoders import encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, GCDiscreteActor, GCDiscreteCritic, GCValue
+from utils.networks import Actor, Value
 
 
-class GCIQLAgent(flax.struct.PyTreeNode):
-    """Goal-conditioned implicit Q-learning (GCIQL) agent.
-
-    This implementation supports both AWR (actor_loss='awr') and DDPG+BC (actor_loss='ddpgbc') for the actor loss.
-    """
+class IQLAgent(flax.struct.PyTreeNode):
+    """Implicit Q-learning (IQL) agent."""
 
     rng: Any
     network: Any
@@ -29,9 +27,9 @@ class GCIQLAgent(flax.struct.PyTreeNode):
 
     def value_loss(self, batch, grad_params):
         """Compute the IQL value loss."""
-        q1, q2 = self.network.select('target_critic')(batch['observations'], batch['value_goals'], batch['actions'])
+        q1, q2 = self.network.select('target_critic')(batch['observations'], actions=batch['actions'])
         q = jnp.minimum(q1, q2)
-        v = self.network.select('value')(batch['observations'], batch['value_goals'], params=grad_params)
+        v = self.network.select('value')(batch['observations'], params=grad_params)
         value_loss = self.expectile_loss(q - v, q - v, self.config['expectile']).mean()
 
         return value_loss, {
@@ -43,12 +41,10 @@ class GCIQLAgent(flax.struct.PyTreeNode):
 
     def critic_loss(self, batch, grad_params):
         """Compute the IQL critic loss."""
-        next_v = self.network.select('value')(batch['next_observations'], batch['value_goals'])
+        next_v = self.network.select('value')(batch['next_observations'])
         q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v
 
-        q1, q2 = self.network.select('critic')(
-            batch['observations'], batch['value_goals'], batch['actions'], params=grad_params
-        )
+        q1, q2 = self.network.select('critic')(batch['observations'], actions=batch['actions'], params=grad_params)
         critic_loss = ((q1 - q) ** 2 + (q2 - q) ** 2).mean()
 
         return critic_loss, {
@@ -62,15 +58,15 @@ class GCIQLAgent(flax.struct.PyTreeNode):
         """Compute the actor loss (AWR or DDPG+BC)."""
         if self.config['actor_loss'] == 'awr':
             # AWR loss.
-            v = self.network.select('value')(batch['observations'], batch['actor_goals'])
-            q1, q2 = self.network.select('critic')(batch['observations'], batch['actor_goals'], batch['actions'])
+            v = self.network.select('value')(batch['observations'])
+            q1, q2 = self.network.select('critic')(batch['observations'], actions=batch['actions'])
             q = jnp.minimum(q1, q2)
             adv = q - v
 
             exp_a = jnp.exp(adv * self.config['alpha'])
             exp_a = jnp.minimum(exp_a, 100.0)
 
-            dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
+            dist = self.network.select('actor')(batch['observations'], params=grad_params)
             log_prob = dist.log_prob(batch['actions'])
 
             actor_loss = -(exp_a * log_prob).mean()
@@ -79,30 +75,23 @@ class GCIQLAgent(flax.struct.PyTreeNode):
                 'actor_loss': actor_loss,
                 'adv': adv.mean(),
                 'bc_log_prob': log_prob.mean(),
+                'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
+                'std': jnp.mean(dist.scale_diag),
             }
-            if not self.config['discrete']:
-                actor_info.update(
-                    {
-                        'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
-                        'std': jnp.mean(dist.scale_diag),
-                    }
-                )
 
             return actor_loss, actor_info
         elif self.config['actor_loss'] == 'ddpgbc':
             # DDPG+BC loss.
-            assert not self.config['discrete']
-
-            dist = self.network.select('actor')(batch['observations'], batch['actor_goals'], params=grad_params)
+            dist = self.network.select('actor')(batch['observations'], params=grad_params)
             if self.config['const_std']:
                 q_actions = jnp.clip(dist.mode(), -1, 1)
             else:
                 q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
-            q1, q2 = self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
+            q1, q2 = self.network.select('critic')(batch['observations'], actions=q_actions)
             q = jnp.minimum(q1, q2)
 
             # Normalize Q values by the absolute mean to make the loss scale invariant.
-            q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean() + 1e-6)
+            q_loss = -q.mean() / jax.lax.stop_gradient(jnp.abs(q).mean())
             log_prob = dist.log_prob(batch['actions'])
 
             bc_loss = -(self.config['alpha'] * log_prob).mean()
@@ -170,15 +159,13 @@ class GCIQLAgent(flax.struct.PyTreeNode):
     def sample_actions(
         self,
         observations,
-        goals=None,
         seed=None,
         temperature=1.0,
     ):
         """Sample actions from the actor."""
-        dist = self.network.select('actor')(observations, goals, temperature=temperature)
+        dist = self.network.select('actor')(observations, temperature=temperature)
         actions = dist.sample(seed=seed)
-        if not self.config['discrete']:
-            actions = jnp.clip(actions, -1, 1)
+        actions = jnp.clip(actions, -1, 1)
         return actions
 
     @classmethod
@@ -194,70 +181,49 @@ class GCIQLAgent(flax.struct.PyTreeNode):
         Args:
             seed: Random seed.
             ex_observations: Example batch of observations.
-            ex_actions: Example batch of actions. In discrete-action MDPs, this should contain the maximum action value.
+            ex_actions: Example batch of actions.
             config: Configuration dictionary.
         """
         rng = jax.random.PRNGKey(seed)
         rng, init_rng = jax.random.split(rng, 2)
 
-        ex_goals = ex_observations
-        if config['discrete']:
-            action_dim = ex_actions.max() + 1
-        else:
-            action_dim = ex_actions.shape[-1]
+        action_dim = ex_actions.shape[-1]
 
         # Define encoders.
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
-            encoders['value'] = GCEncoder(concat_encoder=encoder_module())
-            encoders['critic'] = GCEncoder(concat_encoder=encoder_module())
-            encoders['actor'] = GCEncoder(concat_encoder=encoder_module())
+            encoders['value'] = encoder_module()
+            encoders['critic'] = encoder_module()
+            encoders['actor'] = encoder_module()
 
-        # Define value and actor networks.
-        value_def = GCValue(
+        # Define networks.
+        value_def = Value(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['layer_norm'],
-            ensemble=False,
-            gc_encoder=encoders.get('value'),
+            num_ensembles=1,
+            encoder=encoders.get('value'),
+        )
+        critic_def = Value(
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            num_ensembles=2,
+            encoder=encoders.get('critic'),
+        )
+        actor_def = Actor(
+            hidden_dims=config['actor_hidden_dims'],
+            action_dim=action_dim,
+            layer_norm=config['actor_layer_norm'],
+            state_dependent_std=False,
+            const_std=config['const_std'],
+            encoder=encoders.get('actor'),
         )
 
-        if config['discrete']:
-            critic_def = GCDiscreteCritic(
-                hidden_dims=config['value_hidden_dims'],
-                layer_norm=config['layer_norm'],
-                ensemble=True,
-                gc_encoder=encoders.get('critic'),
-                action_dim=action_dim,
-            )
-        else:
-            critic_def = GCValue(
-                hidden_dims=config['value_hidden_dims'],
-                layer_norm=config['layer_norm'],
-                ensemble=True,
-                gc_encoder=encoders.get('critic'),
-            )
-
-        if config['discrete']:
-            actor_def = GCDiscreteActor(
-                hidden_dims=config['actor_hidden_dims'],
-                action_dim=action_dim,
-                gc_encoder=encoders.get('actor'),
-            )
-        else:
-            actor_def = GCActor(
-                hidden_dims=config['actor_hidden_dims'],
-                action_dim=action_dim,
-                state_dependent_std=False,
-                const_std=config['const_std'],
-                gc_encoder=encoders.get('actor'),
-            )
-
         network_info = dict(
-            value=(value_def, (ex_observations, ex_goals)),
-            critic=(critic_def, (ex_observations, ex_goals, ex_actions)),
-            target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_goals, ex_actions)),
-            actor=(actor_def, (ex_observations, ex_goals)),
+            value=(value_def, (ex_observations,)),
+            critic=(critic_def, (ex_observations, ex_actions)),
+            target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_actions)),
+            actor=(actor_def, (ex_observations,)),
         )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
@@ -276,34 +242,20 @@ class GCIQLAgent(flax.struct.PyTreeNode):
 def get_config():
     config = ml_collections.ConfigDict(
         dict(
-            # Agent hyperparameters.
-            agent_name='gciql',  # Agent name.
+            agent_name='iql',  # Agent name.
             lr=3e-4,  # Learning rate.
-            batch_size=1024,  # Batch size.
-            actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
-            value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
+            batch_size=256,  # Batch size.
+            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
+            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             layer_norm=True,  # Whether to use layer normalization.
+            actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
             expectile=0.9,  # IQL expectile.
-            actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').
-            alpha=0.3,  # Temperature in AWR or BC coefficient in DDPG+BC.
+            actor_loss='awr',  # Actor loss type ('awr' or 'ddpgbc').
+            alpha=10.0,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.
-            discrete=False,  # Whether the action space is discrete.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
-            # Dataset hyperparameters.
-            dataset_class='GCDataset',  # Dataset class name.
-            value_p_curgoal=0.2,  # Probability of using the current state as the value goal.
-            value_p_trajgoal=0.5,  # Probability of using a future state in the same trajectory as the value goal.
-            value_p_randomgoal=0.3,  # Probability of using a random state as the value goal.
-            value_geom_sample=True,  # Whether to use geometric sampling for future value goals.
-            actor_p_curgoal=0.0,  # Probability of using the current state as the actor goal.
-            actor_p_trajgoal=1.0,  # Probability of using a future state in the same trajectory as the actor goal.
-            actor_p_randomgoal=0.0,  # Probability of using a random state as the actor goal.
-            actor_geom_sample=False,  # Whether to use geometric sampling for future actor goals.
-            gc_negative=True,  # Whether to use '0 if s == g else -1' (True) or '1 if s == g else 0' (False) as reward.
-            p_aug=0.0,  # Probability of applying image augmentation.
-            frame_stack=ml_collections.config_dict.placeholder(int),  # Number of frames to stack.
         )
     )
     return config

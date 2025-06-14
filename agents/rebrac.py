@@ -1,4 +1,5 @@
 import copy
+from functools import partial
 from typing import Any
 
 import flax
@@ -6,30 +7,41 @@ import jax
 import jax.numpy as jnp
 import ml_collections
 import optax
+
+from utils.encoders import encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import GCActor, GCValue, LogParam
+from utils.networks import Actor, Value
 
 
-class SACAgent(flax.struct.PyTreeNode):
-    """Soft actor-critic (SAC) agent."""
+class ReBRACAgent(flax.struct.PyTreeNode):
+    """Revisited behavior-regularized actor-critic (ReBRAC) agent.
+
+    ReBRAC is a variant of TD3+BC with layer normalization and separate actor and critic penalization.
+    """
 
     rng: Any
     network: Any
     config: Any = nonpytree_field()
 
     def critic_loss(self, batch, grad_params, rng):
-        """Compute the SAC critic loss."""
-        next_dist = self.network.select('actor')(batch['next_observations'])
-        next_actions, next_log_probs = next_dist.sample_and_log_prob(seed=rng)
+        """Compute the ReBRAC critic loss."""
+        rng, sample_rng = jax.random.split(rng)
+        next_dist = self.network.select('target_actor')(batch['next_observations'])
+        next_actions = next_dist.mode()
+        noise = jnp.clip(
+            (jax.random.normal(sample_rng, next_actions.shape) * self.config['actor_noise']),
+            -self.config['actor_noise_clip'],
+            self.config['actor_noise_clip'],
+        )
+        next_actions = jnp.clip(next_actions + noise, -1, 1)
 
         next_qs = self.network.select('target_critic')(batch['next_observations'], actions=next_actions)
-        if self.config['min_q']:
-            next_q = jnp.min(next_qs, axis=0)
-        else:
-            next_q = jnp.mean(next_qs, axis=0)
+        next_q = next_qs.min(axis=0)
+
+        mse = jnp.square(next_actions - batch['next_actions']).sum(axis=-1)
+        next_q = next_q - self.config['alpha_critic'] * mse
 
         target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
-        target_q = target_q - self.config['discount'] * batch['masks'] * next_log_probs * self.network.select('alpha')()
 
         q = self.network.select('critic')(batch['observations'], actions=batch['actions'], params=grad_params)
         critic_loss = jnp.square(q - target_q).mean()
@@ -42,25 +54,23 @@ class SACAgent(flax.struct.PyTreeNode):
         }
 
     def actor_loss(self, batch, grad_params, rng):
-        """Compute the SAC actor loss."""
-        # Actor loss.
+        """Compute the ReBRAC actor loss."""
         dist = self.network.select('actor')(batch['observations'], params=grad_params)
-        actions, log_probs = dist.sample_and_log_prob(seed=rng)
+        actions = dist.mode()
 
+        # Q loss.
         qs = self.network.select('critic')(batch['observations'], actions=actions)
-        if self.config['min_q']:
-            q = jnp.min(qs, axis=0)
-        else:
-            q = jnp.mean(qs, axis=0)
+        q = jnp.min(qs, axis=0)
 
-        actor_loss = (log_probs * self.network.select('alpha')() - q).mean()
+        # BC loss.
+        mse = jnp.square(actions - batch['actions']).sum(axis=-1)
 
-        # Entropy loss.
-        alpha = self.network.select('alpha')(params=grad_params)
-        entropy = -jax.lax.stop_gradient(log_probs).mean()
-        alpha_loss = (alpha * (entropy - self.config['target_entropy'])).mean()
+        # Normalize Q values by the absolute mean to make the loss scale invariant.
+        lam = jax.lax.stop_gradient(1 / jnp.abs(q).mean())
+        actor_loss = -(lam * q).mean()
+        bc_loss = (self.config['alpha_actor'] * mse).mean()
 
-        total_loss = actor_loss + alpha_loss
+        total_loss = actor_loss + bc_loss
 
         if self.config['tanh_squash']:
             action_std = dist._distribution.stddev()
@@ -70,14 +80,13 @@ class SACAgent(flax.struct.PyTreeNode):
         return total_loss, {
             'total_loss': total_loss,
             'actor_loss': actor_loss,
-            'alpha_loss': alpha_loss,
-            'alpha': alpha,
-            'entropy': -log_probs.mean(),
+            'bc_loss': bc_loss,
             'std': action_std.mean(),
+            'mse': mse.mean(),
         }
 
-    @jax.jit
-    def total_loss(self, batch, grad_params, rng=None):
+    @partial(jax.jit, static_argnames=('full_update',))
+    def total_loss(self, batch, grad_params, full_update=True, rng=None):
         """Compute the total loss."""
         info = {}
         rng = rng if rng is not None else self.rng
@@ -88,9 +97,14 @@ class SACAgent(flax.struct.PyTreeNode):
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
-        actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
-        for k, v in actor_info.items():
-            info[f'actor/{k}'] = v
+        if full_update:
+            # Update the actor.
+            actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
+            for k, v in actor_info.items():
+                info[f'actor/{k}'] = v
+        else:
+            # Skip actor update.
+            actor_loss = 0.0
 
         loss = critic_loss + actor_loss
         return loss, info
@@ -104,16 +118,19 @@ class SACAgent(flax.struct.PyTreeNode):
         )
         network.params[f'modules_target_{module_name}'] = new_target_params
 
-    @jax.jit
-    def update(self, batch):
+    @partial(jax.jit, static_argnames=('full_update',))
+    def update(self, batch, full_update=True):
         """Update the agent and return a new agent with information dictionary."""
         new_rng, rng = jax.random.split(self.rng)
 
         def loss_fn(grad_params):
-            return self.total_loss(batch, grad_params, rng=rng)
+            return self.total_loss(batch, grad_params, full_update, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        self.target_update(new_network, 'critic')
+        if full_update:
+            # Update the target networks only when `full_update` is True.
+            self.target_update(new_network, 'critic')
+            self.target_update(new_network, 'actor')
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -121,14 +138,18 @@ class SACAgent(flax.struct.PyTreeNode):
     def sample_actions(
         self,
         observations,
-        goals=None,
         seed=None,
         temperature=1.0,
     ):
         """Sample actions from the actor."""
-        dist = self.network.select('actor')(observations, goals, temperature=temperature)
-        actions = dist.sample(seed=seed)
-        actions = jnp.clip(actions, -1, 1)
+        dist = self.network.select('actor')(observations, temperature=temperature)
+        actions = dist.mode()
+        noise = jnp.clip(
+            (jax.random.normal(seed, actions.shape) * self.config['actor_noise'] * temperature),
+            -self.config['actor_noise_clip'],
+            self.config['actor_noise_clip'],
+        )
+        actions = jnp.clip(actions + noise, -1, 1)
         return actions
 
     @classmethod
@@ -152,34 +173,36 @@ class SACAgent(flax.struct.PyTreeNode):
 
         action_dim = ex_actions.shape[-1]
 
-        if config['target_entropy'] is None:
-            config['target_entropy'] = -config['target_entropy_multiplier'] * action_dim
+        # Define encoders.
+        encoders = dict()
+        if config['encoder'] is not None:
+            encoder_module = encoder_modules[config['encoder']]
+            encoders['critic'] = encoder_module()
+            encoders['actor'] = encoder_module()
 
-        # Define critic and actor networks.
-        critic_def = GCValue(
+        # Define networks.
+        critic_def = Value(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['layer_norm'],
-            ensemble=True,
+            num_ensembles=2,
+            encoder=encoders.get('critic'),
         )
-
-        actor_def = GCActor(
+        actor_def = Actor(
             hidden_dims=config['actor_hidden_dims'],
             action_dim=action_dim,
-            log_std_min=-5,
+            layer_norm=config['actor_layer_norm'],
             tanh_squash=config['tanh_squash'],
-            state_dependent_std=config['state_dependent_std'],
-            const_std=False,
+            state_dependent_std=False,
+            const_std=True,
             final_fc_init_scale=config['actor_fc_scale'],
+            encoder=encoders.get('actor'),
         )
 
-        # Define the dual alpha variable.
-        alpha_def = LogParam()
-
         network_info = dict(
-            critic=(critic_def, (ex_observations, None, ex_actions)),
-            target_critic=(copy.deepcopy(critic_def), (ex_observations, None, ex_actions)),
-            actor=(actor_def, (ex_observations, None)),
-            alpha=(alpha_def, ()),
+            critic=(critic_def, (ex_observations, ex_actions)),
+            target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_actions)),
+            actor=(actor_def, (ex_observations,)),
+            target_actor=(copy.deepcopy(actor_def), (ex_observations,)),
         )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
@@ -191,6 +214,7 @@ class SACAgent(flax.struct.PyTreeNode):
 
         params = network.params
         params['modules_target_critic'] = params['modules_critic']
+        params['modules_target_actor'] = params['modules_actor']
 
         return cls(rng, network=network, config=flax.core.FrozenDict(**config))
 
@@ -198,20 +222,23 @@ class SACAgent(flax.struct.PyTreeNode):
 def get_config():
     config = ml_collections.ConfigDict(
         dict(
-            agent_name='sac',  # Agent name.
-            lr=1e-4,  # Learning rate.
+            agent_name='rebrac',  # Agent name.
+            lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
-            actor_hidden_dims=(256, 256),  # Actor network hidden dimensions.
-            value_hidden_dims=(256, 256),  # Value network hidden dimensions.
-            layer_norm=False,  # Whether to use layer normalization.
+            actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
+            value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
+            layer_norm=True,  # Whether to use layer normalization.
+            actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
-            target_entropy=ml_collections.config_dict.placeholder(float),  # Target entropy (None for automatic tuning).
-            target_entropy_multiplier=0.5,  # Multiplier to dim(A) for target entropy.
             tanh_squash=True,  # Whether to squash actions with tanh.
-            state_dependent_std=True,  # Whether to use state-dependent standard deviations for actor.
             actor_fc_scale=0.01,  # Final layer initialization scale for actor.
-            min_q=True,  # Whether to use min Q (True) or mean Q (False).
+            alpha_actor=0.0,  # Actor BC coefficient.
+            alpha_critic=0.0,  # Critic BC coefficient.
+            actor_freq=2,  # Actor update frequency.
+            actor_noise=0.2,  # Actor noise scale.
+            actor_noise_clip=0.5,  # Actor noise clipping threshold.
+            encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
         )
     )
     return config

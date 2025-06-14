@@ -6,8 +6,6 @@ import absl.flags as flags
 import ml_collections
 import numpy as np
 import wandb
-import wandb_osh
-from wandb_osh.hooks import TriggerWandbSyncHook
 from PIL import Image, ImageEnhance
 
 
@@ -62,7 +60,6 @@ def get_flag_dict():
 
 
 def setup_wandb(
-    wandb_output_dir=tempfile.mkdtemp(),
     entity=None,
     project='project',
     group=None,
@@ -70,7 +67,7 @@ def setup_wandb(
     mode='online',
 ):
     """Set up Weights & Biases for logging."""
-    # wandb_output_dir = tempfile.mkdtemp()
+    wandb_output_dir = tempfile.mkdtemp()
     tags = [group] if group is not None else None
 
     init_kwargs = dict(
@@ -91,12 +88,7 @@ def setup_wandb(
 
     run = wandb.init(**init_kwargs)
 
-    trigger_sync = None
-    if mode == 'offline':
-        wandb_osh.set_log_level("ERROR")
-        trigger_sync = TriggerWandbSyncHook()
-
-    return run, trigger_sync
+    return run
 
 
 def reshape_video(v, n_cols=None):
