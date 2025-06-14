@@ -8,10 +8,7 @@ import ml_collections
 import optax
 from utils.encoders import GCEncoder, encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import (
-    GCActor, GCBilinearValue, GCValue,
-    GCDiscreteActor, GCDiscreteBilinearCritic, GCDiscreteCritic
-)
+from utils.networks import GCActor, GCDiscreteActor, GCDiscreteCritic, GCValue
 
 
 class GCIQLAgent(flax.struct.PyTreeNode):
@@ -32,26 +29,9 @@ class GCIQLAgent(flax.struct.PyTreeNode):
 
     def value_loss(self, batch, grad_params):
         """Compute the IQL value loss."""
-        if self.config['critic_arch'] == 'bilinear':
-            _, q_phi, q_psi = self.network.select('target_critic')(
-                batch['observations'],
-                batch['value_goals'],
-                batch['actions'],
-                info=True
-            )
-            q1, q2 = (q_phi * q_psi / jnp.sqrt(q_phi.shape[-1])).sum(axis=-1)
-            q = jnp.minimum(q1, q2)
-            _, v_phi, v_psi = self.network.select('value')(
-                batch['observations'],
-                batch['value_goals'],
-                info=True,
-                params=grad_params
-            )
-            v = (v_phi * v_psi / jnp.sqrt(v_phi.shape[-1])).sum(axis=-1)
-        elif self.config['critic_arch'] == 'mlp':
-            q1, q2 = self.network.select('target_critic')(batch['observations'], batch['value_goals'], batch['actions'])
-            q = jnp.minimum(q1, q2)
-            v = self.network.select('value')(batch['observations'], batch['value_goals'], params=grad_params)
+        q1, q2 = self.network.select('target_critic')(batch['observations'], batch['value_goals'], batch['actions'])
+        q = jnp.minimum(q1, q2)
+        v = self.network.select('value')(batch['observations'], batch['value_goals'], params=grad_params)
         value_loss = self.expectile_loss(q - v, q - v, self.config['expectile']).mean()
 
         return value_loss, {
@@ -63,29 +43,12 @@ class GCIQLAgent(flax.struct.PyTreeNode):
 
     def critic_loss(self, batch, grad_params):
         """Compute the IQL critic loss."""
-        if self.config['critic_arch'] == 'bilinear':
-            _, next_v_phi, next_v_psi = self.network.select('value')(
-                batch['next_observations'],
-                batch['value_goals'],
-                info=True,
-            )
-            next_v = (next_v_phi * next_v_psi / jnp.sqrt(next_v_phi.shape[-1])).sum(axis=-1)
-
-            _, q_phi, q_psi = self.network.select('critic')(
-                batch['observations'],
-                batch['value_goals'],
-                batch['actions'],
-                info=True,
-                params=grad_params
-            )
-            q1, q2 = (q_phi * q_psi / jnp.sqrt(q_phi.shape[-1])).sum(axis=-1)
-        elif self.config['critic_arch'] == 'mlp':
-            next_v = self.network.select('value')(batch['next_observations'], batch['value_goals'])
-
-            q1, q2 = self.network.select('critic')(
-                batch['observations'], batch['value_goals'], batch['actions'], params=grad_params
-            )
+        next_v = self.network.select('value')(batch['next_observations'], batch['value_goals'])
         q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v
+
+        q1, q2 = self.network.select('critic')(
+            batch['observations'], batch['value_goals'], batch['actions'], params=grad_params
+        )
         critic_loss = ((q1 - q) ** 2 + (q2 - q) ** 2).mean()
 
         return critic_loss, {
@@ -99,16 +62,8 @@ class GCIQLAgent(flax.struct.PyTreeNode):
         """Compute the actor loss (AWR or DDPG+BC)."""
         if self.config['actor_loss'] == 'awr':
             # AWR loss.
-            if self.config['critic_arch'] == 'bilinear':
-                _, v_phi, v_psi = self.network.select('value')(
-                    batch['observations'], batch['actor_goals'], info=True)
-                v = (v_phi * v_psi / jnp.sqrt(v_phi[-1])).sum(axis=-1)
-                _, q_phi, q_psi = self.network.select('critic')(
-                    batch['observations'], batch['actor_goals'], batch['actions'], info=True)
-                q1, q2 = (q_phi * q_psi / jnp.sqrt(q_phi.shape[-1])).sum(axis=-1)
-            elif self.config['critic_arch'] == 'mlp':
-                v = self.network.select('value')(batch['observations'], batch['actor_goals'])
-                q1, q2 = self.network.select('critic')(batch['observations'], batch['actor_goals'], batch['actions'])
+            v = self.network.select('value')(batch['observations'], batch['actor_goals'])
+            q1, q2 = self.network.select('critic')(batch['observations'], batch['actor_goals'], batch['actions'])
             q = jnp.minimum(q1, q2)
             adv = q - v
 
@@ -143,13 +98,7 @@ class GCIQLAgent(flax.struct.PyTreeNode):
                 q_actions = jnp.clip(dist.mode(), -1, 1)
             else:
                 q_actions = jnp.clip(dist.sample(seed=rng), -1, 1)
-
-            if self.config['critic_arch'] == 'bilinear':
-                _, q_phi, q_psi = self.network.select('critic')(
-                    batch['observations'], batch['actor_goals'], q_actions, info=True)
-                q1, q2 = (q_phi * q_psi / jnp.sqrt(q_phi.shape[-1])).sum(axis=-1)
-            elif self.config['critic_arch'] == 'mlp':
-                q1, q2 = self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
+            q1, q2 = self.network.select('critic')(batch['observations'], batch['actor_goals'], q_actions)
             q = jnp.minimum(q1, q2)
 
             # Normalize Q values by the absolute mean to make the loss scale invariant.
@@ -244,7 +193,7 @@ class GCIQLAgent(flax.struct.PyTreeNode):
 
         Args:
             seed: Random seed.
-            ex_observations: Example observations.
+            ex_observations: Example batch of observations.
             ex_actions: Example batch of actions. In discrete-action MDPs, this should contain the maximum action value.
             config: Configuration dictionary.
         """
@@ -261,78 +210,33 @@ class GCIQLAgent(flax.struct.PyTreeNode):
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
+            encoders['value'] = GCEncoder(concat_encoder=encoder_module())
+            encoders['critic'] = GCEncoder(concat_encoder=encoder_module())
             encoders['actor'] = GCEncoder(concat_encoder=encoder_module())
 
-            if config['critic_arch'] == 'bilinear':
-                encoders['critic_state'] = encoder_module()
-                encoders['critic_goal'] = encoder_module()
-                encoders['value_state'] = encoder_module()
-                encoders['value_goal'] = encoder_module()
-            elif config['critic_arch'] == 'mlp':
-                encoders['value'] = GCEncoder(concat_encoder=encoder_module())
-                encoders['critic'] = GCEncoder(concat_encoder=encoder_module())
-
         # Define value and actor networks.
-        if config['critic_arch'] == 'bilinear':
-            value_def = GCBilinearValue(
-                hidden_dims=config['value_hidden_dims'],
-                latent_dim=512,
-                layer_norm=config['layer_norm'],
-                ensemble=False,
-                value_exp=True,
-                state_encoder=encoders.get('value_state'),
-                goal_encoder=encoders.get('value_goal'),
-            )
-        elif config['critic_arch'] == 'mlp':
-            value_def = GCValue(
-                hidden_dims=config['value_hidden_dims'],
-                network_type=config['network_type'],
-                num_residual_blocks=config['value_num_residual_blocks'],
-                layer_norm=config['layer_norm'],
-                ensemble=False,
-                gc_encoder=encoders.get('value'),
-            )
+        value_def = GCValue(
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            ensemble=False,
+            gc_encoder=encoders.get('value'),
+        )
 
         if config['discrete']:
-            if config['critic_arch'] == 'bilinear':
-                critic_def = GCDiscreteBilinearCritic(
-                    hidden_dims=config['value_hidden_dims'],
-                    latent_dim=512,
-                    layer_norm=config['layer_norm'],
-                    ensemble=True,
-                    value_exp=True,
-                    state_encoder=encoders.get('critic_state'),
-                    goal_encoder=encoders.get('critic_goal'),
-                    action_dim=action_dim,
-                )
-            elif config['critic_arch'] == 'mlp':
-                critic_def = GCDiscreteCritic(
-                    hidden_dims=config['value_hidden_dims'],
-                    layer_norm=config['layer_norm'],
-                    ensemble=True,
-                    gc_encoder=encoders.get('critic'),
-                    action_dim=action_dim,
-                )
+            critic_def = GCDiscreteCritic(
+                hidden_dims=config['value_hidden_dims'],
+                layer_norm=config['layer_norm'],
+                ensemble=True,
+                gc_encoder=encoders.get('critic'),
+                action_dim=action_dim,
+            )
         else:
-            if config['critic_arch'] == 'bilinear':
-                critic_def = GCBilinearValue(
-                    hidden_dims=config['value_hidden_dims'],
-                    latent_dim=512,
-                    layer_norm=config['layer_norm'],
-                    ensemble=True,
-                    value_exp=True,
-                    state_encoder=encoders.get('critic_state'),
-                    goal_encoder=encoders.get('critic_goal'),
-                )
-            elif config['critic_arch'] == 'mlp':
-                critic_def = GCValue(
-                    hidden_dims=config['value_hidden_dims'],
-                    network_type=config['network_type'],
-                    num_residual_blocks=config['value_num_residual_blocks'],
-                    layer_norm=config['layer_norm'],
-                    ensemble=True,
-                    gc_encoder=encoders.get('critic'),
-                )
+            critic_def = GCValue(
+                hidden_dims=config['value_hidden_dims'],
+                layer_norm=config['layer_norm'],
+                ensemble=True,
+                gc_encoder=encoders.get('critic'),
+            )
 
         if config['discrete']:
             actor_def = GCDiscreteActor(
@@ -344,8 +248,6 @@ class GCIQLAgent(flax.struct.PyTreeNode):
             actor_def = GCActor(
                 hidden_dims=config['actor_hidden_dims'],
                 action_dim=action_dim,
-                network_type=config['network_type'],
-                num_residual_blocks=config['actor_num_residual_blocks'],
                 state_dependent_std=False,
                 const_std=config['const_std'],
                 gc_encoder=encoders.get('actor'),
@@ -376,19 +278,14 @@ def get_config():
         dict(
             # Agent hyperparameters.
             agent_name='gciql',  # Agent name.
-            normalize_observation=False,  # Whether to normalize observation s.t. each coordinate is centered with unit variance.
-            network_type='mlp',  # Network type of the actor and critic ('mlp' or 'simba')
             lr=3e-4,  # Learning rate.
             batch_size=1024,  # Batch size.
             actor_hidden_dims=(512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512),  # Value network hidden dimensions.
-            actor_num_residual_blocks=1,  # Actor network number of residual blocks when using SimBa architecture.
-            value_num_residual_blocks=2,  # Critic network number of residual blocks when using SimBa architecture.
             layer_norm=True,  # Whether to use layer normalization.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
             expectile=0.9,  # IQL expectile.
-            critic_arch='mlp',  # Contrastive critic architecture ('bilinear' or 'mlp')
             actor_loss='ddpgbc',  # Actor loss type ('awr' or 'ddpgbc').
             alpha=0.3,  # Temperature in AWR or BC coefficient in DDPG+BC.
             const_std=True,  # Whether to use constant standard deviation for the actor.

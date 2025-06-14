@@ -1,5 +1,5 @@
 import functools
-from typing import Any, Callable, Sequence, Tuple
+from typing import Sequence
 
 import flax.linen as nn
 import jax.numpy as jnp
@@ -80,7 +80,7 @@ class ImpalaEncoder(nn.Module):
             self.dropout = nn.Dropout(rate=self.dropout_rate)
 
     @nn.compact
-    def __call__(self, x, train=True):
+    def __call__(self, x, train=True, cond_var=None):
         x = x.astype(jnp.float32) / 255.0
 
         conv_out = x
@@ -98,122 +98,6 @@ class ImpalaEncoder(nn.Module):
         out = MLP(self.mlp_hidden_dims, activate_final=True, layer_norm=self.layer_norm)(out)
 
         return out
-
-
-class ResNetBlock(nn.Module):
-    """ResNet block."""
-
-    filters: int
-    conv: Any
-    norm: Any
-    act: Callable
-    strides: Tuple[int, int] = (1, 1)
-
-    @nn.compact
-    def __call__(self, x):
-        residual = x
-        y = self.conv(self.filters, (3, 3), self.strides)(x)
-        y = self.norm()(y)
-        y = self.act(y)
-        y = self.conv(self.filters, (3, 3))(y)
-        y = self.norm()(y)
-
-        if residual.shape != y.shape:
-            residual = self.conv(self.filters, (1, 1), self.strides, name="conv_proj")(
-                residual
-            )
-            residual = self.norm(name="norm_proj")(residual)
-
-        return self.act(residual + y)
-
-
-class AddSpatialCoordinates(nn.Module):
-    dtype: Any = jnp.float32
-
-    @nn.compact
-    def __call__(self, x):
-        grid = jnp.array(
-            jnp.stack(
-                jnp.meshgrid(*[jnp.arange(s) / (s - 1) * 2 - 1 for s in x.shape[-3:-1]]),
-                axis=-1,
-            ),
-            dtype=self.dtype,
-        ).transpose(1, 0, 2)
-
-        if x.ndim == 4:
-            grid = jnp.broadcast_to(grid, [x.shape[0], *grid.shape])
-
-        return jnp.concatenate([x, grid], axis=-1)
-
-
-class GroupNorm(nn.GroupNorm):
-    def __call__(self, x, **kwargs):
-        if x.ndim == 3:
-            x = x[jnp.newaxis]
-            x = super().__call__(x)
-            return x[0]
-        else:
-            return super().__call__(x)
-
-
-class ResNetEncoder(nn.Module):
-    """ResNetV1."""
-
-    stage_sizes: Sequence[int]
-    block_cls: Any
-    num_filters: int = 64
-    dtype: Any = jnp.float32
-    act: str = "swish"
-    conv: Any = nn.Conv
-    norm: str = "group"
-    add_spatial_coordinates: bool = True
-    num_spatial_blocks: int = 8
-
-    @nn.compact
-    def __call__(self, observations: jnp.ndarray, train=True):
-        # put inputs in [-1, 1]
-        x = observations.astype(jnp.float32) / 127.5 - 1.0
-
-        if self.add_spatial_coordinates:
-            x = AddSpatialCoordinates(dtype=self.dtype)(x)
-
-        conv = functools.partial(
-            self.conv,
-            use_bias=False,
-            dtype=self.dtype,
-            kernel_init=nn.initializers.kaiming_normal(),
-        )
-        if self.norm == "group":
-            norm = functools.partial(GroupNorm, num_groups=4, epsilon=1e-5, dtype=self.dtype)
-        elif self.norm == "layer":
-            norm = functools.partial(nn.LayerNorm, epsilon=1e-5, dtype=self.dtype)
-        else:
-            raise ValueError("norm not found")
-
-        act = getattr(nn, self.act)
-
-        x = conv(
-            self.num_filters, (7, 7), (2, 2),
-            padding=[(3, 3), (3, 3)], name="conv_init"
-        )(x)
-
-        x = norm(name="norm_init")(x)
-        x = act(x)
-        x = nn.max_pool(x, (3, 3), strides=(2, 2), padding="SAME")
-        for i, block_size in enumerate(self.stage_sizes):
-            for j in range(block_size):
-                stride = (2, 2) if i > 0 and j == 0 else (1, 1)
-                x = self.block_cls(
-                    self.num_filters * 2 ** i,
-                    strides=stride,
-                    conv=conv,
-                    norm=norm,
-                    act=act,
-                )(x)
-
-        x = jnp.mean(x, axis=(-3, -2))
-
-        return x
 
 
 class GCEncoder(nn.Module):
@@ -253,30 +137,8 @@ class GCEncoder(nn.Module):
 
 
 encoder_modules = {
-    'mlp': functools.partial(
-        MLP,
-        hidden_dims=(512, 512, 512, 512),
-        layer_norm=True,
-    ),
     'impala': ImpalaEncoder,
-    'impala_debug': functools.partial(
-        ImpalaEncoder,
-        num_blocks=1,
-        stack_sizes=(4, 4)
-    ),
-    'impala_small': functools.partial(
-        ImpalaEncoder,
-        num_blocks=1
-    ),
-    'impala_large': functools.partial(
-        ImpalaEncoder,
-        stack_sizes=(64, 128, 128),
-        mlp_hidden_dims=(1024,)
-    ),
-    'resnet_34': functools.partial(
-        ResNetEncoder,
-        stage_sizes=(3, 4, 6, 3),
-        block_cls=ResNetBlock,
-        num_spatial_blocks=8
-    ),
+    'impala_debug': functools.partial(ImpalaEncoder, num_blocks=1, stack_sizes=(4, 4)),
+    'impala_small': functools.partial(ImpalaEncoder, num_blocks=1),
+    'impala_large': functools.partial(ImpalaEncoder, stack_sizes=(64, 128, 128), mlp_hidden_dims=(1024,)),
 }

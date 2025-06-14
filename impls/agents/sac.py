@@ -143,7 +143,7 @@ class SACAgent(flax.struct.PyTreeNode):
 
         Args:
             seed: Random seed.
-            ex_observations: Example observations.
+            ex_observations: Example batch of observations.
             ex_actions: Example batch of actions.
             config: Configuration dictionary.
         """
@@ -159,12 +159,13 @@ class SACAgent(flax.struct.PyTreeNode):
         critic_def = GCValue(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['layer_norm'],
-            num_ensembles=2,
+            ensemble=True,
         )
 
         actor_def = GCActor(
             hidden_dims=config['actor_hidden_dims'],
             action_dim=action_dim,
+            log_std_min=-5,
             tanh_squash=config['tanh_squash'],
             state_dependent_std=config['state_dependent_std'],
             const_std=False,
