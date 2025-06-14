@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -45,9 +45,9 @@ def main():
 
     # tuning alr / clr and repr_dim didn't help for sym_infonce
     with executor.batch():  # job array
-        for env_name in ["cube-double-play-v0", "scene-play-v0"]:
-            for alpha in [0.3]:
-                for discount in [0.99]:
+        for env_name in ["humanoidmaze-large-navigate-v0"]:
+            for alpha in [0.001]:
+                for discount in [0.995]:
                     for squared_transition_loss in [True, False]:
                         for seed in [1, 2, 3]:
                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_qrl_{env_name}_alpha={alpha}_discount={discount}_squared_transition_loss={squared_transition_loss}"
@@ -94,7 +94,7 @@ def main():
                                     --eval_interval=100_000 \
                                     --save_interval=1_000_000 \
                                     --eval_episodes=50 \
-                                    --agent=impls/agents/qrl.py \
+                                    --agent=agents/qrl.py \
                                     --agent.alpha={alpha} \
                                     --agent.discount={discount} \
                                     --agent.squared_transition_loss={squared_transition_loss} \
