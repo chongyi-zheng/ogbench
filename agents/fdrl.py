@@ -32,17 +32,18 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
         noises = jax.random.normal(noise_rng, (batch_size, 1))
         times = jax.random.uniform(time_rng, (batch_size, 1))
-        next_returns = self.compute_flow_returns(
+        returns = self.compute_flow_returns(
             noises, batch['next_observations'], next_actions)
-        noisy_next_returns = times * next_returns + (1 - times) * noises
+        noisy_returns = times * returns + (1 - times) * noises
 
-        transformed_noisy_returns = (
-            batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
+        # transformed_noisy_returns = (
+        #     batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
+        transformed_noisy_next_returns = (batch['masks'][..., None] * noisy_returns - batch['rewards'][..., None]) / self.config['discount']
         target_vector_field = self.network.select('target_critic_flow')(
-            noisy_next_returns, times, batch['next_observations'], next_actions)
+            transformed_noisy_next_returns, times, batch['next_observations'], next_actions)
 
         vector_field = self.network.select('critic_flow')(
-            transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
         critic_loss = jnp.square(vector_field - target_vector_field).mean()
 
         # Additional metrics for logging.
