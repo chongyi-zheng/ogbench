@@ -9,7 +9,7 @@ import optax
 
 from utils.encoders import encoder_modules
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import Actor, ValueVectorField
+from utils.networks import Actor, Value, ValueVectorField
 
 
 class FDRLAgent(flax.struct.PyTreeNode):
@@ -44,14 +44,24 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
         vector_field = self.network.select('critic_flow')(
             noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+<<<<<<< Updated upstream
         critic_loss = jnp.square(vector_field - target_vector_field).mean()
+=======
+        vector_field_loss = jnp.square(vector_field - target_vector_field).mean()
+>>>>>>> Stashed changes
 
         # Additional metrics for logging.
         q_noises = jax.random.normal(q_rng, (batch_size, 1))
-        q = q_noises + self.network.select('critic_flow')(
+        target_q = q_noises + self.network.select('critic_flow')(
             q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])
+        q = self.network.select('critic')(batch['observations'], batch['actions'], params=grad_params)
+        q_loss = jnp.square(q - target_q.squeeze(-1)).mean()
+
+        critic_loss = vector_field_loss + q_loss
 
         return critic_loss, {
+            'vector_field_loss': vector_field_loss,
+            'q_loss': q_loss,
             'critic_loss': critic_loss,
             'q_mean': q.mean(),
             'q_max': q.max(),
@@ -60,7 +70,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
     def actor_loss(self, batch, grad_params, rng):
         """Compute the actor loss (DDPG+BC)."""
-        batch_size = batch['actions'].shape[0]
+        # batch_size = batch['actions'].shape[0]
         rng, sample_rng, noise_rng = jax.random.split(rng, 3)
 
         dist = self.network.select('actor')(batch['observations'], params=grad_params)
@@ -69,10 +79,11 @@ class FDRLAgent(flax.struct.PyTreeNode):
         else:
             q_actions = jnp.clip(dist.sample(seed=sample_rng), -1, 1)
 
-        rng, noise_rng = jax.random.split(rng)
-        noises = jax.random.normal(noise_rng, (batch_size, 1))
-        q = noises + self.network.select('critic_flow')(
-            noises, jnp.zeros_like(noises), batch['observations'], q_actions)
+        # rng, noise_rng = jax.random.split(rng)
+        # noises = jax.random.normal(noise_rng, (batch_size, 1))
+        # q = noises + self.network.select('critic_flow')(
+        #     noises, jnp.zeros_like(noises), batch['observations'], q_actions)
+        q = self.network.select('critic')(batch['observations'], q_actions)
 
         q_loss = -q.mean()
         if self.config['normalize_q_loss']:
@@ -219,11 +230,18 @@ class FDRLAgent(flax.struct.PyTreeNode):
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
+            encoders['critic'] = encoder_module()
             encoders['critic_flow'] = encoder_module()
             encoders['actor'] = encoder_module()
 
         # Define networks.
-        critic_def = ValueVectorField(
+        critic_def = Value(
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['value_layer_norm'],
+            num_ensembles=1,
+            encoder=encoders.get('critic'),
+        )
+        critic_flow_def = ValueVectorField(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
             num_ensembles=1,
@@ -239,8 +257,9 @@ class FDRLAgent(flax.struct.PyTreeNode):
         )
 
         network_info = dict(
-            critic_flow=(critic_def, (ex_returns, ex_times, ex_observations, ex_actions)),
-            target_critic_flow=(copy.deepcopy(critic_def), (ex_returns, ex_times, ex_observations, ex_actions)),
+            critic=(critic_def, (ex_observations, ex_actions)),
+            critic_flow=(critic_flow_def, (ex_returns, ex_times, ex_observations, ex_actions)),
+            target_critic_flow=(copy.deepcopy(critic_flow_def), (ex_returns, ex_times, ex_observations, ex_actions)),
             actor=(actor_def, (ex_observations,)),
         )
         networks = {k: v[0] for k, v in network_info.items()}
