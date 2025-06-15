@@ -44,11 +44,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
         vector_field = self.network.select('critic_flow')(
             noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-<<<<<<< Updated upstream
-        critic_loss = jnp.square(vector_field - target_vector_field).mean()
-=======
         vector_field_loss = jnp.square(vector_field - target_vector_field).mean()
->>>>>>> Stashed changes
 
         # Additional metrics for logging.
         q_noises = jax.random.normal(q_rng, (batch_size, 1))
