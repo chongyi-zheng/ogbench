@@ -40,17 +40,17 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=40,
     )
 
     with executor.batch():  # job array
         for env_name in ["antmaze-large-navigate-singletask-task1-v0"]:
-            for alpha in [0.1, 0.3, 1, 3, 10, 30, 100, 300, 1000, 3000]:
+            for alpha in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30, 100, 300]:
                 for discount in [0.99]:
-                    for normalize_q_loss in [False]:
+                    for normalize_q_loss in [True, False]:
                         for const_std in [True, False]:
-                            for value_layer_norm in [True]:
-                                for actor_layer_norm in [True]:
+                            for value_layer_norm in [True, False]:
+                                for actor_layer_norm in [True, False]:
                                     for seed in [10, 20]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_alpha={alpha}_discount={discount}_normalize_q_loss={normalize_q_loss}_const_std={const_std}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_noisy_returns"
                                         log_dir = os.path.expanduser(

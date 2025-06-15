@@ -37,7 +37,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
         noisy_next_returns = times * next_returns + (1 - times) * noises
 
         transformed_noisy_returns = (
-            batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * next_returns)
+            batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
         target_vector_field = self.network.select('target_critic_flow')(
             noisy_next_returns, times, batch['next_observations'], next_actions)
 
