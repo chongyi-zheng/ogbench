@@ -43,7 +43,6 @@ def main():
         slurm_array_parallelism=20,
     )
 
-    # tuning alr / clr and repr_dim didn't help for sym_infonce
     with executor.batch():  # job array
         for env_name in ["antmaze-large-navigate-singletask-task1-v0"]:
             for alpha in [0.1, 0.3, 1, 3, 10, 30, 100, 300, 1000, 3000]:

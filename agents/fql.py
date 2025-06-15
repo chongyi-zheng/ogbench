@@ -174,21 +174,21 @@ class FQLAgent(flax.struct.PyTreeNode):
     def create(
         cls,
         seed,
-        ex_observations,
-        ex_actions,
+        example_batch,
         config,
     ):
         """Create a new agent.
 
         Args:
             seed: Random seed.
-            ex_observations: Example batch of observations.
-            ex_actions: Example batch of actions.
+            example_batch: Example batch.
             config: Configuration dictionary.
         """
         rng = jax.random.PRNGKey(seed)
         rng, init_rng = jax.random.split(rng, 2)
 
+        ex_observations = example_batch['observations']
+        ex_actions = example_batch['actions']
         ex_times = ex_actions[..., :1]
         ob_dims = ex_observations.shape[1:]
         action_dim = ex_actions.shape[-1]
