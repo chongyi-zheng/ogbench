@@ -94,7 +94,6 @@ def main():
                                     --save_interval=1_000_000 \
                                     --eval_episodes=50 \
                                     --agent=agents/rebrac.py \
-                                    --agent.q_agg=min \
                                     --agent.alpha_actor={alpha_actor} \
                                     --agent.alpha_critic={alpha_critic} \
                                     --agent.discount={discount} \
