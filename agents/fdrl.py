@@ -1,4 +1,5 @@
 import copy
+from functools import partial
 from typing import Any
 
 import flax
@@ -21,7 +22,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
     def critic_loss(self, batch, grad_params, rng):
         """Compute the flow critic loss."""
-        # batch_size = batch['actions'].shape[0]
+        batch_size = batch['actions'].shape[0]
         rng, actor_rng, noise_rng, time_rng, q_rng = jax.random.split(rng, 5)
 
         next_dist = self.network.select('target_actor')(batch['next_observations'])
@@ -32,36 +33,40 @@ class FDRLAgent(flax.struct.PyTreeNode):
             self.config['actor_noise_clip'],
         )
         next_actions = jnp.clip(next_actions + noise, -1, 1)
-        #
-        # noises = jax.random.normal(noise_rng, (batch_size, 1))
-        # times = jax.random.uniform(time_rng, (batch_size, 1))
-        # returns = self.compute_flow_returns(
-        #     noises, batch['next_observations'], next_actions)
-        # noisy_returns = times * returns + (1 - times) * noises
-        #
-        # # transformed_noisy_returns = (
-        # #     batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
+
+        noises = jax.random.normal(noise_rng, (batch_size, 1))
+        times = jax.random.uniform(time_rng, (batch_size, 1))
+        returns = self.compute_flow_returns(
+            noises, batch['next_observations'], next_actions)
+        noisy_next_returns = times * returns + (1 - times) * noises
+
+        transformed_noisy_returns = (
+            batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
         # transformed_noisy_next_returns = (batch['masks'][..., None] * noisy_returns - batch['rewards'][..., None]) / self.config['discount']
-        # target_vector_field = self.network.select('target_critic_flow')(
-        #     transformed_noisy_next_returns, times, batch['next_observations'], next_actions)
-        #
-        # vector_field = self.network.select('critic_flow')(
-        #     noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-        # vector_field_loss = jnp.square(vector_field - target_vector_field).mean()
+        target_vector_field = self.network.select('target_critic_flow')(
+            noisy_next_returns, times, batch['next_observations'], next_actions)
+
+        vector_field = self.network.select('critic_flow')(
+            transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+        vector_field_loss = jnp.square(vector_field - target_vector_field).mean()
 
         # Additional metrics for logging.
-        # q_noises = jax.random.normal(q_rng, (batch_size, 1))
+        q_noises = jax.random.normal(q_rng, (batch_size, 1))
+        target_q = self.compute_flow_returns(
+            q_noises, batch['observations'], batch['actions'],
+            use_target_flow=False,
+        ).squeeze(-1)
         # target_q = q_noises + self.network.select('critic_flow')(
         #     q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])
-        next_q = self.network.select('target_critic')(batch['next_observations'], next_actions)
-        mse = jnp.square(next_actions - batch['next_actions']).sum(axis=-1)
-        next_q = next_q - self.config['alpha_critic'] * mse
-        target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
+        # next_q = self.network.select('target_critic')(batch['next_observations'], next_actions)
+        # mse = jnp.square(next_actions - batch['next_actions']).sum(axis=-1)
+        # next_q = next_q - self.config['alpha_critic'] * mse
+        # target_q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_q
 
         q = self.network.select('critic')(batch['observations'], batch['actions'], params=grad_params)
-        critic_loss = jnp.square(q - target_q).mean()
+        q_loss = jnp.square(q - target_q).mean()
 
-        # critic_loss = vector_field_loss + q_loss
+        critic_loss = vector_field_loss + q_loss
 
         return critic_loss, {
             # 'vector_field_loss': vector_field_loss,
@@ -75,7 +80,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
     def actor_loss(self, batch, grad_params, rng):
         """Compute the actor loss (DDPG+BC)."""
         # batch_size = batch['actions'].shape[0]
-        rng, sample_rng, noise_rng = jax.random.split(rng, 3)
+        # rng, sample_rng, noise_rng = jax.random.split(rng, 3)
 
         dist = self.network.select('actor')(batch['observations'], params=grad_params)
         q_actions = jnp.clip(dist.mode(), -1, 1)
@@ -153,7 +158,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
         return self.replace(network=new_network, rng=new_rng), info
 
-    @jax.jit
+    @partial(jax.jit, static_argnames=('use_target_flow',))
     def compute_flow_returns(
         self,
         noises,
