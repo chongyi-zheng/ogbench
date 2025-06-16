@@ -46,10 +46,10 @@ def main():
     with executor.batch():  # job array
         for env_name in ["antmaze-large-navigate-singletask-task1-v0"]:
             for alpha_actor in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3]:
-                for alpha_critic in [0.0]:
+                for alpha_critic in [0.01]:
                     for discount in [0.99]:
                         for normalize_q_loss in [True]:
-                            for value_layer_norm in [False]:
+                            for value_layer_norm in [True, False]:
                                 for actor_layer_norm in [True]:
                                     for seed in [10, 20]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_discount={discount}_normalize_q_loss={normalize_q_loss}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_q_distill_samples"
