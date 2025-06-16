@@ -45,14 +45,14 @@ def main():
 
     with executor.batch():  # job array
         for env_name in ["antmaze-large-navigate-singletask-task1-v0"]:
-            for alpha in [0.1, 0.3, 1, 3, 10, 30, 100, 300]:
-                for discount in [0.99]:
-                    for normalize_q_loss in [False]:
-                        for const_std in [True, False]:
+            for alpha_actor in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3]:
+                for alpha_critic in [0.0]:
+                    for discount in [0.99]:
+                        for normalize_q_loss in [True]:
                             for value_layer_norm in [False]:
-                                for actor_layer_norm in [True, False]:
+                                for actor_layer_norm in [True]:
                                     for seed in [10, 20]:
-                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_alpha={alpha}_discount={discount}_normalize_q_loss={normalize_q_loss}_const_std={const_std}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_inverse_noisy_returns_q_distill"
+                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_discount={discount}_normalize_q_loss={normalize_q_loss}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_rebrac_loss"
                                         log_dir = os.path.expanduser(
                                             f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
 
@@ -97,10 +97,10 @@ def main():
                                                 --save_interval=1_000_000 \
                                                 --eval_episodes=50 \
                                                 --agent=agents/fdrl.py \
-                                                --agent.alpha={alpha} \
+                                                --agent.alpha_actor={alpha_actor} \
+                                                --agent.alpha_critic={alpha_critic} \
                                                 --agent.discount={discount} \
                                                 --agent.normalize_q_loss={normalize_q_loss} \
-                                                --agent.const_std={const_std} \
                                                 --agent.value_layer_norm={value_layer_norm} \
                                                 --agent.actor_layer_norm={actor_layer_norm} \
                                                 --seed={seed} \

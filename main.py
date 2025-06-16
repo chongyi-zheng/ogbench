@@ -75,7 +75,7 @@ def main(_):
         if dataset is not None:
             dataset.p_aug = FLAGS.p_aug
             dataset.frame_stack = FLAGS.frame_stack
-            if config['agent_name'] == 'rebrac':
+            if config['agent_name'] in ['rebrac', 'fdrl']:
                 dataset.return_next_actions = True
 
     # Create agent.
