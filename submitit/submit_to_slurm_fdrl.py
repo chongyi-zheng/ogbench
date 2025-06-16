@@ -40,15 +40,15 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=40,
     )
 
     with executor.batch():  # job array
-        for env_name in ["antmaze-large-navigate-singletask-task1-v0"]:
-            for alpha_actor in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3]:
-                for alpha_critic in [0.01]:
+        for env_name in ["cube-single-play-singletask-task1-v0"]:
+            for alpha_actor in [0.1, 0.3, 1, 3, 10, 30, 100, 300, 1000, 3000]:
+                for alpha_critic in [0.0]:
                     for discount in [0.99]:
-                        for normalize_q_loss in [True]:
+                        for normalize_q_loss in [False]:
                             for value_layer_norm in [True, False]:
                                 for actor_layer_norm in [True]:
                                     for seed in [10, 20]:

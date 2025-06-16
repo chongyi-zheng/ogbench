@@ -69,8 +69,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
         critic_loss = vector_field_loss + q_loss
 
         return critic_loss, {
-            # 'vector_field_loss': vector_field_loss,
-            # 'q_loss': q_loss,
+            'vector_field_loss': vector_field_loss,
+            'q_loss': q_loss,
             'critic_loss': critic_loss,
             'q_mean': q.mean(),
             'q_max': q.max(),
