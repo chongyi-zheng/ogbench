@@ -26,10 +26,21 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         weight = jnp.where(adv >= 0, expectile, (1 - expectile))
         return weight * (diff**2)
 
-    def value_loss(self, batch, grad_params):
+    def value_loss(self, batch, grad_params, rng):
         """Compute the IQL value loss."""
-        q1, q2 = self.network.select('target_critic')(batch['observations'], actions=batch['actions'])
+        batch_size = batch['actions'].shape[0]
+        rng, noise_rng, time_rng = jax.random.split(rng, 3)
+
+        # q1, q2 = self.network.select('target_critic')(batch['observations'], actions=batch['actions'])
+        # q = jnp.minimum(q1, q2)
+
+        noises1, noises2 = jax.random.normal(noise_rng, (2, batch_size, 1))
+        q1 = self.compute_flow_returns(
+            noises1, batch['observations'], batch['actions'], flow_network_name='target_critic_flow1').squeeze(-1)
+        q2 = self.compute_flow_returns(
+            noises2, batch['observations'], batch['actions'], flow_network_name='target_critic_flow2').squeeze(-1)
         q = jnp.minimum(q1, q2)
+
         v = self.network.select('value')(batch['observations'], params=grad_params)
         value_loss = self.expectile_loss(q - v, q - v, self.config['expectile']).mean()
 
@@ -40,13 +51,26 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
             'v_min': v.min(),
         }
 
-    def critic_loss(self, batch, grad_params):
+    def critic_loss(self, batch, grad_params, rng):
         """Compute the IQL critic loss."""
+        batch_size = batch['actions'].shape[0]
+        rng, noise_rng, time_rng = jax.random.split(rng, 3)
+
         next_v = self.network.select('value')(batch['next_observations'])
         q = batch['rewards'] + self.config['discount'] * batch['masks'] * next_v
 
-        q1, q2 = self.network.select('critic')(batch['observations'], actions=batch['actions'], params=grad_params)
-        critic_loss = ((q1 - q) ** 2 + (q2 - q) ** 2).mean()
+        # q1, q2 = self.network.select('critic')(batch['observations'], actions=batch['actions'], params=grad_params)
+        # critic_loss = ((q1 - q) ** 2 + (q2 - q) ** 2).mean()
+        noises = jax.random.normal(noise_rng, (batch_size, 1))
+        times = jax.random.uniform(time_rng, (batch_size, 1))
+        noisy_q = (1 - times) * noises + times * q[:, None]
+        vf = noises - q[:, None]
+
+        vf1 = self.network.select('critic_flow1')(
+            noisy_q, times, batch['observations'], batch['actions'], params=grad_params)
+        vf2 = self.network.select('critic_flow2')(
+            noisy_q, times, batch['observations'], batch['actions'], params=grad_params)
+        critic_loss = ((vf1 - vf) ** 2 + (vf2 - vf) ** 2).mean()
 
         return critic_loss, {
             'critic_loss': critic_loss,
@@ -125,13 +149,13 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         """Compute the total loss."""
         info = {}
         rng = rng if rng is not None else self.rng
-        rng, critic_rng, actor_rng = jax.random.split(rng, 3)
+        rng, value_rng, critic_rng, actor_rng = jax.random.split(rng, 4)
 
-        value_loss, value_info = self.value_loss(batch, grad_params)
+        value_loss, value_info = self.value_loss(batch, grad_params, value_rng)
         for k, v in value_info.items():
             info[f'value/{k}'] = v
 
-        critic_loss, critic_info = self.critic_loss(batch, grad_params)
+        critic_loss, critic_info = self.critic_loss(batch, grad_params, critic_rng)
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
@@ -161,13 +185,14 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
             return self.total_loss(batch, grad_params, rng=rng)
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
-        self.target_update(new_network, 'critic')
+        # self.target_update(new_network, 'critic')
         # self.target_update(new_network, 'actor')
-        self.target_update(new_network, 'critic_flow')
+        self.target_update(new_network, 'critic_flow1')
+        self.target_update(new_network, 'critic_flow2')
 
         return self.replace(network=new_network, rng=new_rng), info
 
-    @partial(jax.jit, static_argnames=('use_target_flow',))
+    @partial(jax.jit, static_argnames=('flow_network_name',))
     def compute_flow_returns(
         self,
         noises,
@@ -175,14 +200,9 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         actions,
         init_times=None,
         end_times=None,
-        use_target_flow=True,
+        flow_network_name='critic_flow',
     ):
         """Compute returns from the return flow model using the Euler method."""
-        if use_target_flow:
-            flow_network_name = 'target_critic_flow'
-        else:
-            flow_network_name = 'critic_flow'
-
         noisy_returns = noises
         if init_times is None:
             init_times = jnp.zeros((*noisy_returns.shape[:-1], 1), dtype=noisy_returns.dtype)
@@ -272,9 +292,14 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         actions = jnp.clip(actions, -1, 1)
 
         # Pick the action with the highest Q-value.
-        q = self.network.select('critic')(n_observations, actions=actions).min(axis=0)
-        # q_noises = jax.random.normal(q_seed, (self.config['num_samples'], 1))
-        # q = self.compute_flow_returns(q_noises, n_observations, actions).squeeze(-1)
+        # q = self.network.select('critic')(n_observations, actions=actions).min(axis=0)
+        q_noises1, q_noises2 = jax.random.normal(q_seed, (2, self.config['num_samples'], 1))
+        q1 = self.compute_flow_returns(
+            q_noises1, n_observations, actions, flow_network_name='critic_flow1').squeeze(-1)
+        q2 = self.compute_flow_returns(
+            q_noises2, n_observations, actions, flow_network_name='critic_flow2').squeeze(-1)
+        q = jnp.minimum(q1, q2)
+
         actions = actions[jnp.argmax(q)]
         return actions
 
@@ -322,7 +347,13 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
             num_ensembles=2,
             encoder=encoders.get('critic'),
         )
-        critic_flow_def = ValueVectorField(
+        critic_flow1_def = ValueVectorField(
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['value_layer_norm'],
+            num_ensembles=1,
+            encoder=encoders.get('critic_flow'),
+        )
+        critic_flow2_def = ValueVectorField(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
             num_ensembles=1,
@@ -349,8 +380,10 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
             value=(value_def, (ex_observations,)),
             critic=(critic_def, (ex_observations, ex_actions)),
             target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_actions)),
-            critic_flow=(critic_flow_def, (ex_returns, ex_times, ex_observations, ex_actions)),
-            target_critic_flow=(copy.deepcopy(critic_flow_def), (ex_returns, ex_times, ex_observations, ex_actions)),
+            critic_flow1=(critic_flow1_def, (ex_returns, ex_times, ex_observations, ex_actions)),
+            critic_flow2=(critic_flow2_def, (ex_returns, ex_times, ex_observations, ex_actions)),
+            target_critic_flow1=(copy.deepcopy(critic_flow1_def), (ex_returns, ex_times, ex_observations, ex_actions)),
+            target_critic_flow2=(copy.deepcopy(critic_flow2_def), (ex_returns, ex_times, ex_observations, ex_actions)),
             actor_flow=(actor_flow_def, (ex_observations, ex_actions, ex_times)),
             # actor=(actor_def, (ex_observations,)),
             # target_actor=(copy.deepcopy(actor_def), (ex_observations,)),
@@ -364,8 +397,9 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         network = TrainState.create(network_def, network_params, tx=network_tx)
 
         params = network_params
-        params['modules_target_critic_flow'] = params['modules_critic_flow']
-        params['modules_target_critic'] = params['modules_critic']
+        params['modules_target_critic_flow1'] = params['modules_critic_flow1']
+        params['modules_target_critic_flow2'] = params['modules_critic_flow2']
+        # params['modules_target_critic'] = params['modules_critic']
         # params['modules_target_actor'] = params['modules_actor']
 
         config['action_dim'] = action_dim
