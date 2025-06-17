@@ -52,7 +52,7 @@ def main(_):
     if FLAGS.enable_wandb:
         _, trigger_sync = setup_wandb(
             wandb_output_dir=FLAGS.save_dir,
-            project='ogbench', group=FLAGS.wandb_run_group, name=exp_name,
+            project='hdualrl', group=FLAGS.wandb_run_group, name=exp_name,
             mode=FLAGS.wandb_mode
         )
     flag_dict = get_flag_dict()
