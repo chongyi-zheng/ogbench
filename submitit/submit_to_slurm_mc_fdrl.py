@@ -44,9 +44,9 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["cube-single-play-singletask-task1-v0"]:
+        for env_name in ["antmaze-large-navigate-singletask-task1-v0", "cube-single-play-singletask-task1-v0"]:
             for num_samples in [16, 32]:
-                for num_flow_steps in [10, 20, 50]:
+                for num_flow_steps in [10, 20]:
                     for discount in [0.99]:
                         for value_layer_norm in [True, False]:
                             for actor_layer_norm in [True]:
@@ -95,7 +95,7 @@ def main():
                                             --eval_interval=100_000 \
                                             --save_interval=1_000_000 \
                                             --eval_episodes=50 \
-                                            --agent=agents/fdrl.py \
+                                            --agent=agents/mc_fdrl.py \
                                             --agent.num_samples={num_samples} \
                                             --agent.num_flow_steps={num_flow_steps} \
                                             --agent.discount={discount} \

@@ -44,15 +44,15 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["cube-single-play-singletask-task1-v0"]:
-            for alpha_actor in [0.1, 0.3, 1, 3, 10, 30, 100, 300, 1000, 3000]:
-                for alpha_critic in [0.0]:
+        for env_name in ["antmaze-large-navigate-singletask-task1-v0", "cube-single-play-singletask-task1-v0"]:
+            for num_samples in [8, 16, 32, 64]:
+                for num_flow_steps in [10, 20, 40]:
                     for discount in [0.99]:
                         for normalize_q_loss in [False]:
                             for value_layer_norm in [True, False]:
-                                for actor_layer_norm in [True]:
+                                for actor_layer_norm in [True, False]:
                                     for seed in [10, 20]:
-                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_discount={discount}_normalize_q_loss={normalize_q_loss}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_q_distill_samples"
+                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_discount={discount}_num_flow_steps={num_flow_steps}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_behavioral_q_sfbc"
                                         log_dir = os.path.expanduser(
                                             f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
 
@@ -97,8 +97,8 @@ def main():
                                                 --save_interval=1_000_000 \
                                                 --eval_episodes=50 \
                                                 --agent=agents/fdrl.py \
-                                                --agent.alpha_actor={alpha_actor} \
-                                                --agent.alpha_critic={alpha_critic} \
+                                                --agent.num_samples={num_samples} \
+                                                --agent.num_flow_steps={num_flow_steps} \
                                                 --agent.discount={discount} \
                                                 --agent.normalize_q_loss={normalize_q_loss} \
                                                 --agent.value_layer_norm={value_layer_norm} \

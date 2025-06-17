@@ -312,13 +312,13 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         # Define networks.
         value_def = Value(
             hidden_dims=config['value_hidden_dims'],
-            layer_norm=config['layer_norm'],
+            layer_norm=config['value_layer_norm'],
             num_ensembles=1,
             encoder=encoders.get('value'),
         )
         critic_def = Value(
             hidden_dims=config['value_hidden_dims'],
-            layer_norm=config['layer_norm'],
+            layer_norm=config['value_layer_norm'],
             num_ensembles=2,
             encoder=encoders.get('critic'),
         )
@@ -375,7 +375,7 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
 def get_config():
     config = ml_collections.ConfigDict(
         dict(
-            agent_name='fdrl',  # Agent name.
+            agent_name='mc_fdrl',  # Agent name.
             action_dim=ml_collections.config_dict.placeholder(int),  # Action dimension (will be set automatically).
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
