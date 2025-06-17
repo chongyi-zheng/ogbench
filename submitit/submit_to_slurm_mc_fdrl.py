@@ -44,11 +44,11 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["antmaze-large-navigate-singletask-task1-v0", "cube-single-play-singletask-task1-v0"]:
+        for env_name in ["antmaze-large-navigate-singletask-task3-v0"]:
             for num_samples in [16, 32]:
                 for num_flow_steps in [10, 20]:
                     for discount in [0.99]:
-                        for value_layer_norm in [True, False]:
+                        for value_layer_norm in [True]:
                             for actor_layer_norm in [True]:
                                 for seed in [10, 20]:
                                     exp_name = f"{datetime.today().strftime('%Y%m%d')}_mc_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_discount={discount}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}"
