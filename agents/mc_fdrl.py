@@ -140,7 +140,7 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         for k, v in actor_info.items():
             info[f'actor/{k}'] = v
 
-        loss = critic_loss + actor_loss
+        loss = value_loss + critic_loss + actor_loss
         return loss, info
 
     def target_update(self, network, module_name):
@@ -272,9 +272,9 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         actions = jnp.clip(actions, -1, 1)
 
         # Pick the action with the highest Q-value.
-        # q = self.network.select('critic')(n_observations, actions=actions).min(axis=0)
-        q_noises = jax.random.normal(q_seed, (self.config['num_samples'], 1))
-        q = self.compute_flow_returns(q_noises, n_observations, actions).squeeze(-1)
+        q = self.network.select('critic')(n_observations, actions=actions).min(axis=0)
+        # q_noises = jax.random.normal(q_seed, (self.config['num_samples'], 1))
+        # q = self.compute_flow_returns(q_noises, n_observations, actions).squeeze(-1)
         actions = actions[jnp.argmax(q)]
         return actions
 
