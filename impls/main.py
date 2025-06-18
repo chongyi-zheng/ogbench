@@ -39,7 +39,7 @@ flags.DEFINE_float('eval_temperature', 0, 'Actor temperature for evaluation.')
 flags.DEFINE_float('eval_gaussian', None, 'Action Gaussian noise for evaluation.')
 flags.DEFINE_integer('video_episodes', 1, 'Number of video episodes for each task.')
 flags.DEFINE_integer('video_frame_skip', 3, 'Frame skip for videos.')
-flags.DEFINE_integer('eval_on_cpu', 1, 'Whether to evaluate on CPU.')
+flags.DEFINE_integer('eval_on_cpu', 0, 'Whether to evaluate on CPU.')
 
 config_flags.DEFINE_config_file('agent', 'agents/gciql.py', lock_config=False)
 
@@ -131,11 +131,16 @@ def main(_):
             overall_metrics = defaultdict(list)
             task_infos = env.unwrapped.task_infos if hasattr(env.unwrapped, 'task_infos') else env.task_infos
             num_tasks = FLAGS.eval_tasks if FLAGS.eval_tasks is not None else len(task_infos)
+            if config['agent_name'] in ['psiql']:
+                waypoint_candidates = train_dataset.sample(config['num_candidates'])['observations']
+            else:
+                waypoint_candidates = None
             for task_id in tqdm.trange(1, num_tasks + 1):
                 task_name = task_infos[task_id - 1]['task_name']
                 eval_info, trajs, cur_renders = evaluate(
                     agent=eval_agent,
                     env=env,
+                    waypoint_candidates=waypoint_candidates,
                     task_id=task_id,
                     config=config,
                     num_eval_episodes=FLAGS.eval_episodes,

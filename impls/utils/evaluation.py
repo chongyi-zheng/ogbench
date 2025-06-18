@@ -37,6 +37,7 @@ def add_to(dict_of_lists, single_dict):
 def evaluate(
     agent,
     env,
+    waypoint_candidates=None,
     task_id=None,
     config=None,
     num_eval_episodes=50,
@@ -50,6 +51,7 @@ def evaluate(
     Args:
         agent: Agent.
         env: Environment.
+        waypoint_candidates: Waypoint candidates.
         task_id: Task ID to be passed to the environment.
         config: Configuration dictionary.
         num_eval_episodes: Number of episodes to evaluate the agent.
@@ -77,7 +79,10 @@ def evaluate(
         step = 0
         render = []
         while not done:
-            action = actor_fn(observations=observation, goals=goal, temperature=eval_temperature)
+            if waypoint_candidates is not None:
+                action = actor_fn(observations=observation, candidates=waypoint_candidates, goals=goal, temperature=eval_temperature)
+            else:
+                action = actor_fn(observations=observation, goals=goal, temperature=eval_temperature)
             action = np.array(action)
             if not config.get('discrete'):
                 if eval_gaussian is not None:
