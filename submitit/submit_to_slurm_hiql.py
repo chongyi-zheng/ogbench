@@ -51,7 +51,7 @@ def main():
                     for subgoal_steps in [25]:
                         for discount in [0.99]:
                             for seed in [1, 2, 3]:
-                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_qrl_{env_name}_high_alpha={high_alpha}_low_alpha={low_alpha}_subgoal_steps={subgoal_steps}_discount={discount}"
+                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_hiql_{env_name}_high_alpha={high_alpha}_low_alpha={low_alpha}_subgoal_steps={subgoal_steps}_discount={discount}"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/hdualrl_logs/hiql/{exp_name}/{seed}")
 
@@ -95,7 +95,7 @@ def main():
                                         --eval_interval=100_000 \
                                         --save_interval=1_000_000 \
                                         --eval_episodes=50 \
-                                        --agent=impls/agent/hiql.py \
+                                        --agent=impls/agents/hiql.py \
                                         --agent.high_alpha={high_alpha} \
                                         --agent.low_alpha={low_alpha} \
                                         --agent.subgoal_steps={subgoal_steps} \
