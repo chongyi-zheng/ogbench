@@ -1,4 +1,3 @@
-import copy
 from typing import Any
 
 import flax
@@ -243,7 +242,7 @@ class HIQLAgent(flax.struct.PyTreeNode):
 
             # Value: V(encoder^V(s), phi([s; g]))
             value_encoder_def = GCEncoder(state_encoder=encoder_module(), concat_encoder=goal_rep_def)
-            # target_value_encoder_def = GCEncoder(state_encoder=encoder_module(), concat_encoder=goal_rep_def)
+            target_value_encoder_def = GCEncoder(state_encoder=encoder_module(), concat_encoder=goal_rep_def)
             # Low-level actor: pi^l(. | encoder^l(s), phi([s; w]))
             low_actor_encoder_def = GCEncoder(state_encoder=encoder_module(), concat_encoder=goal_rep_def)
             # High-level actor: pi^h(. | encoder^h([s; g]))
@@ -253,7 +252,7 @@ class HIQLAgent(flax.struct.PyTreeNode):
 
             # Value: V(s, phi([s; g]))
             value_encoder_def = GCEncoder(state_encoder=Identity(), concat_encoder=goal_rep_def)
-            # target_value_encoder_def = GCEncoder(state_encoder=Identity(), concat_encoder=goal_rep_def)
+            target_value_encoder_def = GCEncoder(state_encoder=Identity(), concat_encoder=goal_rep_def)
             # Low-level actor: pi^l(. | s, phi([s; w]))
             low_actor_encoder_def = GCEncoder(state_encoder=Identity(), concat_encoder=goal_rep_def)
             # High-level actor: pi^h(. | s, g) (i.e., no encoder)
@@ -266,12 +265,12 @@ class HIQLAgent(flax.struct.PyTreeNode):
             ensemble=True,
             gc_encoder=value_encoder_def,
         )
-        # target_value_def = GCValue(
-        #     hidden_dims=config['value_hidden_dims'],
-        #     layer_norm=config['layer_norm'],
-        #     ensemble=True,
-        #     gc_encoder=target_value_encoder_def,
-        # )
+        target_value_def = GCValue(
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['layer_norm'],
+            ensemble=True,
+            gc_encoder=target_value_encoder_def,
+        )
 
         if config['discrete']:
             low_actor_def = GCDiscreteActor(
@@ -299,7 +298,7 @@ class HIQLAgent(flax.struct.PyTreeNode):
         network_info = dict(
             goal_rep=(goal_rep_def, (jnp.concatenate([ex_observations, ex_goals], axis=-1))),
             value=(value_def, (ex_observations, ex_goals)),
-            target_value=(copy.deepcopy(value_def), (ex_observations, ex_goals)),
+            target_value=(target_value_def, (ex_observations, ex_goals)),
             low_actor=(low_actor_def, (ex_observations, ex_goals)),
             high_actor=(high_actor_def, (ex_observations, ex_goals)),
         )
