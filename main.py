@@ -12,7 +12,7 @@ from ml_collections import config_flags
 
 from agents import agents
 from envs.env_utils import make_env_and_datasets
-from utils.datasets import Dataset
+from utils.datasets import GCDataset, Dataset
 from utils.evaluation import evaluate
 from utils.flax_utils import restore_agent, save_agent
 from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb
@@ -75,8 +75,14 @@ def main(_):
         if dataset is not None:
             dataset.p_aug = FLAGS.p_aug
             dataset.frame_stack = FLAGS.frame_stack
-            if config['agent_name'] in ['rebrac', 'fdrl']:
+            if config['agent_name'] in ['rebrac', 'brm']:
                 dataset.return_next_actions = True
+    if config['agent_name'] in ['brm']:
+        config['p_aug'] = FLAGS.p_aug
+        config['frame_stack'] = FLAGS.frame_stack
+        train_dataset = GCDataset(train_dataset, config)
+        if val_dataset is not None:
+            val_dataset = GCDataset(val_dataset, config)
 
     # Create agent.
     example_batch = train_dataset.sample(1)

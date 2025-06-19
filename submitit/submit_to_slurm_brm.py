@@ -30,7 +30,7 @@ def main():
 
     executor = submitit.AutoExecutor(folder="/tmp/submitit_logs")  # this path is not actually used.
     executor.update_parameters(
-        slurm_name="mc_fdrl",
+        slurm_name="brm",
         slurm_time=int(8 * 60),  # minute
         slurm_partition=partition,
         slurm_account=account,
@@ -51,9 +51,9 @@ def main():
                         for value_layer_norm in [True, False]:
                             for actor_layer_norm in [True]:
                                 for seed in [10, 20]:
-                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_mc_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_discount={discount}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_critic_flow_mean"
+                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_brm_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_discount={discount}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}"
                                     log_dir = os.path.expanduser(
-                                        f"{log_root_dir}/exp_logs/fdrl_logs/mc_fdrl/{exp_name}/{seed}")
+                                        f"{log_root_dir}/exp_logs/brm_logs/brm/{exp_name}/{seed}")
 
                                     # change the log folder of slurm executor
                                     submitit_log_dir = os.path.join(os.path.dirname(log_dir),
@@ -95,7 +95,7 @@ def main():
                                             --eval_interval=100_000 \
                                             --save_interval=1_000_000 \
                                             --eval_episodes=50 \
-                                            --agent=agents/mc_fdrl.py \
+                                            --agent=agents/brm.py \
                                             --agent.num_samples={num_samples} \
                                             --agent.num_flow_steps={num_flow_steps} \
                                             --agent.discount={discount} \
