@@ -29,16 +29,20 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
     def value_loss(self, batch, grad_params, rng):
         """Compute the IQL value loss."""
         batch_size = batch['actions'].shape[0]
-        rng, noise_rng, time_rng = jax.random.split(rng, 3)
+        rng, noise_rng = jax.random.split(rng)
 
         # q1, q2 = self.network.select('target_critic')(batch['observations'], actions=batch['actions'])
         # q = jnp.minimum(q1, q2)
 
         noises1, noises2 = jax.random.normal(noise_rng, (2, batch_size, 1))
-        q1 = self.compute_flow_returns(
-            noises1, batch['observations'], batch['actions'], flow_network_name='target_critic_flow1').squeeze(-1)
-        q2 = self.compute_flow_returns(
-            noises2, batch['observations'], batch['actions'], flow_network_name='target_critic_flow2').squeeze(-1)
+        # q1 = self.compute_flow_returns(
+        #     noises1, batch['observations'], batch['actions'], flow_network_name='target_critic_flow1').squeeze(-1)
+        # q2 = self.compute_flow_returns(
+        #     noises2, batch['observations'], batch['actions'], flow_network_name='target_critic_flow2').squeeze(-1)
+        q1 = (noises1 + self.network.select('target_critic_flow1')(
+            noises1, jnp.zeros_like(noises1), batch['observations'], batch['actions'])).squeeze(-1)
+        q2 = (noises2 + self.network.select('target_critic_flow2')(
+            noises2, jnp.zeros_like(noises2), batch['observations'], batch['actions'])).squeeze(-1)
         q = jnp.minimum(q1, q2)
 
         v = self.network.select('value')(batch['observations'], params=grad_params)
@@ -64,7 +68,7 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         noises = jax.random.normal(noise_rng, (batch_size, 1))
         times = jax.random.uniform(time_rng, (batch_size, 1))
         noisy_q = (1 - times) * noises + times * q[:, None]
-        vf = noises - q[:, None]
+        vf = q[:, None] - noises
 
         vf1 = self.network.select('critic_flow1')(
             noisy_q, times, batch['observations'], batch['actions'], params=grad_params)
@@ -159,7 +163,6 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
-        rng, actor_rng = jax.random.split(rng)
         actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
         for k, v in actor_info.items():
             info[f'actor/{k}'] = v
@@ -294,10 +297,14 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         # Pick the action with the highest Q-value.
         # q = self.network.select('critic')(n_observations, actions=actions).min(axis=0)
         q_noises1, q_noises2 = jax.random.normal(q_seed, (2, self.config['num_samples'], 1))
-        q1 = self.compute_flow_returns(
-            q_noises1, n_observations, actions, flow_network_name='critic_flow1').squeeze(-1)
-        q2 = self.compute_flow_returns(
-            q_noises2, n_observations, actions, flow_network_name='critic_flow2').squeeze(-1)
+        # q1 = self.compute_flow_returns(
+        #     q_noises1, n_observations, actions, flow_network_name='critic_flow1').squeeze(-1)
+        # q2 = self.compute_flow_returns(
+        #     q_noises2, n_observations, actions, flow_network_name='critic_flow2').squeeze(-1)
+        q1 = (q_noises1 + self.network.select('critic_flow1')(
+            q_noises1, jnp.zeros_like(q_noises1), n_observations, actions)).squeeze(-1)
+        q2 = (q_noises2 + self.network.select('critic_flow2')(
+            q_noises2, jnp.zeros_like(q_noises2), n_observations, actions)).squeeze(-1)
         q = jnp.minimum(q1, q2)
 
         actions = actions[jnp.argmax(q)]

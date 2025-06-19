@@ -40,17 +40,17 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=40,
+        slurm_array_parallelism=15,
     )
 
     with executor.batch():  # job array
         for env_name in ["antmaze-large-navigate-singletask-task1-v0", "cube-single-play-singletask-task1-v0"]:
-            for num_samples in [8, 16, 32, 64]:
-                for num_flow_steps in [10, 20, 40]:
+            for num_samples in [16, 32]:
+                for num_flow_steps in [10, 20]:
                     for discount in [0.99]:
                         for normalize_q_loss in [False]:
                             for value_layer_norm in [True, False]:
-                                for actor_layer_norm in [True, False]:
+                                for actor_layer_norm in [True]:
                                     for seed in [10, 20]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_discount={discount}_num_flow_steps={num_flow_steps}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_behavioral_q_sfbc"
                                         log_dir = os.path.expanduser(

@@ -34,11 +34,11 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # )
         # next_actions = jnp.clip(next_actions + noise, -1, 1)
 
-        noises = jax.random.normal(noise_rng, (batch_size, 1))
+        noises, flow_noises = jax.random.normal(noise_rng, (2, batch_size, 1))
         times = jax.random.uniform(time_rng, (batch_size, 1))
         returns = self.compute_flow_returns(
-            noises, batch['next_observations'], batch['next_actions'])
-        noisy_next_returns = times * returns + (1 - times) * noises
+            flow_noises, batch['next_observations'], batch['next_actions'])
+        noisy_next_returns = (1 - times) * noises + times * returns
 
         transformed_noisy_returns = (
             batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
