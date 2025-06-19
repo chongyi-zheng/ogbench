@@ -40,7 +40,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
             flow_network_name='target_critic_flow1')
         next_returns2 = self.compute_flow_returns(
             noises2, batch['next_observations'], batch['next_actions'],
-            flow_network_name='target_critic_flow1')
+            flow_network_name='target_critic_flow2')
         next_returns = jnp.minimum(next_returns1, next_returns2)
         target_returns = batch['rewards'][:, None] + self.config['discount'] * batch['masks'][:, None] * next_returns
 
