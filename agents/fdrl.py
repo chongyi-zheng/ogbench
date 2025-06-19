@@ -34,28 +34,47 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # )
         # next_actions = jnp.clip(next_actions + noise, -1, 1)
 
-        noises, flow_noises = jax.random.normal(noise_rng, (2, batch_size, 1))
+        noises1, noises2 = jax.random.normal(noise_rng, (2, batch_size, 1))
+        next_returns1 = self.compute_flow_returns(
+            noises1, batch['next_observations'], batch['next_actions'],
+            flow_network_name='target_critic_flow1')
+        next_returns2 = self.compute_flow_returns(
+            noises2, batch['next_observations'], batch['next_actions'],
+            flow_network_name='target_critic_flow1')
+        next_returns = jnp.minimum(next_returns1, next_returns2)
+        target_returns = batch['rewards'][:, None] + self.config['discount'] * batch['masks'][:, None] * next_returns
+
+        rng, noise_rng = jax.random.split(rng)
+        noises = jax.random.normal(noise_rng, (batch_size, 1))
         times = jax.random.uniform(time_rng, (batch_size, 1))
-        returns = self.compute_flow_returns(
-            flow_noises, batch['next_observations'], batch['next_actions'])
-        noisy_next_returns = (1 - times) * noises + times * returns
+        noisy_returns = times * target_returns + (1 - times) * noises
+        target_vector_field = target_returns - noises
 
-        transformed_noisy_returns = (
-            batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
-        # transformed_noisy_next_returns = (batch['masks'][..., None] * noisy_returns - batch['rewards'][..., None]) / self.config['discount']
-        target_vector_field = self.network.select('target_critic_flow')(
-            noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+        # transformed_noisy_returns = (
+        #     batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
+        # # transformed_noisy_next_returns = (batch['masks'][..., None] * noisy_returns - batch['rewards'][..., None]) / self.config['discount']
+        # target_vector_field = self.network.select('target_critic_flow')(
+        #     noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
 
-        vector_field = self.network.select('critic_flow')(
-            transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-        vector_field_loss = jnp.square(vector_field - target_vector_field).mean()
+        # vector_field = self.network.select('critic_flow')(
+        #     noisy_q, times, batch['observations'], batch['actions'], params=grad_params)
+        vector_field1 = self.network.select('critic_flow1')(
+            noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+        vector_field2 = self.network.select('critic_flow2')(
+            noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+        vector_field_loss = ((vector_field1 - target_vector_field) ** 2 + (vector_field2 - target_vector_field) ** 2).mean()
 
         # Additional metrics for logging.
-        q_noises = jax.random.normal(q_rng, (batch_size, 1))
-        q = self.compute_flow_returns(
-            q_noises, batch['observations'], batch['actions'],
-            use_target_flow=False,
-        ).squeeze(-1)
+        q_noises1, q_noises2 = jax.random.normal(q_rng, (2, batch_size, 1))
+        q1 = (q_noises1 + self.network.select('critic_flow1')(
+            q_noises1, jnp.zeros_like(q_noises1), batch['observations'], batch['actions'])).squeeze(-1)
+        q2 = (q_noises2 + self.network.select('critic_flow2')(
+            q_noises2, jnp.zeros_like(q_noises2), batch['observations'], batch['actions'])).squeeze(-1)
+        q = jnp.minimum(q1, q2)
+        # q = self.compute_flow_returns(
+        #     q_noises, batch['observations'], batch['actions'],
+        #     use_target_flow=False,
+        # ).squeeze(-1)
         # target_q = q_noises + self.network.select('critic_flow')(
         #     q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])
         # next_q = self.network.select('target_critic')(batch['next_observations'], next_actions)
@@ -124,7 +143,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
         x_0 = jax.random.normal(x_rng, (batch_size, action_dim))
         x_1 = batch['actions']
         t = jax.random.uniform(t_rng, (batch_size, 1))
-        x_t = (1 - t) * x_0 + t * x_1
+        x_t = t * x_1 + (1 - t) * x_0
         vel = x_1 - x_0
 
         pred = self.network.select('actor_flow')(batch['observations'], x_t, t, params=grad_params)
@@ -172,11 +191,12 @@ class FDRLAgent(flax.struct.PyTreeNode):
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
         # self.target_update(new_network, 'critic')
         # self.target_update(new_network, 'actor')
-        self.target_update(new_network, 'critic_flow')
+        self.target_update(new_network, 'critic_flow1')
+        self.target_update(new_network, 'critic_flow2')
 
         return self.replace(network=new_network, rng=new_rng), info
 
-    @partial(jax.jit, static_argnames=('use_target_flow',))
+    @partial(jax.jit, static_argnames=('flow_network_name',))
     def compute_flow_returns(
         self,
         noises,
@@ -184,14 +204,9 @@ class FDRLAgent(flax.struct.PyTreeNode):
         actions,
         init_times=None,
         end_times=None,
-        use_target_flow=True,
+        flow_network_name='critic_flow',
     ):
         """Compute returns from the return flow model using the Euler method."""
-        if use_target_flow:
-            flow_network_name = 'target_critic_flow'
-        else:
-            flow_network_name = 'critic_flow'
-
         noisy_returns = noises
         if init_times is None:
             init_times = jnp.zeros((*noisy_returns.shape[:-1], 1), dtype=noisy_returns.dtype)
@@ -301,8 +316,14 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
         # Pick the action with the highest Q-value.
         # q = self.network.select('critic')(n_observations, actions=actions).min(axis=0)
-        q_noises = jax.random.normal(q_seed, (self.config['num_samples'], 1))
-        q = self.compute_flow_returns(q_noises, n_observations, actions).squeeze(-1)
+        q_noises1, q_noises2 = jax.random.normal(q_seed, (2, self.config['num_samples'], 1))
+        # q1 = self.compute_flow_returns(q_noises1, n_observations, actions).squeeze(-1)
+        # q2 = self.compute_flow_returns(q_noises2, n_observations, actions).squeeze(-1)
+        q1 = (q_noises1 + self.network.select('critic_flow1')(
+            q_noises1, jnp.zeros_like(q_noises1), n_observations, actions)).squeeze(-1)
+        q2 = (q_noises2 + self.network.select('critic_flow2')(
+            q_noises2, jnp.zeros_like(q_noises2), n_observations, actions)).squeeze(-1)
+        q = jnp.minimum(q1, q2)
         actions = actions[jnp.argmax(q)]
         return actions
 
@@ -344,7 +365,13 @@ class FDRLAgent(flax.struct.PyTreeNode):
         #     num_ensembles=1,
         #     encoder=encoders.get('critic'),
         # )
-        critic_flow_def = ValueVectorField(
+        critic_flow1_def = ValueVectorField(
+            hidden_dims=config['value_hidden_dims'],
+            layer_norm=config['value_layer_norm'],
+            num_ensembles=1,
+            encoder=encoders.get('critic_flow'),
+        )
+        critic_flow2_def = ValueVectorField(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
             num_ensembles=1,
@@ -370,8 +397,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
         network_info = dict(
             # critic=(critic_def, (ex_observations, ex_actions)),
             # target_critic=(copy.deepcopy(critic_def), (ex_observations, ex_actions)),
-            critic_flow=(critic_flow_def, (ex_returns, ex_times, ex_observations, ex_actions)),
-            target_critic_flow=(copy.deepcopy(critic_flow_def), (ex_returns, ex_times, ex_observations, ex_actions)),
+            critic_flow1=(critic_flow1_def, (ex_returns, ex_times, ex_observations, ex_actions)),
+            critic_flow2=(critic_flow2_def, (ex_returns, ex_times, ex_observations, ex_actions)),
+            target_critic_flow1=(copy.deepcopy(critic_flow1_def), (ex_returns, ex_times, ex_observations, ex_actions)),
+            target_critic_flow2=(copy.deepcopy(critic_flow2_def), (ex_returns, ex_times, ex_observations, ex_actions)),
             actor_flow=(actor_flow_def, (ex_observations, ex_actions, ex_times)),
             # actor=(actor_def, (ex_observations,)),
             # target_actor=(copy.deepcopy(actor_def), (ex_observations,)),
@@ -385,7 +414,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
         network = TrainState.create(network_def, network_params, tx=network_tx)
 
         params = network_params
-        params['modules_target_critic_flow'] = params['modules_critic_flow']
+        params['modules_target_critic_flow1'] = params['modules_critic_flow1']
+        params['modules_target_critic_flow2'] = params['modules_critic_flow2']
         # params['modules_target_critic'] = params['modules_critic']
         # params['modules_target_actor'] = params['modules_actor']
 

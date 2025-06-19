@@ -67,7 +67,7 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         # critic_loss = ((q1 - q) ** 2 + (q2 - q) ** 2).mean()
         noises = jax.random.normal(noise_rng, (batch_size, 1))
         times = jax.random.uniform(time_rng, (batch_size, 1))
-        noisy_q = (1 - times) * noises + times * q[:, None]
+        noisy_q = times * q[:, None] + (1 - times) * noises
         vf = q[:, None] - noises
 
         vf1 = self.network.select('critic_flow1')(
@@ -138,7 +138,7 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         x_0 = jax.random.normal(x_rng, (batch_size, action_dim))
         x_1 = batch['actions']
         t = jax.random.uniform(t_rng, (batch_size, 1))
-        x_t = (1 - t) * x_0 + t * x_1
+        x_t = t * x_1 + (1 - t) * x_0
         vel = x_1 - x_0
 
         pred = self.network.select('actor_flow')(batch['observations'], x_t, t, params=grad_params)
@@ -337,6 +337,7 @@ class MCFDRLAgent(flax.struct.PyTreeNode):
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
+            encoders['value'] = encoder_module()
             encoders['critic'] = encoder_module()
             encoders['critic_flow'] = encoder_module()
             encoders['actor'] = encoder_module()
