@@ -11,8 +11,8 @@ from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 from utils.networks import ActorVectorField, Value
 
 
-class BRMAgent(flax.struct.PyTreeNode):
-    """Bellman residual minimization (BRM) agent."""
+class BRMSfBCAgent(flax.struct.PyTreeNode):
+    """Bellman residual minimization (BRM) + SfBC agent."""
 
     rng: Any
     network: Any
@@ -41,50 +41,17 @@ class BRMAgent(flax.struct.PyTreeNode):
         batch_size, action_dim = batch['actions'].shape
         rng, x_rng, t_rng = jax.random.split(rng, 3)
 
-        # BC flow loss.
         x_0 = jax.random.normal(x_rng, (batch_size, action_dim))
         x_1 = batch['actions']
         t = jax.random.uniform(t_rng, (batch_size, 1))
-        x_t = (1 - t) * x_0 + t * x_1
+        x_t = t * x_1 + (1 - t) * x_0
         vel = x_1 - x_0
 
         pred = self.network.select('actor_flow')(batch['observations'], x_t, t, params=grad_params)
-        flow_matching_loss = jnp.mean((pred - vel) ** 2)
-
-        # Distillation loss.
-        rng, noise_rng = jax.random.split(rng)
-        noises = jax.random.normal(noise_rng, (batch_size, action_dim))
-        target_flow_actions = self.compute_flow_actions(noises, batch['observations'])
-        target_flow_actions = jnp.clip(target_flow_actions, -1, 1)
-        actor_actions = self.network.select('actor_onestep_flow')(batch['observations'], noises, params=grad_params)
-        actor_actions = jnp.clip(actor_actions, -1, 1)
-        distill_loss = jnp.mean((actor_actions - target_flow_actions) ** 2)
-
-        # Q loss.
-        qs = self.network.select('critic')(batch['observations'], actions=actor_actions)
-        q = jnp.mean(qs, axis=0)
-
-        q_loss = -q.mean()
-        if self.config['normalize_q_loss']:
-            lam = jax.lax.stop_gradient(1 / jnp.abs(q).mean())
-            q_loss = lam * q_loss
-
-        # Total loss.
-        actor_loss = flow_matching_loss + self.config['alpha'] * distill_loss + q_loss
-
-        # Additional metrics for logging.
-        rng, noise_rng = jax.random.split(rng)
-        noises = jax.random.normal(noise_rng, (batch_size, action_dim))
-        actions = self.network.select('actor_onestep_flow')(batch['observations'], noises)
-        mse = jnp.mean((actions - batch['actions']) ** 2)
+        actor_loss = jnp.mean((pred - vel) ** 2)
 
         return actor_loss, {
             'actor_loss': actor_loss,
-            'flow_matching_loss': flow_matching_loss,
-            'distill_loss': distill_loss,
-            'q_loss': q_loss,
-            'q': q.mean(),
-            'mse': mse,
         }
 
     @jax.jit
@@ -92,12 +59,12 @@ class BRMAgent(flax.struct.PyTreeNode):
         """Compute the total loss."""
         info = {}
         rng = rng if rng is not None else self.rng
-        rng, actor_rng = jax.random.split(rng)
 
         critic_loss, critic_info = self.critic_loss(batch, grad_params)
         for k, v in critic_info.items():
             info[f'critic/{k}'] = v
 
+        rng, actor_rng = jax.random.split(rng)
         actor_loss, actor_info = self.actor_loss(batch, grad_params, actor_rng)
         for k, v in actor_info.items():
             info[f'actor/{k}'] = v
@@ -162,18 +129,25 @@ class BRMAgent(flax.struct.PyTreeNode):
         seed=None,
         temperature=1.0,
     ):
-        """Sample actions from the one-step policy."""
-        action_seed, noise_seed = jax.random.split(seed)
+        """Sample actions from the actor."""
+        seed, action_seed, q_seed = jax.random.split(seed, 3)
+
+        # Sample `num_samples` noises and propagate them through the flow.
         noises = jax.random.normal(
             action_seed,
             (
-                *observations.shape[: -len(self.config['ob_dims'])],
+                *observations.shape[:-1],
+                self.config['num_samples'],
                 self.config['action_dim'],
             ),
         )
-        actions = self.network.select('actor_onestep_flow')(observations, noises)
+        n_observations = jnp.repeat(jnp.expand_dims(observations, 0), self.config['num_samples'], axis=0)
+        actions = self.compute_flow_actions(noises, n_observations)
         actions = jnp.clip(actions, -1, 1)
 
+        # Pick the action with the highest Q-value.
+        q = self.network.select('critic')(n_observations, actions=actions).min(axis=0)
+        actions = actions[jnp.argmax(q)]
         return actions
 
     @classmethod
@@ -196,7 +170,6 @@ class BRMAgent(flax.struct.PyTreeNode):
         ex_observations = example_batch['observations']
         ex_actions = example_batch['actions']
         ex_times = ex_actions[..., :1]
-        ob_dims = ex_observations.shape[1:]
         action_dim = ex_actions.shape[-1]
 
         # Define encoders.
@@ -205,7 +178,6 @@ class BRMAgent(flax.struct.PyTreeNode):
             encoder_module = encoder_modules[config['encoder']]
             encoders['critic'] = encoder_module()
             encoders['actor_flow'] = encoder_module()
-            encoders['actor_onestep_flow'] = encoder_module()
 
         # Define networks.
         critic_def = Value(
@@ -220,17 +192,10 @@ class BRMAgent(flax.struct.PyTreeNode):
             layer_norm=config['actor_layer_norm'],
             encoder=encoders.get('actor_flow'),
         )
-        actor_onestep_flow_def = ActorVectorField(
-            hidden_dims=config['actor_hidden_dims'],
-            action_dim=action_dim,
-            layer_norm=config['actor_layer_norm'],
-            encoder=encoders.get('actor_onestep_flow'),
-        )
 
         network_info = dict(
             critic=(critic_def, (ex_observations, ex_actions)),
             actor_flow=(actor_flow_def, (ex_observations, ex_actions, ex_times)),
-            actor_onestep_flow=(actor_onestep_flow_def, (ex_observations, ex_actions)),
         )
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items()}
@@ -240,7 +205,6 @@ class BRMAgent(flax.struct.PyTreeNode):
         network_params = network_def.init(init_rng, **network_args)['params']
         network = TrainState.create(network_def, network_params, tx=network_tx)
 
-        config['ob_dims'] = ob_dims
         config['action_dim'] = action_dim
         return cls(rng, network=network, config=flax.core.FrozenDict(**config))
 
@@ -249,7 +213,6 @@ def get_config():
     config = ml_collections.ConfigDict(
         dict(
             agent_name='brm',  # Agent name.
-            ob_dims=ml_collections.config_dict.placeholder(list),  # Observation dimensions (will be set automatically).
             action_dim=ml_collections.config_dict.placeholder(int),  # Action dimension (will be set automatically).
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
@@ -259,9 +222,8 @@ def get_config():
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
-            alpha=10.0,  # BC coefficient (need to be tuned for each environment).
+            num_samples=32,  # Number of action samples for rejection sampling.
             num_flow_steps=10,  # Number of flow steps.
-            normalize_q_loss=False,  # Whether to normalize the Q loss.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
             # Dataset hyperparameters.
             relabel_reward=False,  # Whether to relabel the reward as a goal-reaching reward.
