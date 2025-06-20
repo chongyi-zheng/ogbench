@@ -44,15 +44,15 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["antmaze-large-navigate-singletask-task1-v0", "cube-single-play-singletask-task1-v0"]:
+        for env_name in ["antmaze-large-navigate-singletask-task1-v0", "antmaze-large-navigate-singletask-task3-v0", "cube-single-play-singletask-task1-v0"]:
             for num_samples in [32]:
-                for num_flow_steps in [10]:
+                for num_flow_steps in [10, 20]:
                     for discount in [0.99]:
-                        for alpha in [0.01, 0.1, 1.0, 10, 100]:
+                        for alpha in [0.0]:
                             for value_layer_norm in [True, False]:
                                 for actor_layer_norm in [True]:
                                     for seed in [10, 20]:
-                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_discount={discount}_num_flow_steps={num_flow_steps}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_weight_l2_loss"
+                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_discount={discount}_num_flow_steps={num_flow_steps}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_fitting_expectile_v"
                                         log_dir = os.path.expanduser(
                                             f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
 

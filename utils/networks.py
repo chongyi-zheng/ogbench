@@ -219,7 +219,7 @@ class ValueVectorField(nn.Module):
         self.value_net = value_net
 
     @nn.compact
-    def __call__(self, returns, times, observations, actions, is_encoded=False):
+    def __call__(self, returns, times, observations, actions=None, is_encoded=False):
         """Return the vectors at the given states, actions, and times.
 
         Args:
@@ -231,7 +231,10 @@ class ValueVectorField(nn.Module):
         """
         if not is_encoded and self.encoder is not None:
             observations = self.encoder(observations)
-        inputs = jnp.concatenate([returns, times, observations, actions], axis=-1)
+        if actions is None:
+            inputs = jnp.concatenate([returns, times, observations], axis=-1)
+        else:
+            inputs = jnp.concatenate([returns, times, observations, actions], axis=-1)
 
         v = self.value_net(inputs)
         # if self.value_dim == 1:
