@@ -94,25 +94,26 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # The following returns will be bounded automatically
         returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
                    self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * next_returns)
+        noisy_next_returns = times * next_returns + (1 - times) * noises
         noisy_returns = times * returns + (1 - times) * noises
 
         # transformed_noisy_returns = (
         #     batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
         # transformed_noisy_next_returns = (batch['masks'][..., None] * noisy_returns - batch['rewards'][..., None]) / self.config['discount']
-        # target_vector_field1 = self.network.select('target_critic_flow1')(
-        #     noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
-        # target_vector_field2 = self.network.select('target_critic_flow2')(
-        #     noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+        target_vector_field1 = self.network.select('target_critic_flow1')(
+            noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+        target_vector_field2 = self.network.select('target_critic_flow2')(
+            noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
         # target_vector_field1 = returns1 - noises1
         # target_vector_field2 = returns2 - noises2
-        target_vector_field = returns - noises
+        # target_vector_field = returns - noises
 
         vector_field1 = self.network.select('critic_flow1')(
             noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
         vector_field2 = self.network.select('critic_flow2')(
             noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-        vector_field_loss = ((vector_field1 - target_vector_field) ** 2 +
-                             (vector_field2 - target_vector_field) ** 2).mean()
+        vector_field_loss = ((vector_field1 - target_vector_field1) ** 2 +
+                             (vector_field2 - target_vector_field2) ** 2).mean()
 
         if grad_params is not None:
             params1 = grad_params['modules_critic_flow1']
