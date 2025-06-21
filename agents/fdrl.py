@@ -47,8 +47,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
         v = self.network.select('value_onestep_flow')(batch['observations'], noises, params=grad_params)
         v = jnp.clip(
             v,
-            self.config['reward_min'] / (1 - self.config['discount']),
-            self.config['reward_max'] / (1 - self.config['discount']),
+            self.config['min_reward'] / (1 - self.config['discount']),
+            self.config['max_reward'] / (1 - self.config['discount']),
         )
         value_loss = self.expectile_loss(q - v, q - v, self.config['expectile']).mean()
 
@@ -88,8 +88,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
             self.network.select('value_onestep_flow')(batch['next_observations'], noises), axis=-1)
         next_returns = jnp.clip(
             next_returns,
-            self.config['reward_min'] / (1 - self.config['discount']),
-            self.config['reward_max'] / (1 - self.config['discount']),
+            self.config['min_reward'] / (1 - self.config['discount']),
+            self.config['max_reward'] / (1 - self.config['discount']),
         )
         # The following returns will be bounded automatically
         returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
@@ -297,8 +297,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
             new_noisy_returns = noisy_returns + vector_field * step_size
             new_noisy_returns = jnp.clip(
                 new_noisy_returns,
-                self.config['reward_min'] / (1 - self.config['discount']),
-                self.config['reward_max'] / (1 - self.config['discount']),
+                self.config['min_reward'] / (1 - self.config['discount']),
+                self.config['max_reward'] / (1 - self.config['discount']),
             )
 
             return (new_noisy_returns, ), None
@@ -308,8 +308,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
             func, (noisy_returns,), jnp.arange(self.config['num_flow_steps']))
         noisy_returns = jnp.clip(
             noisy_returns,
-            self.config['reward_min'] / (1 - self.config['discount']),
-            self.config['reward_max'] / (1 - self.config['discount']),
+            self.config['min_reward'] / (1 - self.config['discount']),
+            self.config['max_reward'] / (1 - self.config['discount']),
         )
 
         return noisy_returns
