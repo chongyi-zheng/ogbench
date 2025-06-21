@@ -45,6 +45,11 @@ class FDRLAgent(flax.struct.PyTreeNode):
         q = jnp.minimum(q1, q2)
 
         v = self.network.select('value_onestep_flow')(batch['observations'], noises, params=grad_params)
+        v = jnp.clip(
+            v,
+            self.config['reward_min'] / (1 - self.config['discount']),
+            self.config['reward_max'] / (1 - self.config['discount']),
+        )
         value_loss = self.expectile_loss(q - v, q - v, self.config['expectile']).mean()
 
         return value_loss, {
@@ -81,6 +86,12 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
         next_returns = jnp.expand_dims(
             self.network.select('value_onestep_flow')(batch['next_observations'], noises), axis=-1)
+        next_returns = jnp.clip(
+            next_returns,
+            self.config['reward_min'] / (1 - self.config['discount']),
+            self.config['reward_max'] / (1 - self.config['discount']),
+        )
+        # The following returns will be bounded automatically
         returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
                    self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * next_returns)
         noisy_returns = times * returns + (1 - times) * noises
@@ -88,20 +99,20 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # transformed_noisy_returns = (
         #     batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
         # transformed_noisy_next_returns = (batch['masks'][..., None] * noisy_returns - batch['rewards'][..., None]) / self.config['discount']
-        target_vector_field1 = self.network.select('target_critic_flow1')(
-            next_returns, times, batch['next_observations'], batch['next_actions'])
-        target_vector_field2 = self.network.select('target_critic_flow2')(
-            next_returns, times, batch['next_observations'], batch['next_actions'])
+        # target_vector_field1 = self.network.select('target_critic_flow1')(
+        #     noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+        # target_vector_field2 = self.network.select('target_critic_flow2')(
+        #     noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
         # target_vector_field1 = returns1 - noises1
         # target_vector_field2 = returns2 - noises2
-        # target_vector_field = returns - noises
+        target_vector_field = returns - noises
 
         vector_field1 = self.network.select('critic_flow1')(
             noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
         vector_field2 = self.network.select('critic_flow2')(
             noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-        vector_field_loss = ((vector_field1 - target_vector_field1) ** 2 +
-                             (vector_field2 - target_vector_field2) ** 2).mean()
+        vector_field_loss = ((vector_field1 - target_vector_field) ** 2 +
+                             (vector_field2 - target_vector_field) ** 2).mean()
 
         if grad_params is not None:
             params1 = grad_params['modules_critic_flow1']
@@ -284,12 +295,22 @@ class FDRLAgent(flax.struct.PyTreeNode):
             vector_field = self.network.select(flow_network_name)(
                 noisy_returns, times, observations, actions)
             new_noisy_returns = noisy_returns + vector_field * step_size
+            new_noisy_returns = jnp.clip(
+                new_noisy_returns,
+                self.config['reward_min'] / (1 - self.config['discount']),
+                self.config['reward_max'] / (1 - self.config['discount']),
+            )
 
             return (new_noisy_returns, ), None
 
         # Use lax.scan to do the iteration
         (noisy_returns, ), _ = jax.lax.scan(
             func, (noisy_returns,), jnp.arange(self.config['num_flow_steps']))
+        noisy_returns = jnp.clip(
+            noisy_returns,
+            self.config['reward_min'] / (1 - self.config['discount']),
+            self.config['reward_max'] / (1 - self.config['discount']),
+        )
 
         return noisy_returns
 
@@ -371,7 +392,6 @@ class FDRLAgent(flax.struct.PyTreeNode):
         )
         n_observations = jnp.repeat(jnp.expand_dims(observations, 0), self.config['num_samples'], axis=0)
         actions = self.compute_flow_actions(noises, n_observations)
-        actions = jnp.clip(actions, -1, 1)
 
         # Pick the action with the highest Q-value.
         # q = self.network.select('critic')(n_observations, actions=actions).min(axis=0)
@@ -408,6 +428,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
         ex_returns = ex_actions[..., :1]
         ex_times = ex_actions[..., :1]
         action_dim = ex_actions.shape[-1]
+        min_reward = example_batch['min_reward']
+        max_reward = example_batch['max_reward']
 
         # Define encoders.
         encoders = dict()
@@ -480,6 +502,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # params['modules_target_actor'] = params['modules_actor']
 
         config['action_dim'] = action_dim
+        config['min_reward'] = min_reward
+        config['max_reward'] = max_reward
         return cls(rng, network=network, config=flax.core.FrozenDict(**config))
 
 
@@ -488,6 +512,8 @@ def get_config():
         dict(
             agent_name='fdrl',  # Agent name.
             action_dim=ml_collections.config_dict.placeholder(int),  # Action dimension (will be set automatically).
+            min_reward=ml_collections.config_dict.placeholder(float),  # Minimum reward (will be set automatically).
+            max_reward=ml_collections.config_dict.placeholder(float),  # Maximum reward (will be set automatically).
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
