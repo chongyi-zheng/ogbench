@@ -83,7 +83,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
         next_returns = self.network.select('value_onestep_flow')(batch['next_observations'], noises)
         returns = batch['rewards'] + self.config['discount'] * batch['masks'] * next_returns
         returns = returns[:, None]
-        noisy_returns = noises * returns + (1 - times) * noises
+        noisy_returns = times * returns + (1 - times) * noises
 
         # transformed_noisy_returns = (
         #     batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
