@@ -45,8 +45,8 @@ def main():
 
     with executor.batch():  # job array
         for env_name in ["antmaze-large-navigate-singletask-task1-v0", "antmaze-large-navigate-singletask-task3-v0"]:
-            for alpha in [10]:
-                for num_flow_steps in [1]:
+            for alpha in [1]:
+                for num_flow_steps in [10]:
                     for discount in [0.99]:
                         for normalize_q_loss in [True, False]:
                             for value_layer_norm in [True, False]:
