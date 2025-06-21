@@ -44,15 +44,16 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["antmaze-large-navigate-singletask-task1-v0", "antmaze-large-navigate-singletask-task3-v0", "cube-single-play-singletask-task1-v0"]:
+        for env_name in ["antmaze-large-navigate-singletask-task1-v0", "antmaze-large-navigate-singletask-task3-v0",
+                         "cube-single-play-singletask-task1-v0"]:
             for num_samples in [32]:
-                for num_flow_steps in [10, 20]:
+                for num_flow_steps in [10]:
                     for discount in [0.99]:
                         for alpha in [0.0]:
                             for value_layer_norm in [True, False]:
                                 for actor_layer_norm in [True]:
                                     for seed in [10, 20]:
-                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_discount={discount}_num_flow_steps={num_flow_steps}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_fitting_expectile_v"
+                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_discount={discount}_num_flow_steps={num_flow_steps}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_fitting_expectile_v_target_vf"
                                         log_dir = os.path.expanduser(
                                             f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
 
@@ -68,12 +69,12 @@ def main():
                                             conda activate ogbench;
                                             which python;
                                             echo $CONDA_PREFIX;
-            
+
                                             echo job_id: $SLURM_ARRAY_JOB_ID;
                                             echo task_id: $SLURM_ARRAY_TASK_ID;
                                             squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
                                             echo seed: {seed};
-            
+
                                             export PROJECT_DIR=$PWD;
                                             export PYTHONPATH=$HOME/research/ogbench;
                                             export PATH="$PATH":"$CONDA_PREFIX"/bin;
@@ -85,7 +86,7 @@ def main():
                                             export D4RL_SUPPRESS_IMPORT_ERROR=1;
                                             export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
                                             export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-            
+
                                             rm -rf {log_dir};
                                             mkdir -p {log_dir};
                                             python $PROJECT_DIR/main.py \
@@ -106,7 +107,7 @@ def main():
                                                 --seed={seed} \
                                                 --save_dir={log_dir} \
                                             2>&1 | tee {log_dir}/stream.log;
-            
+
                                             export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
                                             echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
                                             echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";

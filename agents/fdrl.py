@@ -27,7 +27,6 @@ class FDRLAgent(flax.struct.PyTreeNode):
         return weight * (diff**2)
 
     def value_loss(self, batch, grad_params, rng):
-        # TODO
         """Compute the IQL value loss."""
         batch_size = batch['actions'].shape[0]
         rng, noise_rng = jax.random.split(rng)
@@ -80,28 +79,29 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # noisy_next_returns1 = times * returns1 + (1 - times) * noises1
         # noisy_next_returns2 = times * returns2 + (1 - times) * noises2
         # noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
-        next_returns = self.network.select('value_onestep_flow')(batch['next_observations'], noises)
-        returns = batch['rewards'] + self.config['discount'] * batch['masks'] * next_returns
-        returns = returns[:, None]
+        next_returns = jnp.expand_dims(
+            self.network.select('value_onestep_flow')(batch['next_observations'], noises), axis=-1)
+        returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
+                   self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * next_returns)
         noisy_returns = times * returns + (1 - times) * noises
 
         # transformed_noisy_returns = (
         #     batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
         # transformed_noisy_next_returns = (batch['masks'][..., None] * noisy_returns - batch['rewards'][..., None]) / self.config['discount']
-        # target_vector_field1 = self.network.select('target_critic_flow1')(
-        #     noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
-        # target_vector_field2 = self.network.select('target_critic_flow2')(
-        #     noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+        target_vector_field1 = self.network.select('target_critic_flow1')(
+            next_returns, times, batch['next_observations'], batch['next_actions'])
+        target_vector_field2 = self.network.select('target_critic_flow2')(
+            next_returns, times, batch['next_observations'], batch['next_actions'])
         # target_vector_field1 = returns1 - noises1
         # target_vector_field2 = returns2 - noises2
-        target_vector_field = returns - noises
+        # target_vector_field = returns - noises
 
         vector_field1 = self.network.select('critic_flow1')(
             noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
         vector_field2 = self.network.select('critic_flow2')(
             noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-        vector_field_loss = ((vector_field1 - target_vector_field) ** 2 +
-                             (vector_field2 - target_vector_field) ** 2).mean()
+        vector_field_loss = ((vector_field1 - target_vector_field1) ** 2 +
+                             (vector_field2 - target_vector_field2) ** 2).mean()
 
         if grad_params is not None:
             params1 = grad_params['modules_critic_flow1']
