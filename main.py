@@ -82,8 +82,8 @@ def main(_):
     example_batch = train_dataset.sample(1)
 
     assert 'rewards' in train_dataset
-    example_batch['min_reward'] = train_dataset['rewards'].min()
-    example_batch['max_reward'] = train_dataset['rewards'].max()
+    example_batch['min_reward'] = float(train_dataset['rewards'].min())
+    example_batch['max_reward'] = float(train_dataset['rewards'].max())
     assert example_batch['min_reward'] <= example_batch['max_reward']
 
     agent_class = agents[config['agent_name']]
