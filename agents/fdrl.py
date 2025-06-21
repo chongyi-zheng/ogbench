@@ -84,8 +84,15 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # noisy_next_returns1 = times * returns1 + (1 - times) * noises1
         # noisy_next_returns2 = times * returns2 + (1 - times) * noises2
         # noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
-        next_returns = jnp.expand_dims(
-            self.network.select('value_onestep_flow')(batch['next_observations'], noises), axis=-1)
+        # next_returns = jnp.expand_dims(
+        #     self.network.select('value_onestep_flow')(batch['next_observations'], noises), axis=-1)
+        next_returns1 = self.compute_flow_returns(
+            noises, batch['next_observations'], batch['next_actions'],
+            flow_network_name='target_critic_flow1')
+        next_returns2 = self.compute_flow_returns(
+            noises, batch['next_observations'], batch['next_actions'],
+            flow_network_name='target_critic_flow2')
+        next_returns = jnp.minimum(next_returns1, next_returns2)
         next_returns = jnp.clip(
             next_returns,
             self.config['min_reward'] / (1 - self.config['discount']),
@@ -108,10 +115,13 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # target_vector_field2 = returns2 - noises2
         # target_vector_field = returns - noises
 
+        rng, dropout_rng1, dropout_rng2 = jax.random.split(rng, 3)
         vector_field1 = self.network.select('critic_flow1')(
-            noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            noisy_returns, times, batch['observations'], batch['actions'], training=True,
+            params=grad_params, rngs={'dropout': dropout_rng1})
         vector_field2 = self.network.select('critic_flow2')(
-            noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            noisy_returns, times, batch['observations'], batch['actions'], training=True,
+            params=grad_params, rngs={'dropout': dropout_rng2})
         vector_field_loss = ((vector_field1 - target_vector_field1) ** 2 +
                              (vector_field2 - target_vector_field2) ** 2).mean()
 
@@ -450,12 +460,14 @@ class FDRLAgent(flax.struct.PyTreeNode):
         critic_flow1_def = ValueVectorField(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
+            dropout_rate=config['value_dropout_rate'],
             num_ensembles=1,
             encoder=encoders.get('critic_flow'),
         )
         critic_flow2_def = ValueVectorField(
             hidden_dims=config['value_hidden_dims'],
             layer_norm=config['value_layer_norm'],
+            dropout_rate=config['value_dropout_rate'],
             num_ensembles=1,
             encoder=encoders.get('critic_flow'),
         )
@@ -521,6 +533,7 @@ def get_config():
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             value_layer_norm=True,  # Whether to use layer normalization for the value and the critic.
+            value_dropout_rate=0.1,  # Dropout rate for the value and the critic.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
             expectile=0.9,  # IQL expectile.

@@ -46,15 +46,18 @@ class MLP(nn.Module):
     activate_final: bool = False
     kernel_init: Any = default_init()
     layer_norm: bool = False
+    dropout_rate: float = 0.0
 
     @nn.compact
-    def __call__(self, x):
+    def __call__(self, x, training=False):
         for i, size in enumerate(self.hidden_dims):
             x = nn.Dense(size, kernel_init=self.kernel_init)(x)
             if i + 1 < len(self.hidden_dims) or self.activate_final:
                 x = self.activations(x)
                 if self.layer_norm:
                     x = nn.LayerNorm()(x)
+                if self.dropout_rate > 0.0:
+                    x = nn.Dropout(rate=self.dropout_rate)(x, deterministic=not training)
             if i == len(self.hidden_dims) - 2:
                 self.sow('intermediates', 'feature', x)
         return x
@@ -207,6 +210,7 @@ class ValueVectorField(nn.Module):
     hidden_dims: Sequence[int]
     value_dim: int = 1
     layer_norm: bool = False
+    dropout_rate: float = 0.0
     num_ensembles: int = 2
     encoder: nn.Module = None
 
@@ -214,12 +218,13 @@ class ValueVectorField(nn.Module):
         mlp_class = MLP
         if self.num_ensembles > 1:
             mlp_class = ensemblize(mlp_class, self.num_ensembles)
-        value_net = mlp_class((*self.hidden_dims, 1), activate_final=False, layer_norm=self.layer_norm)
+        value_net = mlp_class((*self.hidden_dims, 1), activate_final=False,
+                              layer_norm=self.layer_norm, dropout_rate=self.dropout_rate)
 
         self.value_net = value_net
 
     @nn.compact
-    def __call__(self, returns, times, observations, actions=None, is_encoded=False):
+    def __call__(self, returns, times, observations, actions=None, is_encoded=False, training=False):
         """Return the vectors at the given states, actions, and times.
 
         Args:
@@ -228,6 +233,7 @@ class ValueVectorField(nn.Module):
             observations: Observations.
             actions: Actions.
             is_encoded: Whether the observations are already encoded.
+            training: Whether the network is in training mode for dropout.
         """
         if not is_encoded and self.encoder is not None:
             observations = self.encoder(observations)
@@ -236,7 +242,7 @@ class ValueVectorField(nn.Module):
         else:
             inputs = jnp.concatenate([returns, times, observations, actions], axis=-1)
 
-        v = self.value_net(inputs)
+        v = self.value_net(inputs, training=training)
         # if self.value_dim == 1:
         #     v = v.squeeze(-1)
 
