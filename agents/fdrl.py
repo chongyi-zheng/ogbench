@@ -88,37 +88,34 @@ class FDRLAgent(flax.struct.PyTreeNode):
         #     self.network.select('value_onestep_flow')(batch['next_observations'], noises), axis=-1)
         next_returns1 = self.compute_flow_returns(
             noises, batch['next_observations'], batch['next_actions'],
-            end_times=times, flow_network_name='target_critic_flow1')
+            flow_network_name='target_critic_flow1')
         next_returns2 = self.compute_flow_returns(
             noises, batch['next_observations'], batch['next_actions'],
-            end_times=times, flow_network_name='target_critic_flow2')
-        noisy_next_returns = jnp.minimum(next_returns1, next_returns2)
+            flow_network_name='target_critic_flow2')
+        next_returns = jnp.minimum(next_returns1, next_returns2)
         # The following returns will be bounded automatically
-        noisy_returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
-                         self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * noisy_next_returns)
+        returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
+                   self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * next_returns)
         # noisy_next_returns = times * next_returns + (1 - times) * noises
-        # noisy_returns = times * returns + (1 - times) * noises
+        noisy_returns = times * returns + (1 - times) * noises
 
         # transformed_noisy_returns = (
         #     batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
         # transformed_noisy_next_returns = (batch['masks'][..., None] * noisy_returns - batch['rewards'][..., None]) / self.config['discount']
-        target_vector_field1 = self.network.select('target_critic_flow1')(
-            noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
-        target_vector_field2 = self.network.select('target_critic_flow2')(
-            noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+        # target_vector_field1 = self.network.select('target_critic_flow1')(
+        #     noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+        # target_vector_field2 = self.network.select('target_critic_flow2')(
+        #     noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
         # target_vector_field1 = returns1 - noises1
         # target_vector_field2 = returns2 - noises2
-        # target_vector_field = returns - noises
+        target_vector_field = returns - noises
 
-        rng, dropout_rng1, dropout_rng2 = jax.random.split(rng, 3)
         vector_field1 = self.network.select('critic_flow1')(
-            noisy_returns, times, batch['observations'], batch['actions'], training=True,
-            params=grad_params, rngs={'dropout': dropout_rng1})
+            noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
         vector_field2 = self.network.select('critic_flow2')(
-            noisy_returns, times, batch['observations'], batch['actions'], training=True,
-            params=grad_params, rngs={'dropout': dropout_rng2})
-        vector_field_loss = ((vector_field1 - target_vector_field1) ** 2 +
-                             (vector_field2 - target_vector_field2) ** 2).mean()
+            noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+        vector_field_loss = ((vector_field1 - target_vector_field) ** 2 +
+                             (vector_field2 - target_vector_field) ** 2).mean()
 
         if grad_params is not None:
             params1 = grad_params['modules_critic_flow1']
@@ -543,7 +540,7 @@ def get_config():
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
             actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             value_layer_norm=True,  # Whether to use layer normalization for the value and the critic.
-            value_dropout_rate=0.1,  # Dropout rate for the value and the critic.
+            value_dropout_rate=0.0,  # Dropout rate for the value and the critic.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
             expectile=0.9,  # IQL expectile.
