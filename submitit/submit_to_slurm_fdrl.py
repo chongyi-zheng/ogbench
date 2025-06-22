@@ -49,11 +49,11 @@ def main():
             for num_samples in [32]:
                 for num_flow_steps in [10]:
                     for tau in [0.005]:
-                        for ode_solver in ['euler', 'midpoint']:
-                            for alpha in [0.0]:
+                        for ode_solver in ['euler']:
+                            for alpha in [0.1, 1, 10, 100]:
                                 for value_dropout_rate in [0.0]:
                                     for value_layer_norm in [False, True]:
-                                        for actor_layer_norm in [False, True]:
+                                        for actor_layer_norm in [True]:
                                             for seed in [10, 20]:
                                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_tau={tau}_ode_solver={ode_solver}_alpha={alpha}_value_dropout_rate={value_dropout_rate}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_fitting_target_q_bounded_returns"
                                                 log_dir = os.path.expanduser(

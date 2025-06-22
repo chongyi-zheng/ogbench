@@ -117,20 +117,42 @@ class FDRLAgent(flax.struct.PyTreeNode):
         vector_field_loss = ((vector_field1 - target_vector_field) ** 2 +
                              (vector_field2 - target_vector_field) ** 2).mean()
 
-        if grad_params is not None:
-            params1 = grad_params['modules_critic_flow1']
-            params2 = grad_params['modules_critic_flow2']
-        else:
-            params1 = self.network.params['modules_critic_flow1']
-            params2 = self.network.params['modules_critic_flow2']
-
-        weight_l2_loss = sum(
-            (w ** 2).sum()
-            for w in jax.tree.leaves(params1)
-        ) + sum(
-            (w ** 2).sum()
-            for w in jax.tree.leaves(params2)
+        noisy_next_returns1 = self.compute_flow_returns(
+            noises, batch['next_observations'], batch['next_actions'], end_times=times,
+            flow_network_name='target_critic_flow1')
+        noisy_next_returns2 = self.compute_flow_returns(
+            noises, batch['next_observations'], batch['next_actions'], end_times=times,
+            flow_network_name='target_critic_flow2')
+        noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
+        transformed_noisy_returns = (
+            jnp.expand_dims(batch['rewards'], axis=-1) + 
+            self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * noisy_next_returns
         )
+        bootstrapped_vector_field1 = self.network.select('critic_flow1')(
+            transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+        bootstrapped_vector_field2 = self.network.select('critic_flow2')(
+            transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+        target_bootstrapped_vector_field1 = self.network.select('target_critic_flow1')(
+            noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+        target_bootstrapped_vector_field2 = self.network.select('target_critic_flow2')(
+            noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+        bootstrapped_vector_field_loss = ((bootstrapped_vector_field1 - target_bootstrapped_vector_field1) ** 2 +
+                                          (bootstrapped_vector_field2 - target_bootstrapped_vector_field2) ** 2).mean()
+
+        # if grad_params is not None:
+        #     params1 = grad_params['modules_critic_flow1']
+        #     params2 = grad_params['modules_critic_flow2']
+        # else:
+        #     params1 = self.network.params['modules_critic_flow1']
+        #     params2 = self.network.params['modules_critic_flow2']
+        #
+        # weight_l2_loss = sum(
+        #     (w ** 2).sum()
+        #     for w in jax.tree.leaves(params1)
+        # ) + sum(
+        #     (w ** 2).sum()
+        #     for w in jax.tree.leaves(params2)
+        # )
 
         # Additional metrics for logging.
         q_noises = jax.random.normal(q_rng, (batch_size, 1))
@@ -153,11 +175,11 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # q = self.network.select('critic')(batch['observations'], batch['actions'], params=grad_params)
         # q_loss = jnp.square(q - target_q).mean()
 
-        critic_loss = vector_field_loss + self.config['alpha'] * weight_l2_loss
+        critic_loss = vector_field_loss + self.config['alpha'] * bootstrapped_vector_field_loss
 
         return critic_loss, {
             'vector_field_loss': vector_field_loss,
-            'weight_l2_loss': weight_l2_loss,
+            'bootstrapped_vector_field_loss': bootstrapped_vector_field_loss,
             # 'q_loss': q_loss,
             'critic_loss': critic_loss,
             'q_mean': q.mean(),
