@@ -54,7 +54,7 @@ def main():
                                 for value_layer_norm in [False]:
                                     for actor_layer_norm in [True]:
                                         for seed in [10, 20]:
-                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_ode_solver={ode_solver}_num_flow_steps={num_flow_steps}_value_dropout_rate={value_dropout_rate}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_fitting_target_vf_bounded_returns"
+                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_num_samples={num_samples}_num_flow_steps={num_flow_steps}_ode_solver={ode_solver}_alpha={alpha}_value_dropout_rate={value_dropout_rate}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_fitting_target_vf_bounded_returns"
                                             log_dir = os.path.expanduser(
                                                 f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
 
