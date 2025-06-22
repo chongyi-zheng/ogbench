@@ -88,21 +88,16 @@ class FDRLAgent(flax.struct.PyTreeNode):
         #     self.network.select('value_onestep_flow')(batch['next_observations'], noises), axis=-1)
         next_returns1 = self.compute_flow_returns(
             noises, batch['next_observations'], batch['next_actions'],
-            flow_network_name='target_critic_flow1')
+            end_times=times, flow_network_name='target_critic_flow1')
         next_returns2 = self.compute_flow_returns(
             noises, batch['next_observations'], batch['next_actions'],
-            flow_network_name='target_critic_flow2')
-        next_returns = jnp.minimum(next_returns1, next_returns2)
-        next_returns = jnp.clip(
-            next_returns,
-            self.config['min_reward'] / (1 - self.config['discount']),
-            self.config['max_reward'] / (1 - self.config['discount']),
-        )
+            end_times=times, flow_network_name='target_critic_flow2')
+        noisy_next_returns = jnp.minimum(next_returns1, next_returns2)
         # The following returns will be bounded automatically
-        returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
-                   self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * next_returns)
-        noisy_next_returns = times * next_returns + (1 - times) * noises
-        noisy_returns = times * returns + (1 - times) * noises
+        noisy_returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
+                         self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * noisy_next_returns)
+        # noisy_next_returns = times * next_returns + (1 - times) * noises
+        # noisy_returns = times * returns + (1 - times) * noises
 
         # transformed_noisy_returns = (
         #     batch['rewards'][..., None] + self.config['discount'] * batch['masks'][..., None] * noisy_next_returns)
@@ -237,9 +232,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
         rng = rng if rng is not None else self.rng
         rng, value_rng, critic_rng, actor_rng = jax.random.split(rng, 4)
 
-        value_loss, value_info = self.value_loss(batch, grad_params, value_rng)
-        for k, v in value_info.items():
-            info[f'value/{k}'] = v
+        # value_loss, value_info = self.value_loss(batch, grad_params, value_rng)
+        # for k, v in value_info.items():
+        #     info[f'value/{k}'] = v
+        value_loss = 0.0
 
         critic_loss, critic_info = self.critic_loss(batch, grad_params, critic_rng)
         for k, v in critic_info.items():
@@ -303,9 +299,23 @@ class FDRLAgent(flax.struct.PyTreeNode):
             (noisy_returns, ) = carry
 
             times = i * step_size + init_times
-            vector_field = self.network.select(flow_network_name)(
-                noisy_returns, times, observations, actions)
-            new_noisy_returns = noisy_returns + vector_field * step_size
+            if self.config['ode_solver'] == 'euler':
+                vector_field = self.network.select(flow_network_name)(
+                    noisy_returns, times, observations, actions)
+                new_noisy_returns = noisy_returns + step_size * vector_field
+            elif self.config['ode_solver'] == 'midpoint':
+                vector_field = self.network.select(flow_network_name)(
+                    noisy_returns, times, observations, actions)
+
+                mid_noisy_returns = noisy_returns + 0.5 * step_size * vector_field
+                mid_times = times + 0.5 * step_size
+
+                vector_field = self.network.select(flow_network_name)(
+                    mid_noisy_returns, mid_times, observations, actions)
+
+                new_noisy_returns = noisy_returns + step_size * vector_field
+            else:
+                raise NotImplementedError
             new_noisy_returns = jnp.clip(
                 new_noisy_returns,
                 self.config['min_reward'] / (1 - self.config['discount']),
@@ -539,6 +549,7 @@ def get_config():
             expectile=0.9,  # IQL expectile.
             alpha=1.0,  # Weight L2 norm regularization coefficient.
             num_samples=32,  # Number of action samples for rejection sampling.
+            ode_solver='euler',  # Type of the ODE solver ('euler', 'midpoint').
             num_flow_steps=10,  # Number of flow steps.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
         )
