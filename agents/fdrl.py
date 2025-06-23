@@ -125,7 +125,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
             flow_network_name='target_critic_flow2')
         noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
         transformed_noisy_returns = (
-            jnp.expand_dims(batch['rewards'], axis=-1) + 
+            jnp.expand_dims(batch['rewards'], axis=-1) +
             self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * noisy_next_returns
         )
         bootstrapped_vector_field1 = self.network.select('critic_flow1')(
@@ -436,12 +436,16 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # Pick the action with the highest Q-value.
         # q = self.network.select('critic')(n_observations, actions=actions).min(axis=0)
         q_noises = jax.random.normal(q_seed, (self.config['num_samples'], 1))
-        q1 = self.compute_flow_returns(
-            q_noises, n_observations, actions,
-            flow_network_name='critic_flow1').squeeze(-1)
-        q2 = self.compute_flow_returns(
-            q_noises, n_observations, actions,
-            flow_network_name='critic_flow2').squeeze(-1)
+        # q1 = self.compute_flow_returns(
+        #     q_noises, n_observations, actions,
+        #     flow_network_name='critic_flow1').squeeze(-1)
+        # q2 = self.compute_flow_returns(
+        #     q_noises, n_observations, actions,
+        #     flow_network_name='critic_flow2').squeeze(-1)
+        q1 = (q_noises + self.network.select('critic_flow1')(
+            q_noises, jnp.zeros_like(q_noises), n_observations, actions)).squeeze(-1)
+        q2 = (q_noises + self.network.select('critic_flow2')(
+            q_noises, jnp.zeros_like(q_noises), n_observations, actions)).squeeze(-1)
         q = jnp.minimum(q1, q2)
         actions = actions[jnp.argmax(q)]
         return actions
