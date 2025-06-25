@@ -40,18 +40,18 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=15,
+        slurm_array_parallelism=40,
     )
 
     with executor.batch():  # job array
-        for env_name in ["antmaze-giant-navigate-singletask-task1-v0"]:
+        for env_name in ["humanoidmaze-medium-navigate-singletask-task3-v0"]:
             for discount in [0.995]:
-                for alpha_critic in [1, 3, 10, 30]:
-                    for alpha_actor in [10, 30]:
-                        for value_layer_norm in [False, True]:
+                for alpha_critic in [0.3, 1, 3]:
+                    for alpha_actor in [10, 30, 50]:
+                        for value_layer_norm in [False]:
                             for actor_layer_norm in [True]:
                                 for seed in [10, 20]:
-                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_actor={alpha_actor}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_fitting_target_q_and_min_bootstrapped_vf_fql_actor_loss_vf_at_t=0"
+                                    exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_actor={alpha_actor}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_fitting_target_q_and_min_bootstrapped_vf_fql_actor_loss_vf_at_t=0_bounded_returns_indep_q_noises"
                                     log_dir = os.path.expanduser(
                                         f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
                                     # change the log folder of slurm executor
