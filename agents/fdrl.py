@@ -187,7 +187,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
                                           (bootstrapped_vector_field2 - target_bootstrapped_vector_field) ** 2).mean()
 
         # Additional metrics for logging.
-        q_noises1, q_noises2 = jax.random.normal(q_rng, (batch_size, 2))
+        q_noises1, q_noises2 = jax.random.normal(q_rng, (2, batch_size, 1))
         q1 = (q_noises1 + self.network.select('critic_flow1')(
             q_noises1, jnp.zeros_like(q_noises1), batch['observations'], batch['actions'])).squeeze(-1)
         q2 = (q_noises2 + self.network.select('critic_flow2')(
