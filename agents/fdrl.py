@@ -134,67 +134,127 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
     def critic_loss(self, batch, grad_params, rng):
         """Compute the flow critic loss. (Q-learning)"""
-        batch_size = batch['actions'].shape[0]
-        rng, actor_rng, noise_rng, time_rng, q_rng = jax.random.split(rng, 5)
+        if self.config['critic_loss_type'] == 'sarsa':
+            batch_size = batch['actions'].shape[0]
+            rng, actor_rng, noise_rng, time_rng, q_rng = jax.random.split(rng, 5)
 
-        actor_noises = jax.random.normal(actor_rng, (batch_size, self.config['action_dim']))
-        next_actions = self.network.select('actor_onestep_flow')(batch['next_observations'], actor_noises)
-        next_actions = jnp.clip(next_actions, -1, 1)
+            noises = jax.random.normal(noise_rng, (batch_size, 1))
+            times = jax.random.uniform(time_rng, (batch_size, 1))
+            next_returns1 = self.compute_flow_returns(
+                noises, batch['next_observations'], batch['next_actions'],
+                flow_network_name='target_critic_flow1')
+            next_returns2 = self.compute_flow_returns(
+                noises, batch['next_observations'], batch['next_actions'],
+                flow_network_name='target_critic_flow2')
+            next_returns = jnp.minimum(next_returns1, next_returns2)
+            # The following returns will be bounded automatically
+            returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
+                       self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * next_returns)
+            noisy_returns = times * returns + (1 - times) * noises
+            target_vector_field = returns - noises
 
-        noises = jax.random.normal(noise_rng, (batch_size, 1))
-        times = jax.random.uniform(time_rng, (batch_size, 1))
-        next_returns1 = self.compute_flow_returns(
-            noises, batch['next_observations'], next_actions,
-            flow_network_name='target_critic_flow1')
-        next_returns2 = self.compute_flow_returns(
-            noises, batch['next_observations'], next_actions,
-            flow_network_name='target_critic_flow2')
-        next_returns = jnp.minimum(next_returns1, next_returns2)
-        # The following returns will be bounded automatically
-        returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
-                   self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * next_returns)
-        noisy_returns = times * returns + (1 - times) * noises
-        target_vector_field = returns - noises
+            vector_field1 = self.network.select('critic_flow1')(
+                noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            vector_field2 = self.network.select('critic_flow2')(
+                noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            vector_field_loss = ((vector_field1 - target_vector_field) ** 2 +
+                                 (vector_field2 - target_vector_field) ** 2).mean()
 
-        vector_field1 = self.network.select('critic_flow1')(
-            noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-        vector_field2 = self.network.select('critic_flow2')(
-            noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-        vector_field_loss = ((vector_field1 - target_vector_field) ** 2 +
-                             (vector_field2 - target_vector_field) ** 2).mean()
+            noisy_next_returns1 = self.compute_flow_returns(
+                noises, batch['next_observations'], batch['next_actions'], end_times=times,
+                flow_network_name='target_critic_flow1')
+            noisy_next_returns2 = self.compute_flow_returns(
+                noises, batch['next_observations'], batch['next_actions'], end_times=times,
+                flow_network_name='target_critic_flow2')
+            noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
+            transformed_noisy_returns = (
+                    jnp.expand_dims(batch['rewards'], axis=-1) +
+                    self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * noisy_next_returns
+            )
+            bootstrapped_vector_field1 = self.network.select('critic_flow1')(
+                transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            bootstrapped_vector_field2 = self.network.select('critic_flow2')(
+                transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            target_bootstrapped_vector_field1 = self.network.select('target_critic_flow1')(
+                noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+            target_bootstrapped_vector_field2 = self.network.select('target_critic_flow2')(
+                noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
+            target_bootstrapped_vector_field = jnp.minimum(target_bootstrapped_vector_field1,
+                                                           target_bootstrapped_vector_field2)
+            bootstrapped_vector_field_loss = ((bootstrapped_vector_field1 - target_bootstrapped_vector_field) ** 2 +
+                                              (bootstrapped_vector_field2 - target_bootstrapped_vector_field) ** 2).mean()
 
-        noisy_next_returns1 = self.compute_flow_returns(
-            noises, batch['next_observations'], next_actions, end_times=times,
-            flow_network_name='target_critic_flow1')
-        noisy_next_returns2 = self.compute_flow_returns(
-            noises, batch['next_observations'], next_actions, end_times=times,
-            flow_network_name='target_critic_flow2')
-        noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
-        transformed_noisy_returns = (
-            jnp.expand_dims(batch['rewards'], axis=-1) +
-            self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * noisy_next_returns
-        )
-        bootstrapped_vector_field1 = self.network.select('critic_flow1')(
-            transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-        bootstrapped_vector_field2 = self.network.select('critic_flow2')(
-            transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-        target_bootstrapped_vector_field1 = self.network.select('target_critic_flow1')(
-            noisy_next_returns, times, batch['next_observations'], next_actions)
-        target_bootstrapped_vector_field2 = self.network.select('target_critic_flow2')(
-            noisy_next_returns, times, batch['next_observations'], next_actions)
-        target_bootstrapped_vector_field = jnp.minimum(target_bootstrapped_vector_field1, target_bootstrapped_vector_field2)
-        bootstrapped_vector_field_loss = ((bootstrapped_vector_field1 - target_bootstrapped_vector_field) ** 2 +
-                                          (bootstrapped_vector_field2 - target_bootstrapped_vector_field) ** 2).mean()
+            # Additional metrics for logging.
+            q_noises = jax.random.normal(q_rng, (batch_size, 1))
+            q1 = (q_noises + self.network.select('critic_flow1')(
+                q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
+            q2 = (q_noises + self.network.select('critic_flow2')(
+                q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
+            q = jnp.minimum(q1, q2)
 
-        # Additional metrics for logging.
-        q_noises1, q_noises2 = jax.random.normal(q_rng, (2, batch_size, 1))
-        q1 = (q_noises1 + self.network.select('critic_flow1')(
-            q_noises1, jnp.zeros_like(q_noises1), batch['observations'], batch['actions'])).squeeze(-1)
-        q2 = (q_noises2 + self.network.select('critic_flow2')(
-            q_noises2, jnp.zeros_like(q_noises2), batch['observations'], batch['actions'])).squeeze(-1)
-        q = jnp.minimum(q1, q2)
+            critic_loss = vector_field_loss + self.config['alpha_critic'] * bootstrapped_vector_field_loss
+        elif self.config['critic_loss_type'] == 'q-learning':
+            batch_size = batch['actions'].shape[0]
+            rng, actor_rng, noise_rng, time_rng, q_rng = jax.random.split(rng, 5)
 
-        critic_loss = vector_field_loss + self.config['alpha_critic'] * bootstrapped_vector_field_loss
+            actor_noises = jax.random.normal(actor_rng, (batch_size, self.config['action_dim']))
+            next_actions = self.network.select('actor_onestep_flow')(batch['next_observations'], actor_noises)
+            next_actions = jnp.clip(next_actions, -1, 1)
+
+            noises = jax.random.normal(noise_rng, (batch_size, 1))
+            times = jax.random.uniform(time_rng, (batch_size, 1))
+            next_returns1 = self.compute_flow_returns(
+                noises, batch['next_observations'], next_actions,
+                flow_network_name='target_critic_flow1')
+            next_returns2 = self.compute_flow_returns(
+                noises, batch['next_observations'], next_actions,
+                flow_network_name='target_critic_flow2')
+            next_returns = jnp.minimum(next_returns1, next_returns2)
+            # The following returns will be bounded automatically
+            returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
+                       self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * next_returns)
+            noisy_returns = times * returns + (1 - times) * noises
+            target_vector_field = returns - noises
+
+            vector_field1 = self.network.select('critic_flow1')(
+                noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            vector_field2 = self.network.select('critic_flow2')(
+                noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            vector_field_loss = ((vector_field1 - target_vector_field) ** 2 +
+                                 (vector_field2 - target_vector_field) ** 2).mean()
+
+            noisy_next_returns1 = self.compute_flow_returns(
+                noises, batch['next_observations'], next_actions, end_times=times,
+                flow_network_name='target_critic_flow1')
+            noisy_next_returns2 = self.compute_flow_returns(
+                noises, batch['next_observations'], next_actions, end_times=times,
+                flow_network_name='target_critic_flow2')
+            noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
+            transformed_noisy_returns = (
+                jnp.expand_dims(batch['rewards'], axis=-1) +
+                self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * noisy_next_returns
+            )
+            bootstrapped_vector_field1 = self.network.select('critic_flow1')(
+                transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            bootstrapped_vector_field2 = self.network.select('critic_flow2')(
+                transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
+            target_bootstrapped_vector_field1 = self.network.select('target_critic_flow1')(
+                noisy_next_returns, times, batch['next_observations'], next_actions)
+            target_bootstrapped_vector_field2 = self.network.select('target_critic_flow2')(
+                noisy_next_returns, times, batch['next_observations'], next_actions)
+            target_bootstrapped_vector_field = jnp.minimum(target_bootstrapped_vector_field1, target_bootstrapped_vector_field2)
+            bootstrapped_vector_field_loss = ((bootstrapped_vector_field1 - target_bootstrapped_vector_field) ** 2 +
+                                              (bootstrapped_vector_field2 - target_bootstrapped_vector_field) ** 2).mean()
+
+            # Additional metrics for logging.
+            q_noises = jax.random.normal(q_rng, (batch_size, 1))
+            q1 = (q_noises + self.network.select('critic_flow1')(
+                q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
+            q2 = (q_noises + self.network.select('critic_flow2')(
+                q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
+            q = jnp.minimum(q1, q2)
+
+            critic_loss = vector_field_loss + self.config['alpha_critic'] * bootstrapped_vector_field_loss
 
         return critic_loss, {
             'vector_field_loss': vector_field_loss,
@@ -643,6 +703,7 @@ def get_config():
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
             expectile=0.9,  # IQL expectile.
+            critic_loss_type='q-learning',  # Type of the critic loss ('sarsa', 'q-learning').
             alpha_critic=1.0,  # vector field bootstrapped regularization coefficient.
             alpha_actor=1.0,  # BC coefficient.
             num_samples=32,  # Number of action samples for rejection sampling.
