@@ -62,7 +62,6 @@ def main():
                                                                                 'submitit')
                                                 executor._executor.folder = Path(
                                                     submitit_log_dir).expanduser().absolute()
-
                                                 cmds = f"""
                                                     unset PYTHONPATH;
                                                     source $HOME/.zshrc;
