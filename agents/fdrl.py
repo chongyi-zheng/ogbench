@@ -291,17 +291,17 @@ class FDRLAgent(flax.struct.PyTreeNode):
         distill_loss = jnp.mean((actor_actions - target_flow_actions) ** 2)
 
         # Q loss.
-        q_noises1, q_noises2 = jax.random.normal(q_rng, (2, batch_size, 1))
+        q_noises, q_noises = jax.random.normal(q_rng, (2, batch_size, 1))
         # q1 = self.compute_flow_returns(
         #     q_noises, batch['observations'], actor_actions,
         #     flow_network_name='critic_flow1').squeeze(-1)
         # q2 = self.compute_flow_returns(
         #     q_noises, batch['observations'], actor_actions,
         #     flow_network_name='critic_flow2').squeeze(-1)
-        q1 = (q_noises1 + self.network.select('critic_flow1')(
-            q_noises1, jnp.zeros_like(q_noises1), batch['observations'], actor_actions)).squeeze(-1)
-        q2 = (q_noises2 + self.network.select('critic_flow2')(
-            q_noises2, jnp.zeros_like(q_noises2), batch['observations'], actor_actions)).squeeze(-1)
+        q1 = (q_noises + self.network.select('critic_flow1')(
+            q_noises, jnp.zeros_like(q_noises), batch['observations'], actor_actions)).squeeze(-1)
+        q2 = (q_noises + self.network.select('critic_flow2')(
+            q_noises, jnp.zeros_like(q_noises), batch['observations'], actor_actions)).squeeze(-1)
         q = jnp.minimum(q1, q2)
         # qs = self.network.select('critic')(batch['observations'], actions=actor_actions)
         # q = jnp.mean(qs, axis=0)

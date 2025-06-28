@@ -44,7 +44,7 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["antsoccer-arena-navigate-singletask-task3-v0"]:
+        for env_name in ["humanoidmaze-medium-navigate-singletask-task3-v0"]:
             for discount in [0.995]:
                 for alpha_critic in [0.3, 1, 3]:
                     for alpha_actor in [10, 30, 50]:
@@ -52,7 +52,7 @@ def main():
                             for value_layer_norm in [False, True]:
                                 for actor_layer_norm in [True]:
                                     for seed in [10, 20]:
-                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_actor={alpha_actor}_critic_loss_type={critic_loss_type}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_single_noises"
+                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_actor={alpha_actor}_critic_loss_type={critic_loss_type}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_single_noises_actor_loss"
                                         log_dir = os.path.expanduser(
                                             f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
                                         # change the log folder of slurm executor
