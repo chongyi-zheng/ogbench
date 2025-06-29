@@ -12,19 +12,23 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
+        exclude = None
     elif cluster_name == 'della':
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
+        exclude = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'pnlp'
+        exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
+        exclude = 'neu301'
     else:
         raise NotImplementedError
 
@@ -39,16 +43,17 @@ def main():
         slurm_cpus_per_task=8,
         slurm_mem="16G",
         slurm_gpus_per_node=1,
+        slurm_exclude=exclude,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=25,
+        slurm_array_parallelism=40,
     )
 
     with executor.batch():  # job array
-        for env_name in ["humanoidmaze-medium-navigate-singletask-task3-v0", "antsoccer-arena-navigate-singletask-task3-v0"]:
+        for env_name in ["humanoidmaze-medium-navigate-singletask-task3-v0"]:
             for discount in [0.995]:
                 for alpha_critic in [1, 3, 5]:
                     for alpha_actor in [10, 30]:
-                        for critic_loss_type in ['sarsa']:
+                        for critic_loss_type in ['q-learning']:
                             for expectile in [0.8, 0.9]:
                                 for zero_rate in [0.75]:
                                     for value_layer_norm in [False, True]:
