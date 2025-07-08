@@ -179,7 +179,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
         distill_loss = jnp.mean((actor_actions - target_flow_actions) ** 2)
 
         # Q loss.
-        q_noises, q_noises = jax.random.normal(q_rng, (2, batch_size, 1))
+        q_noises = jax.random.normal(q_rng, (batch_size, 1))
         # q1 = self.compute_flow_returns(
         #     q_noises, batch['observations'], actor_actions,
         #     flow_network_name='critic_flow1').squeeze(-1)
