@@ -57,6 +57,11 @@ class CliffWalkingEnv(gymnasium.Wrapper):
                 masks[state, action, next_state] = float(not terminated)
         transition_probs /= np.sum(transition_probs, axis=-1, keepdims=True)
         assert np.all(np.sum(transition_probs, axis=-1) == 1.0)
+        # max and min rewards for non-absorbing states
+        # reward_max, reward_min = np.nanmax(rewards[masks.astype(bool)]), np.nanmin(rewards[masks.astype(bool)])
+        # reward_min += 1e-6  # prevent the minimum reward to be zero becaue zero is for absorbing states
+        # rewards[np.isnan(rewards)] = 0.0
+        # assert np.all((reward_min <= rewards[masks.astype(bool)] + 1e-6) & (rewards[masks.astype(bool)] <= reward_max))
         reward_max, reward_min = np.nanmax(rewards), np.nanmin(rewards)
         rewards[np.isnan(rewards)] = reward_min
         assert np.all((reward_min <= rewards) & (rewards <= reward_max))
@@ -64,6 +69,8 @@ class CliffWalkingEnv(gymnasium.Wrapper):
         self._orig_reward_min, self._orig_reward_max = reward_min, reward_max
         self.orig_rewards = rewards
         self.rewards = (rewards - reward_min) / (reward_max - reward_min)
+        # rewards at the absorbing states are always zero
+        # self.rewards[~masks.astype(bool)] = 0.0
         self.transition_probs = transition_probs
         self.masks = masks
 
@@ -80,15 +87,16 @@ class CliffWalkingEnv(gymnasium.Wrapper):
             ]
         outcomes = []
 
-        goal_position = np.asarray([self.shape[0] - 1, self.shape[1] - 1])[:, None]
-        # goal_state = np.ravel_multi_index([self.shape[0] - 1, self.shape[1] - 1], self.shape)
-        absorbing_positions = np.concatenate([
-            np.asarray(np.where(self.env.get_wrapper_attr('_cliff'))), goal_position], axis=-1)
-        absorbing_states = np.ravel_multi_index(absorbing_positions, self.shape)
+        # the single absorbing state is the goal
+        goal_position = np.asarray([self.shape[0] - 1, self.shape[1] - 1])
+        goal_state = np.ravel_multi_index(goal_position, self.shape)
+        # absorbing_positions = np.concatenate([
+        #     np.asarray(np.where(self.env.get_wrapper_attr('_cliff'))), goal_position], axis=-1)
+        # absorbing_states = np.ravel_multi_index(absorbing_positions, self.shape)
         current_position = np.array(current)
         current_state = np.ravel_multi_index(tuple(current_position), self.shape)
         for delta in deltas:
-            if current_state in absorbing_states:
+            if current_state == goal_state:
                 new_state = current_state
                 reward = 0
                 is_terminated = True
@@ -98,9 +106,10 @@ class CliffWalkingEnv(gymnasium.Wrapper):
                 new_state = np.ravel_multi_index(tuple(new_position), self.shape)
                 if self.env.get_wrapper_attr('_cliff')[tuple(new_position)]:
                     reward = -100
+                    new_state = self.env.get_wrapper_attr('start_state_index')
                 else:
                     reward = -1
-                is_terminated = (new_state in absorbing_states)
+                is_terminated = (new_state == goal_state)
             outcomes.append((1 / len(deltas), new_state, reward, is_terminated))
         return outcomes
 
@@ -126,8 +135,9 @@ class AugmentedCliffWalkingEnv(CliffWalkingEnv):
         transition_probs = np.zeros((self.nS, self.nA, self.nS))
         masks = np.zeros((self.nS, self.nA, self.nS))
 
-        # transit into s+ gives 0.0 reward, otherwise the reward is -1.
+        # transiting into s+ and staying at s+ give 0.0 reward, otherwise the reward is -1.
         rewards[..., self.nS - 2] = 0.0
+        rewards[self.nS - 2] = 0.0
         assert np.all((-1.0 <= rewards) & (rewards <= 1.0))
 
         transition_probs[:self.nS - 2, :, :self.nS - 2] = discount * self.transition_probs
@@ -194,7 +204,6 @@ def main():
 
     print(np.sum(rewards * transition_probs, axis=-1))
 
-    # (chongyi): why this number is negative?
     # value iteration to find the optimal Q in the original MDP using gamma ** 2
     opt_q_square_discount = np.zeros([env.nS, env.nA], dtype=np.float32)
     for _ in range(10_000):
@@ -204,10 +213,6 @@ def main():
         )
 
     aug_env = AugmentedCliffWalkingEnv(discount=discount, random_init_state=True, max_episode_steps=max_episode_steps)
-    aug_rewards = aug_env.aug_rewards
-    aug_transition_probs = aug_env.aug_transition_probs
-    aug_masks = aug_env.aug_masks
-
     # value iteration to find the optimal discounted state occupancy measure in the GCMDP using gamma
     rewards = aug_env.aug_rewards
     transition_probs = aug_env.aug_transition_probs
@@ -230,10 +235,11 @@ def main():
             (1.0 - discount) * np.sum(rewards * transition_probs, axis=-1)
             + discount * np.einsum('ijk,k->ij', transition_probs, np.max(opt_gc_q, axis=-1))
         )
-    indicators = np.zeros((aug_env.nS, aug_env.nA))
-    indicators[aug_env.nS - 2] = 1.
-    scaled_opt_gc_q = (opt_gc_q[:aug_env.nS - 2] + 1) * discount + indicators * (1 - discount)
-    scaled_opt_gc_q = scaled_opt_gc_q * (1 + discount) / discount
+    # indicators = np.zeros((aug_env.nS, aug_env.nA))
+    # indicators[aug_env.nS - 2] = 1.
+    # scaled_opt_gc_q = (opt_gc_q[:aug_env.nS - 2] + 1) * discount + indicators * (1 - discount)
+    # scaled_opt_gc_q = scaled_opt_gc_q * (1 + discount) / discount
+    scaled_opt_gc_q = (opt_gc_q[:aug_env.nS - 2] + 1) * (1 + discount)
 
     assert np.allclose(scaled_opt_d_sa_splus, scaled_opt_gc_q)
     assert np.allclose(opt_q_square_discount, scaled_opt_gc_q)
