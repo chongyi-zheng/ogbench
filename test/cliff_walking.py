@@ -36,8 +36,6 @@ class CliffWalkingEnv(gymnasium.Wrapper):
 
         if random_init_state:
             initial_state_distrib = np.ones(self.nS)
-            # cliff = np.zeros(self.shape, dtype=bool)
-            # cliff[3, 1:-1] = True
             cliff_positions = np.asarray(np.where(env.get_wrapper_attr('_cliff')))
             cliff_states = np.ravel_multi_index(cliff_positions, self.shape)
             initial_state_distrib[cliff_states] = 0.0
@@ -57,11 +55,6 @@ class CliffWalkingEnv(gymnasium.Wrapper):
                 masks[state, action, next_state] = float(not terminated)
         transition_probs /= np.sum(transition_probs, axis=-1, keepdims=True)
         assert np.all(np.sum(transition_probs, axis=-1) == 1.0)
-        # max and min rewards for non-absorbing states
-        # reward_max, reward_min = np.nanmax(rewards[masks.astype(bool)]), np.nanmin(rewards[masks.astype(bool)])
-        # reward_min += 1e-6  # prevent the minimum reward to be zero becaue zero is for absorbing states
-        # rewards[np.isnan(rewards)] = 0.0
-        # assert np.all((reward_min <= rewards[masks.astype(bool)] + 1e-6) & (rewards[masks.astype(bool)] <= reward_max))
         reward_max, reward_min = np.nanmax(rewards), np.nanmin(rewards)
         rewards[np.isnan(rewards)] = reward_min
         assert np.all((reward_min <= rewards) & (rewards <= reward_max))
@@ -69,8 +62,6 @@ class CliffWalkingEnv(gymnasium.Wrapper):
         self._orig_reward_min, self._orig_reward_max = reward_min, reward_max
         self.orig_rewards = rewards
         self.rewards = (rewards - reward_min) / (reward_max - reward_min)
-        # rewards at the absorbing states are always zero
-        # self.rewards[~masks.astype(bool)] = 0.0
         self.transition_probs = transition_probs
         self.masks = masks
 
@@ -90,9 +81,6 @@ class CliffWalkingEnv(gymnasium.Wrapper):
         # the single absorbing state is the goal
         goal_position = np.asarray([self.shape[0] - 1, self.shape[1] - 1])
         goal_state = np.ravel_multi_index(goal_position, self.shape)
-        # absorbing_positions = np.concatenate([
-        #     np.asarray(np.where(self.env.get_wrapper_attr('_cliff'))), goal_position], axis=-1)
-        # absorbing_states = np.ravel_multi_index(absorbing_positions, self.shape)
         current_position = np.array(current)
         current_state = np.ravel_multi_index(tuple(current_position), self.shape)
         for delta in deltas:
@@ -112,6 +100,12 @@ class CliffWalkingEnv(gymnasium.Wrapper):
                 is_terminated = (new_state == goal_state)
             outcomes.append((1 / len(deltas), new_state, reward, is_terminated))
         return outcomes
+
+    def reset(self, **kwargs):
+        obs, info = super().reset(**kwargs)
+        self.env.set_wrapper_attr('start_state_index', obs)
+
+        return obs, info
 
     def step(self, action):
         obs, orig_reward, terminated, truncated, info = super().step(action)
@@ -136,7 +130,7 @@ class AugmentedCliffWalkingEnv(CliffWalkingEnv):
         masks = np.zeros((self.nS, self.nA, self.nS))
 
         # transiting into s+ and staying at s+ give 0.0 reward, otherwise the reward is -1.
-        rewards[..., self.nS - 2] = 0.0
+        # rewards[..., self.nS - 2] = 0.0
         rewards[self.nS - 2] = 0.0
         assert np.all((-1.0 <= rewards) & (rewards <= 1.0))
 
@@ -160,22 +154,38 @@ class AugmentedCliffWalkingEnv(CliffWalkingEnv):
         self.aug_transition_probs = transition_probs
         self.aug_masks = masks
 
+        self.last_aug_s = None
+
+    def reset(self, **kwargs):
+        obs, info = super().reset(**kwargs)
+        self.last_aug_s = obs
+
+        return obs, info
+
     def step(self, action):
-        # (chongyi): save current obs
         obs, reward, terminated, truncated, info = super().step(action)
 
         aug_reward = -1.0
-        if np.random.rand() < self.discount:
-            aug_obs = obs
-            aug_terminated = False
+        aug_info = {"prob": 1}
+        aug_terminated = True
+        if self.last_aug_s == self.nS - 2:
+            aug_obs = int(self.nS - 2)
+            aug_reward = 0.0
+        elif self.last_aug_s == self.nS - 1:
+            aug_obs = int(self.nS - 1)
         else:
-            if np.random.rand() < reward:
-                aug_obs = self.nS - 2
+            if np.random.rand() < self.discount:
+                aug_obs = obs
+                aug_info = info
+                aug_terminated = False
             else:
-                aug_obs = self.nS - 1
-            aug_terminated = True
+                if np.random.rand() < reward:
+                    aug_obs = int(self.nS - 2)
+                else:
+                    aug_obs = int(self.nS - 1)
+        self.last_aug_s = aug_obs
 
-        return aug_obs, aug_reward, aug_terminated, truncated, info
+        return aug_obs, aug_reward, aug_terminated, truncated, aug_info
 
 
 def main():
@@ -239,18 +249,17 @@ def main():
     # indicators[aug_env.nS - 2] = 1.
     # scaled_opt_gc_q = (opt_gc_q[:aug_env.nS - 2] + 1) * discount + indicators * (1 - discount)
     # scaled_opt_gc_q = scaled_opt_gc_q * (1 + discount) / discount
-    scaled_opt_gc_q = (opt_gc_q[:aug_env.nS - 2] + 1) * (1 + discount)
+    scaled_opt_gc_q = (opt_gc_q[:aug_env.nS - 2] + 1) * (1 + discount) / discount
 
     assert np.allclose(scaled_opt_d_sa_splus, scaled_opt_gc_q)
     assert np.allclose(opt_q_square_discount, scaled_opt_gc_q)
 
     dataset = defaultdict(list)
-    num_episodes = 3_800
+    num_episodes = 1_000
     num_transitions = 0
     for _ in tqdm.trange(num_episodes):
-        done = False
         obs, info = aug_env.reset()
-        while not done:
+        for _ in range(max_episode_steps):
             action = aug_env.action_space.sample()
             next_obs, reward, terminated, truncated, info = aug_env.step(action)
             done = terminated or truncated
