@@ -49,12 +49,16 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["humanoidmaze-large-navigate-singletask-task3-v0"]:
+        for env_name in ["antmaze-large-navigate-singletask-task1", 
+                         "antmaze-large-navigate-singletask-task2", 
+                         "antmaze-large-navigate-singletask-task3", 
+                         "antmaze-large-navigate-singletask-task4", 
+                         "antmaze-large-navigate-singletask-task5"]:
             for discount in [0.995]:
-                for alpha_critic in [1, 3]:
-                    for alpha_actor in [10, 30]:
-                        for critic_loss_type in ['sarsa']:
-                            for value_layer_norm in [True, False]:
+                for alpha_critic in [1]:
+                    for alpha_actor in [10]:
+                        for critic_loss_type in ['q-learning']:
+                            for value_layer_norm in [True]:
                                 for actor_layer_norm in [True]:
                                     for seed in [10, 20, 30]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_actor={alpha_actor}_critic_loss_type={critic_loss_type}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_single_noises"

@@ -63,24 +63,14 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
             bootstrapped_vector_field2 = self.network.select('critic_flow2')(
                 transformed_noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
-            bootstrapped_next_vector_field1 = self.network.select('critic_flow1')(
-                noisy_next_returns, times, batch['next_observations'], batch['next_actions'], params=grad_params)
-            bootstrapped_next_vector_field2 = self.network.select('critic_flow2')(
-                noisy_next_returns, times, batch['next_observations'], batch['next_actions'], params=grad_params)
             target_bootstrapped_vector_field1 = self.network.select('target_critic_flow1')(
-                transformed_noisy_returns, times, batch['observations'], batch['actions'])
+                noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
             target_bootstrapped_vector_field2 = self.network.select('target_critic_flow2')(
-                transformed_noisy_returns, times, batch['observations'], batch['actions'])
-            target_bootstrapped_vector_field = jnp.minimum(target_bootstrapped_vector_field1, target_bootstrapped_vector_field2)
-            target_bootstrapped_next_vector_field1 = self.network.select('target_critic_flow1')(
                 noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
-            target_bootstrapped_next_vector_field2 = self.network.select('target_critic_flow2')(
-                noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
-            target_bootstrapped_next_vector_field = jnp.minimum(target_bootstrapped_next_vector_field1, target_bootstrapped_next_vector_field2)
-            bootstrapped_vector_field_loss = ((bootstrapped_vector_field1 - target_bootstrapped_next_vector_field) ** 2 +
-                                              (bootstrapped_vector_field2 - target_bootstrapped_next_vector_field) ** 2 +
-                                              (bootstrapped_next_vector_field1 - target_bootstrapped_vector_field) ** 2 + 
-                                              (bootstrapped_next_vector_field2 - target_bootstrapped_vector_field) ** 2).mean()
+            target_bootstrapped_vector_field = jnp.minimum(target_bootstrapped_vector_field1,
+                                                           target_bootstrapped_vector_field2)
+            bootstrapped_vector_field_loss = ((bootstrapped_vector_field1 - target_bootstrapped_vector_field) ** 2 +
+                                              (bootstrapped_vector_field2 - target_bootstrapped_vector_field) ** 2).mean()
 
             # Additional metrics for logging.
             q_noises = jax.random.normal(q_rng, (batch_size, 1))
