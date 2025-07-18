@@ -22,7 +22,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
         exclude = None
     elif cluster_name == 'neu311.neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
@@ -45,20 +45,20 @@ def main():
         slurm_gpus_per_node=1,
         slurm_exclude=exclude,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=40,
+        slurm_array_parallelism=15,
     )
 
     with executor.batch():  # job array
-        for env_name in ["antmaze-large-navigate-singletask-task1", 
-                         "antmaze-large-navigate-singletask-task2", 
-                         "antmaze-large-navigate-singletask-task3", 
-                         "antmaze-large-navigate-singletask-task4", 
-                         "antmaze-large-navigate-singletask-task5"]:
+        for env_name in ["humanoidmaze-medium-navigate-singletask-task1-v0", 
+                         "humanoidmaze-medium-navigate-singletask-task2-v0",
+                         "humanoidmaze-medium-navigate-singletask-task3-v0",
+                         "humanoidmaze-medium-navigate-singletask-task4-v0",
+                         "humanoidmaze-medium-navigate-singletask-task5-v0"]:
             for discount in [0.995]:
                 for alpha_critic in [1]:
-                    for alpha_actor in [10]:
+                    for alpha_actor in [30]:
                         for critic_loss_type in ['q-learning']:
-                            for value_layer_norm in [True]:
+                            for value_layer_norm in [True, False]:
                                 for actor_layer_norm in [True]:
                                     for seed in [10, 20, 30]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_actor={alpha_actor}_critic_loss_type={critic_loss_type}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_single_noises"
