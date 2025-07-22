@@ -19,7 +19,8 @@ def main():
         account = None
         exclude = None
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
-                          'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
+                          'rinse.cs.princeton.edu', 'spin.cs.princeton.edu',
+                          'node030.ionic.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
@@ -45,18 +46,19 @@ def main():
         slurm_gpus_per_node=1,
         slurm_exclude=exclude,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=12,
+        slurm_array_parallelism=20,
     )
 
     with executor.batch():  # job array
-        for env_name in ["humanoidmaze-medium-navigate-singletask-task1-v0"]:
-            for discount in [0.99, 0.995]:
-                for alpha_critic in [0.3, 0.5, 1]:
-                    for alpha_actor in [30, 50]:
+        for env_name in ["antmaze-large-navigate-singletask-task2-v0",
+                         "antmaze-large-navigate-singletask-task4-v0"]:
+            for discount in [0.99]:
+                for alpha_critic in [0.03, 0.3, 0.5, 0.75]:
+                    for alpha_actor in [10]:
                         for critic_loss_type in ['q-learning']:
                             for value_layer_norm in [False, True]:
                                 for actor_layer_norm in [True]:
-                                    for seed in [10, 20]:
+                                    for seed in [10, 20, 30]:
                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_actor={alpha_actor}_critic_loss_type={critic_loss_type}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_single_noises"
                                         log_dir = os.path.expanduser(
                                             f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
