@@ -50,7 +50,6 @@ def main():
     )
 
     with executor.batch():  # job array
-<<<<<<< Updated upstream
         for env_name in ["antmaze-large-navigate-singletask-task2-v0",
                          "antmaze-large-navigate-singletask-task4-v0"]:
             for discount in [0.99]:
@@ -76,31 +75,6 @@ def main():
                                                     conda activate ogbench;
                                                     which python;
                                                     echo $CONDA_PREFIX;
-=======
-        for env_name in ["puzzle-3x3-play-singletask-task3-v0"]:
-            for discount in [0.99]:
-                for alpha_critic in [2]:
-                    for alpha_actor in [300]:
-                        for critic_loss_type in ['q-learning']:
-                            for value_layer_norm in [True, False]:
-                                for actor_layer_norm in [True]:
-                                    for seed in [10, 20, 30]:
-                                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_actor={alpha_actor}_critic_loss_type={critic_loss_type}_value_layer_norm={value_layer_norm}_actor_layer_norm={actor_layer_norm}_single_noises"
-                                        log_dir = os.path.expanduser(
-                                            f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
-                                        # change the log folder of slurm executor
-                                        submitit_log_dir = os.path.join(os.path.dirname(log_dir),
-                                                                        'submitit')
-                                        executor._executor.folder = Path(
-                                            submitit_log_dir).expanduser().absolute()
-                                        cmds = f"""
-                                            unset PYTHONPATH;
-                                            source $HOME/.zshrc;
-                                            conda activate ogbench;
-                                            which python;
-                                            echo $CONDA_PREFIX;
->>>>>>> Stashed changes
-
                                                     echo job_id: $SLURM_ARRAY_JOB_ID;
                                                     echo task_id: $SLURM_ARRAY_TASK_ID;
                                                     squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
