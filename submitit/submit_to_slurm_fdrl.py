@@ -53,7 +53,7 @@ def main():
         for env_name in ["antmaze-large-navigate-singletask-task2-v0",
                          "antmaze-large-navigate-singletask-task4-v0"]:
             for discount in [0.99]:
-                for alpha_critic in [0.3, 1, 2]:
+                for alpha_critic in [0.03, 0.1]:
                     for alpha_actor in [10]:
                         for critic_loss_type in ['q-learning']:
                             for ret_agg in ['mean', 'min']:
