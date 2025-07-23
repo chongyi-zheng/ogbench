@@ -34,7 +34,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
             next_returns2 = self.compute_flow_returns(
                 noises, batch['next_observations'], batch['next_actions'],
                 flow_network_name='target_critic_flow2')
-            next_returns = jnp.minimum(next_returns1, next_returns2)
+            if self.config['ret_agg'] == 'min':
+                next_returns = jnp.minimum(next_returns1, next_returns2)
+            else:
+                next_returns = (next_returns1 + next_returns2) / 2
             # The following returns will be bounded automatically
             returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
                        self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * next_returns)
@@ -54,7 +57,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
             noisy_next_returns2 = self.compute_flow_returns(
                 noises, batch['next_observations'], batch['next_actions'], end_times=times,
                 flow_network_name='target_critic_flow2')
-            noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
+            if self.config['ret_agg'] == 'min':
+                noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
+            else:
+                noisy_next_returns = (noisy_next_returns1 + noisy_next_returns2) / 2
             transformed_noisy_returns = (
                 jnp.expand_dims(batch['rewards'], axis=-1) +
                 self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * noisy_next_returns
@@ -67,8 +73,11 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
             target_bootstrapped_vector_field2 = self.network.select('target_critic_flow2')(
                 noisy_next_returns, times, batch['next_observations'], batch['next_actions'])
-            target_bootstrapped_vector_field = jnp.minimum(target_bootstrapped_vector_field1,
-                                                           target_bootstrapped_vector_field2)
+            if self.config['ret_agg'] == 'min':
+                target_bootstrapped_vector_field = jnp.minimum(target_bootstrapped_vector_field1,
+                                                               target_bootstrapped_vector_field2)
+            else:
+                target_bootstrapped_vector_field = (target_bootstrapped_vector_field1 + target_bootstrapped_vector_field2) / 2
             bootstrapped_vector_field_loss = ((bootstrapped_vector_field1 - target_bootstrapped_vector_field) ** 2 +
                                               (bootstrapped_vector_field2 - target_bootstrapped_vector_field) ** 2).mean()
 
@@ -78,8 +87,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
             q2 = (q_noises + self.network.select('critic_flow2')(
                 q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
-            q = jnp.minimum(q1, q2)
-
+            if self.config['q_agg'] == 'min':
+                q = jnp.minimum(q1, q2)
+            else:
+                q = (q1 + q2) / 2
             critic_loss = vector_field_loss + self.config['alpha_critic'] * bootstrapped_vector_field_loss
         elif self.config['critic_loss_type'] == 'q-learning':
             batch_size = batch['actions'].shape[0]
@@ -97,7 +108,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
             next_returns2 = self.compute_flow_returns(
                 noises, batch['next_observations'], next_actions,
                 flow_network_name='target_critic_flow2')
-            next_returns = jnp.minimum(next_returns1, next_returns2)
+            if self.config['ret_agg'] == 'min':
+                next_returns = jnp.minimum(next_returns1, next_returns2)
+            else:
+                next_returns = (next_returns1 + next_returns2) / 2
             # The following returns will be bounded automatically
             returns = (jnp.expand_dims(batch['rewards'], axis=-1) +
                        self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * next_returns)
@@ -117,7 +131,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
             noisy_next_returns2 = self.compute_flow_returns(
                 noises, batch['next_observations'], next_actions, end_times=times,
                 flow_network_name='target_critic_flow2')
-            noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
+            if self.config['ret_agg'] == 'min':
+                noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
+            else:
+                noisy_next_returns = (noisy_next_returns1 + noisy_next_returns2) / 2
             transformed_noisy_returns = (
                 jnp.expand_dims(batch['rewards'], axis=-1) +
                 self.config['discount'] * jnp.expand_dims(batch['masks'], axis=-1) * noisy_next_returns
@@ -130,7 +147,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 noisy_next_returns, times, batch['next_observations'], next_actions)
             target_bootstrapped_vector_field2 = self.network.select('target_critic_flow2')(
                 noisy_next_returns, times, batch['next_observations'], next_actions)
-            target_bootstrapped_vector_field = jnp.minimum(target_bootstrapped_vector_field1, target_bootstrapped_vector_field2)
+            if self.config['ret_agg'] == 'min':
+                target_bootstrapped_vector_field = jnp.minimum(target_bootstrapped_vector_field1, target_bootstrapped_vector_field2)
+            else:
+                target_bootstrapped_vector_field = (target_bootstrapped_vector_field1 + target_bootstrapped_vector_field2) / 2
             bootstrapped_vector_field_loss = ((bootstrapped_vector_field1 - target_bootstrapped_vector_field) ** 2 +
                                               (bootstrapped_vector_field2 - target_bootstrapped_vector_field) ** 2).mean()
 
@@ -140,7 +160,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
             q2 = (q_noises + self.network.select('critic_flow2')(
                 q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
-            q = jnp.minimum(q1, q2)
+            if self.config['q_agg'] == 'min':
+                q = jnp.minimum(q1, q2)
+            else:
+                q = (q1 + q2) / 2
 
             critic_loss = vector_field_loss + self.config['alpha_critic'] * bootstrapped_vector_field_loss
 
@@ -190,7 +213,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
             q_noises, jnp.zeros_like(q_noises), batch['observations'], actor_actions)).squeeze(-1)
         q2 = (q_noises + self.network.select('critic_flow2')(
             q_noises, jnp.zeros_like(q_noises), batch['observations'], actor_actions)).squeeze(-1)
-        q = jnp.minimum(q1, q2)
+        if self.config['q_agg'] == 'min':
+            q = jnp.minimum(q1, q2)
+        else:
+            q = (q1 + q2) / 2
         # qs = self.network.select('critic')(batch['observations'], actions=actor_actions)
         # q = jnp.mean(qs, axis=0)
 
@@ -331,11 +357,11 @@ class FDRLAgent(flax.struct.PyTreeNode):
         # Use lax.scan to do the iteration
         (noisy_returns, ), _ = jax.lax.scan(
             func, (noisy_returns,), jnp.arange(self.config['num_flow_steps']))
-        noisy_returns = jnp.clip(
-            noisy_returns,
-            self.config['min_reward'] / (1 - self.config['discount']),
-            self.config['max_reward'] / (1 - self.config['discount']),
-        )
+        # noisy_returns = jnp.clip(
+        #     noisy_returns,
+        #     self.config['min_reward'] / (1 - self.config['discount']),
+        #     self.config['max_reward'] / (1 - self.config['discount']),
+        # )
 
         return noisy_returns
 
@@ -373,7 +399,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
         (noisy_actions, ), _ = jax.lax.scan(
             func, (noisy_actions,), jnp.arange(self.config['num_flow_steps']))
 
-        noisy_actions = jnp.clip(noisy_actions, -1, 1)
+        # noisy_actions = jnp.clip(noisy_actions, -1, 1)
 
         return noisy_actions
 
@@ -404,7 +430,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the one-step policy."""
-        action_seed, noise_seed = jax.random.split(seed)
+        action_seed, seed = jax.random.split(seed)
         noises = jax.random.normal(
             action_seed,
             (
@@ -577,6 +603,8 @@ def get_config():
             value_dropout_rate=0.0,  # Dropout rate for the value and the critic.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
+            ret_agg='min',  # Aggregation method for return values.
+            q_agg='min',  # Aggregation method for Q values.
             expectile=0.9,  # IQL expectile.
             critic_loss_type='q-learning',  # Type of the critic loss ('sarsa', 'q-learning').
             alpha_critic=1.0,  # vector field bootstrapped regularization coefficient.
