@@ -141,7 +141,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
 
         means = latent_dist.mean()
         log_stds = jnp.log(latent_dist.stddev())
-        kl_loss = -0.5 * (1 + log_stds - means ** 2 - jnp.exp(log_stds)).mean()
+        kl_loss = -0.5 * (1 + 2 * log_stds - means ** 2 - jnp.exp(2 * log_stds)).mean()
         # reward_kl_loss = reward_pred_loss + kl_loss * agent.config['kl_weight']
 
         # SARSA^2 flow matching for the occupancy

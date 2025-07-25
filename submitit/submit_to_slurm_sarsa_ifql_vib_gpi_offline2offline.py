@@ -20,7 +20,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'pnlp'
+        account = 'allcs'
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
@@ -40,7 +40,7 @@ def main():
         slurm_mem="16G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=10,
     )
 
     with executor.batch():  # job array
@@ -56,7 +56,7 @@ def main():
             # "cube-single-play-singletask-task3-v0",
             # "cube-single-play-singletask-task4-v0",
             # "cube-single-play-singletask-task5-v0",
-            "cube-double-play-singletask-task1-v0",
+            # "cube-double-play-singletask-task1-v0",
             # "cube-double-play-singletask-task2-v0",
             # "cube-double-play-singletask-task3-v0",
             # "cube-double-play-singletask-task4-v0",
@@ -67,7 +67,7 @@ def main():
             # "scene-play-singletask-task4-v0",
             # "scene-play-singletask-task5-v0",
             # "puzzle-3x3-play-singletask-task1-v0"
-            # "puzzle-4x4-play-singletask-task1-v0",
+            "puzzle-4x4-play-singletask-task1-v0",
             # "puzzle-4x4-play-singletask-task2-v0",
             # "puzzle-4x4-play-singletask-task3-v0",
             # "puzzle-4x4-play-singletask-task4-v0",
@@ -90,15 +90,15 @@ def main():
             # "jaco_reach_bottom_right",
         ]:
             for obs_norm_type in ['normal']:
-                for alpha in [30]:
-                    for num_flow_goals in [16]:
+                for alpha in [300.0]:
+                    for num_flow_goals in [1, 4, 8, 16, 32]:
                         for actor_freq in [4]:
-                            for expectile in [0.9]:
+                            for expectile in [0.95]:
                                 for num_flow_steps in [10]:
-                                    for value_layer_norm in [True]:
-                                        for kl_weight in [0.025]:
+                                    for value_layer_norm in [False, True]:
+                                        for kl_weight in [0.1]:
                                             for latent_dim in [128]:
-                                                for clip_flow_goals in [True]:
+                                                for clip_flow_goals in [False]:
                                                     for seed in [100, 200, 300, 400]:
                                                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_obs_norm={obs_norm_type}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_num_flow_steps={num_flow_steps}_value_ln={value_layer_norm}_kl_weight={kl_weight}_latent_dim={latent_dim}_clip_fg={clip_flow_goals}_hyperparam_ablation"
                                                         log_dir = os.path.expanduser(
@@ -153,6 +153,7 @@ def main():
                                                                 --agent.network_type=mlp \
                                                                 --agent.num_residual_blocks=1 \
                                                                 --agent.alpha={alpha} \
+                                                                --agent.num_flow_goals={num_flow_goals} \
                                                                 --agent.num_flow_steps={num_flow_steps} \
                                                                 --agent.critic_noise_type=normal \
                                                                 --agent.critic_fm_loss_type=sarsa_squared \
