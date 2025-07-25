@@ -103,6 +103,7 @@ def main():
                                                         --save_interval=1_000_000 \
                                                         --eval_episodes=50 \
                                                         --agent=agents/fdrl.py \
+                                                        --agent.discount={discount} \
                                                         --agent.num_samples=32 \
                                                         --agent.num_flow_steps=10 \
                                                         --agent.tau=0.005 \
