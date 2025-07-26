@@ -129,7 +129,7 @@ def get_config():
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
-            actor_layer_norm=True,  # Whether to use layer normalization for the actor.
+            actor_layer_norm=False,  # Whether to use layer normalization for the actor.
             const_std=True,  # Whether to use constant standard deviation for the actor.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
         )
