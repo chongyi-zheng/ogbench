@@ -12,21 +12,25 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
+        exclude = None
     elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
         # partition = 'gpu-test'
         # account = None
         partition = 'pli'
         account = 'rlchongyiz'
+        exclude = 'della-j16g3,della-k12g2'
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
         account = 'allcs'
+        exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
         partition = 'all'
         account = None
+        exclude = None
     else:
         raise NotImplementedError
 
@@ -41,6 +45,7 @@ def main():
         slurm_cpus_per_task=32,
         slurm_mem="400G",
         slurm_gpus_per_node=1,
+        slurm_exclude=exclude,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=6,
     )
