@@ -54,11 +54,11 @@ def main():
         for env_name in [
             "google_robot_pick_coke_can",
         ]:
-            for alpha_actor in [10.0, 1.0, 0.1]:
-                for alpha_critic in [0.0]:
-                    for actor_freq in [4]:
+            for alpha_actor in [1, 0.1, 0.01]:
+                for alpha_critic in [0.01]:
+                    for actor_freq in [2]:
                         for encoder in ['impala_small', 'resnet_34']:
-                            for seed in [10, 20]:
+                            for seed in [20]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_rebrac_{env_name}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_actor_freq={actor_freq}_encoder={encoder}"
                                 log_dir = os.path.expanduser(
                                     f"{log_root_dir}/exp_logs/ogbench_logs/rebrac/{exp_name}/{seed}")

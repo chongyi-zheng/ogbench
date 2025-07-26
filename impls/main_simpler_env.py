@@ -128,7 +128,7 @@ def main(_):
             else:
                 for aux_idx in range(FLAGS.num_aug):
                     augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
-        agent, update_info = agent.update(batch)
+        agent, update_info = agent.update(batch, full_update=(i % config['actor_freq'] == 0))
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
