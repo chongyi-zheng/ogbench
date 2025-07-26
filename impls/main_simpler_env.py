@@ -69,7 +69,7 @@ def main(_):
     # Make environment and datasets.
     config = FLAGS.agent
     _, eval_env, train_dataset, val_dataset = make_env_and_datasets(
-        FLAGS.env_name, frame_stack=FLAGS.frame_stack, action_clip_eps=None)
+        FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=10_000_000, action_clip_eps=None)
 
     # Initialize agent.
     random.seed(FLAGS.seed)
@@ -79,7 +79,7 @@ def main(_):
     # Set up datasets.
     train_dataset = (
         train_dataset
-        .shuffle(100_000)
+        .shuffle(500_000)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(tf.data.AUTOTUNE)
@@ -87,7 +87,7 @@ def main(_):
     train_dataset_iter = train_dataset.as_numpy_iterator()
     val_dataset = (
         val_dataset
-        .shuffle(100_000)
+        .shuffle(50_000)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(tf.data.AUTOTUNE)

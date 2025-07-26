@@ -417,7 +417,7 @@ def rescale_action_with_bound(
         clip_by_value = np.clip
 
     resc_actions = (actions - low) / (high - low) * (
-            post_scaling_max - post_scaling_min
+        post_scaling_max - post_scaling_min
     ) + post_scaling_min
     return clip_by_value(
         resc_actions,
@@ -448,15 +448,16 @@ def base_step_map_fn(step: rlds.Step, map_action: StepFnMapType,
     transformed_step[rlds.IS_TERMINAL] = tf.cast(
         step[rlds.IS_TERMINAL], tf.bool)
 
-    # transformed_step[rlds.OBSERVATION] = tf.cast(
-    #     tf.image.resize_with_pad(step[rlds.OBSERVATION]['image'],
-    #                              target_width=width, target_height=height),
-    #     tf.uint8
-    # )
+    # (chongyi): use resize with pad
     transformed_step[rlds.OBSERVATION] = tf.cast(
-        tf.image.resize(step[rlds.OBSERVATION]['image'], (width, height)),
+        tf.image.resize_with_pad(step[rlds.OBSERVATION]['image'],
+                                 target_width=width, target_height=height),
         tf.uint8
     )
+    # transformed_step[rlds.OBSERVATION] = tf.cast(
+    #     tf.image.resize(step[rlds.OBSERVATION]['image'], (width, height)),
+    #     tf.uint8
+    # )
     transformed_step[rlds.ACTION] = {
         'world_vector': tf.zeros(3, dtype=tf.float32),
         'rotation_delta': tf.zeros(3, dtype=tf.float32),
@@ -550,6 +551,7 @@ class SimplerEnvWrapper(gymnasium.Wrapper):
 
         self.width = width
         self.height = height
+        self.robot_uid = env.get_wrapper_attr('robot_uid')
 
         if 'google_robot' in self.robot_uid:
             self.camera_name = 'overhead_camera'
@@ -660,8 +662,8 @@ def make_env_and_datasets(
         return env
 
     ds_builder = tfds.builder_from_directory(builder_dir=dataset_dir)
-    # 78491 / 8721 episodes for google_robot dataset
-    # 47873 / 5319 episodes for bridge_v2 dataset
+    # 82851 / 4361 episodes for google_robot dataset
+    # 24187 / 1273 episodes for bridge_v2 dataset
     # TODO (chongyiz): bridge_v2 already contains 'train' and 'test' splits.
     train_ds, val_ds = ds_builder.as_dataset(
         split=['train[:95%]', 'train[95%:]'])
@@ -685,12 +687,12 @@ def make_env_and_datasets(
         reward_info=ds_builder.info.features['steps']['reward'],
     )
 
-    if 'google_robot' in env.unwrapped.robot_uid:
+    if 'google_robot' in env.get_wrapper_attr('robot_uid'):
         step_map_fn = functools.partial(base_step_map_fn,
                                         map_action=google_robot_map_action)
-    elif 'widowx' in env.unwrapped.robot_uid:
+    elif 'widowx' in env.get_wrapper_attr('robot_uid'):
         step_map_fn = functools.partial(base_step_map_fn,
-                                        map_action=bridge_map_action)
+                                        map_action=google_robot_map_action)
     else:
         raise NotImplementedError()
 
