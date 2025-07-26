@@ -1,3 +1,4 @@
+from agents.bc import BCAgent
 from agents.crl import CRLAgent
 from agents.crl_infonce import CRLInfoNCEAgent
 from agents.dino_rebrac import DINOReBRACAgent
@@ -19,8 +20,8 @@ from agents.hilp_fom import HILPFOMAgent
 from agents.hiql import HIQLAgent
 from agents.ifac import IFACAgent
 from agents.iql import IQLAgent
-from agents.mcfac import MCFACAgent
 from agents.mbpo_rebrac import MBPOReBRACAgent
+from agents.mcfac import MCFACAgent
 from agents.qrl import QRLAgent
 from agents.rebrac import ReBRACAgent
 from agents.rg_fmrl import RewardGuidedFMRLAgent
@@ -35,6 +36,7 @@ from agents.td_fmrl import TDFMRLAgent
 from agents.td_infonce import TDInfoNCEAgent
 
 agents = dict(
+    bc=BCAgent,
     crl=CRLAgent,
     crl_infonce=CRLInfoNCEAgent,
     dino_rebrac=DINOReBRACAgent,

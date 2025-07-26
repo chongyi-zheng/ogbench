@@ -37,7 +37,7 @@ def main():
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
         slurm_cpus_per_task=8,
-        slurm_mem="40G",
+        slurm_mem="80G",
         slurm_gpus_per_node=1,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=20,
@@ -52,7 +52,7 @@ def main():
                     for q_agg in ['mean']:
                         for normalize_q_loss in [False]:
                             for encoder in ['impala_small', 'impala_large', 'resnet_34']:
-                                for seed in [20]:
+                                for seed in [20, 30]:
                                     exp_name = f"{datetime.today().strftime('%Y%m%d')}_fql_{env_name}_alpha={alpha}_distill_type={distill_type}_q_agg={q_agg}_normalize_q_loss={normalize_q_loss}_encoder={encoder}"
                                     log_dir = os.path.expanduser(
                                         f"{log_root_dir}/exp_logs/ogbench_logs/fql/{exp_name}/{seed}")

@@ -88,7 +88,7 @@ def main(_):
     #   remember to set environment variable LD_PRELOAD=/usr/lib64/libtcmalloc_minimal.so.4 to prevent cpu mem leak.
     pretraining_train_dataset = (
         pretraining_train_dataset
-        .shuffle(100_000)
+        .shuffle(100_0)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(10)
@@ -96,7 +96,7 @@ def main(_):
     pretraining_train_dataset_iter = pretraining_train_dataset.as_numpy_iterator()
     pretraining_val_dataset = (
         pretraining_val_dataset
-        .shuffle(100_000)
+        .shuffle(100_0)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(10)
@@ -104,7 +104,7 @@ def main(_):
     pretraining_val_dataset_iter = pretraining_val_dataset.as_numpy_iterator()
     finetuning_train_dataset = (
         finetuning_train_dataset
-        .shuffle(20_000)
+        .shuffle(20_0)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(10)
@@ -112,7 +112,7 @@ def main(_):
     finetuning_train_dataset_iter = finetuning_train_dataset.as_numpy_iterator()
     finetuning_val_dataset = (
         finetuning_val_dataset
-        .shuffle(20_000)
+        .shuffle(20_0)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(10)
@@ -123,6 +123,13 @@ def main(_):
 
     # Create agent.
     example_batch = next(pretraining_val_dataset_iter)
+
+    # np.all(example_batch['observations'].reshape(-1, 64, 64, 3, 3)[..., 1:, :] == example_batch['next_observations'].reshape(-1, 64, 64, 3, 3)[..., :2, :]) = True
+    # from PIL import Image
+    # img = Image.fromarray(example_batch['observations'].reshape(-1, 128, 128, 3, 3)[0, ..., 1, :])
+    # img.save(os.path.join(FLAGS.save_dir, 'widowx_spoon_on_towel_obs_img.png'))
+    # next_img = Image.fromarray(example_batch['next_observations'].reshape(-1, 128, 128, 3, 3)[0, ..., 1, :])
+    # next_img.save(os.path.join(FLAGS.save_dir, 'widowx_spoon_on_towel_next_obs_img.png'))
 
     agent_class = agents[config['agent_name']]
     agent = agent_class.create(
@@ -153,11 +160,20 @@ def main(_):
 
             # data augmentation
             if np.random.rand() < FLAGS.p_aug:
+                from PIL import Image
+                img = Image.fromarray(batch['observations'].reshape(-1, 128, 128, 3, 3)[0, ..., 1, :])
+                img.save(os.path.join(FLAGS.save_dir, 'widowx_spoon_on_towel_obs_img.png'))
+                next_img = Image.fromarray(batch['next_observations'].reshape(-1, 128, 128, 3, 3)[0, ..., 1, :])
+                next_img.save(os.path.join(FLAGS.save_dir, 'widowx_spoon_on_towel_next_obs_img.png'))
                 if FLAGS.inplace_aug:
                     augment(batch, ['observations', 'next_observations'])
                 else:
                     for aux_idx in range(FLAGS.num_aug):
                         augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
+                img = Image.fromarray(batch['observations'].reshape(-1, 128, 128, 3, 3)[0, ..., 1, :])
+                img.save(os.path.join(FLAGS.save_dir, 'widowx_spoon_on_towel_aug_obs_img.png'))
+                next_img = Image.fromarray(batch['next_observations'].reshape(-1, 128, 128, 3, 3)[0, ..., 1, :])
+                next_img.save(os.path.join(FLAGS.save_dir, 'widowx_spoon_on_towel_aug_next_obs_img.png'))
             agent, update_info = agent.pretrain(batch)
         else:
             batch = next(finetuning_train_dataset_iter)

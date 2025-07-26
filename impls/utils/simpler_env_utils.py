@@ -437,7 +437,7 @@ def pad_initial_zero_episode(episode: tf.data.Dataset, num_zero_step: int) -> tf
 
 
 def base_step_map_fn(step: rlds.Step, map_action: StepFnMapType,
-                     width: int = 64, height: int = 64):
+                     width: int = 128, height: int = 128):
     transformed_step = {}
     transformed_step[rlds.REWARD] = tf.cast(
         step[rlds.REWARD], tf.float32)
@@ -545,7 +545,7 @@ def base_stacked_step_map_fn(step: rlds.Step, frame_stack: int = 1):
 class SimplerEnvWrapper(gymnasium.Wrapper):
     """Environment wrapper for simpler environments."""
 
-    def __init__(self, env, width=64, height=64):
+    def __init__(self, env, width=128, height=128):
         super().__init__(env)
 
         self.width = width
@@ -642,8 +642,8 @@ def make_env_and_datasets(
     frame_stack=None,
     dataset_dir=DEFAULT_DATASET_DIR,
     env_only=False,
-    width=64,
-    height=64,
+    width=128,
+    height=128,
 ):
     if 'google_robot' in dataset_name:
         dataset_dir_name = 'fractal20220817_data'
