@@ -99,7 +99,6 @@ def main():
                                 --eval_interval=50_000 \
                                 --save_interval=500_000 \
                                 --agent=impls/agents/bc.py \
-                                --agent.discount=0.99 \
                                 --agent.actor_layer_norm={actor_layer_norm} \
                                 --agent.encoder={encoder} \
                                 --seed={seed} \
