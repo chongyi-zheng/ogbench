@@ -98,6 +98,8 @@ def main():
                                         --p_aug=0.5 \
                                         --frame_stack=3 \
                                         --offline_steps=500_000 \
+                                        --eval_interval=50_000 \
+                                        --save_interval=500_000 \
                                         --agent=impls/agents/rebrac.py \
                                         --agent.discount=0.99 \
                                         --agent.alpha_actor={alpha_actor} \

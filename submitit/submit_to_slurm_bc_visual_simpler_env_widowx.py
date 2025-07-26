@@ -96,6 +96,8 @@ def main():
                                 --p_aug=0.5 \
                                 --frame_stack=3 \
                                 --offline_steps=500_000 \
+                                --eval_interval=50_000 \
+                                --save_interval=500_000 \
                                 --agent=impls/agents/bc.py \
                                 --agent.discount=0.99 \
                                 --agent.actor_layer_norm={actor_layer_norm} \
