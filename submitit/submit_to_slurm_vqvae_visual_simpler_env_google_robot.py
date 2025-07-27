@@ -60,9 +60,10 @@ def main():
                     f"{log_root_dir}/exp_logs/ogbench_logs/vqvae/{exp_name}/{seed}")
 
                 # change the log folder of slurm executor
-                submitit_log_dir = os.path.join(os.path.dirname(log_dir), 'submitit')
+                submitit_log_dir = os.path.join(os.path.dirname(log_dir),
+                                                'submitit')
                 executor._executor.folder = Path(
-                    submitit).expanduser().absolute()
+                    submitit_log_dir).expanduser().absolute()
 
                 cmds = f"""
                     unset PYTHONPATH;
