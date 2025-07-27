@@ -34,6 +34,7 @@ from agents.sarsa_ifql_vfm_gpi import SARSAIFQLVFMGPIAgent
 from agents.sarsa_ifql_vib_gpi import SARSAIFQLVIBGPIAgent
 from agents.td_fmrl import TDFMRLAgent
 from agents.td_infonce import TDInfoNCEAgent
+from agents.vqvae import VQVAEAgent
 
 agents = dict(
     bc=BCAgent,
@@ -72,4 +73,5 @@ agents = dict(
     td_fmrl=TDFMRLAgent,
     gctd_fmrl=GCTDFMRLAgent,
     td_infonce=TDInfoNCEAgent,
+    vqvae=VQVAEAgent,
 )

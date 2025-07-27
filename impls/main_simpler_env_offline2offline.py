@@ -88,7 +88,7 @@ def main(_):
     #   remember to set environment variable LD_PRELOAD=/usr/lib64/libtcmalloc_minimal.so.4 to prevent cpu mem leak.
     pretraining_train_dataset = (
         pretraining_train_dataset
-        .shuffle(100_000)
+        .shuffle(200_000)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(tf.data.AUTOTUNE)
@@ -96,7 +96,7 @@ def main(_):
     pretraining_train_dataset_iter = pretraining_train_dataset.as_numpy_iterator()
     pretraining_val_dataset = (
         pretraining_val_dataset
-        .shuffle(100_000)
+        .shuffle(20_000)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(tf.data.AUTOTUNE)
@@ -104,7 +104,7 @@ def main(_):
     pretraining_val_dataset_iter = pretraining_val_dataset.as_numpy_iterator()
     finetuning_train_dataset = (
         finetuning_train_dataset
-        .shuffle(20_000)
+        .shuffle(200_000)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(10)

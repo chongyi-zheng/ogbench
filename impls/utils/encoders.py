@@ -25,6 +25,7 @@ class ResnetStack(nn.Module):
             padding='SAME',
         )(x)
 
+
         if self.max_pooling:
             conv_out = nn.max_pool(
                 conv_out,
@@ -167,7 +168,6 @@ class ResNetEncoder(nn.Module):
     conv: Any = nn.Conv
     norm: str = "group"
     add_spatial_coordinates: bool = True
-    num_spatial_blocks: int = 8
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray, train=True):
@@ -211,7 +211,8 @@ class ResNetEncoder(nn.Module):
                     act=act,
                 )(x)
 
-        x = jnp.mean(x, axis=(-3, -2))
+        # average pooling
+        # x = jnp.mean(x, axis=(-3, -2))
 
         return x
 
@@ -277,6 +278,5 @@ encoder_modules = {
         ResNetEncoder,
         stage_sizes=(3, 4, 6, 3),
         block_cls=ResNetBlock,
-        num_spatial_blocks=8
     ),
 }

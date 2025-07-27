@@ -1,7 +1,9 @@
 from collections import defaultdict
 import xml.etree.ElementTree as ET
 
+import matplotlib.pyplot as plt
 import jax
+import jax.numpy as jnp
 import numpy as np
 from tqdm import trange
 
@@ -33,6 +35,33 @@ def add_to(dict_of_lists, single_dict):
     """Append values to the corresponding lists in the dictionary."""
     for k, v in single_dict.items():
         dict_of_lists[k].append(v)
+
+def evaluate_vqvae(
+    agent,
+    images,
+    num_eval_recon_images=16,
+    num_cols=8,
+):
+    assert num_eval_recon_images % 8 == 0
+    images = images.astype(jnp.float32) / 127.5 - 1.0  # put inputs in [-1, 1]
+    recon_images = agent.reconstruct(images)
+    images = images.reshape([*images.shape[:-1], -1, 3])
+    recon_images = recon_images.reshape([*recon_images.shape[:-1], -1, 3])
+
+    images = jnp.clip((images + 1.0) / 2.0, 0.0, 1.0)
+    recon_images = jnp.clip((recon_images + 1.0) / 2.0, 0.0, 1.0)
+
+    # plot comparison with matplotlib. put each reconstruction side by side.
+    recon_fig, axes = plt.subplots((num_eval_recon_images // num_cols) * 2, num_cols, figsize=(12, 6))
+    for row in range(num_eval_recon_images // num_cols):
+        for col in range(num_cols):
+            axes[2 * row, col].imshow(images[row * num_cols + col, :, :, 0], vmin=0.0, vmax=1.0)
+            axes[2 * row + 1, col].imshow(recon_images[row * num_cols + col, :, :, 0], vmin=0.0, vmax=1.0)
+
+            axes[2 * row, col].axis('off')
+            axes[2 * row + 1, col].axis('off')
+
+    return recon_fig
 
 
 def evaluate(

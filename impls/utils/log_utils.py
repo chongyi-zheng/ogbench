@@ -248,3 +248,26 @@ def get_wandb_heatmaps(value_info, env_info, num_max_cols=8):
     fig.tight_layout()
 
     return wandb.Image(fig)
+
+
+def save_figure(fig, save_dir, epoch, filename_prefix=''):
+    """Save the agent to a file.
+
+    Args:
+        agent: Agent.
+        save_dir: Directory to save the agent.
+        epoch: Epoch number.
+    """
+    save_path = os.path.join(save_dir, f'{filename_prefix}{epoch}.png')
+    fig.savefig(save_path)
+    print(f'Figure saved to {save_path}')
+    # save_dict = dict(
+    #     agent=flax.serialization.to_state_dict(agent),
+    # )
+    # save_path = os.path.join(save_dir, f'params_{epoch}.pkl')
+    # with open(save_path, 'wb') as f:
+    #     pickle.dump(save_dict, f)
+    #
+    # print(f'Saved to {save_path}')
+
+

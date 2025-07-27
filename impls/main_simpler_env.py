@@ -14,9 +14,9 @@ from ml_collections import config_flags
 from agents import agents
 from utils.env_utils import make_env_and_datasets
 from utils.datasets import augment
-from utils.evaluation import evaluate
+from utils.evaluation import evaluate, evaluate_vqvae
 from utils.flax_utils import restore_agent, save_agent
-from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb
+from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb, save_figure
 
 FLAGS = flags.FLAGS
 
@@ -79,7 +79,7 @@ def main(_):
     # Set up datasets.
     train_dataset = (
         train_dataset
-        .shuffle(500_000)
+        .shuffle(200_000)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(tf.data.AUTOTUNE)
@@ -87,14 +87,14 @@ def main(_):
     train_dataset_iter = train_dataset.as_numpy_iterator()
     val_dataset = (
         val_dataset
-        .shuffle(50_000)
+        .shuffle(20_000)
         .repeat()
         .batch(config['batch_size'])
         .prefetch(tf.data.AUTOTUNE)
     )
     val_dataset_iter = val_dataset.as_numpy_iterator()
 
-    assert config['agent_name'] not in ['mcfac']
+    # assert config['agent_name'] not in ['mcfac']
 
     # Create agent.
     example_batch = next(val_dataset_iter)
@@ -129,6 +129,7 @@ def main(_):
                 for aux_idx in range(FLAGS.num_aug):
                     augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
         agent, update_info = agent.update(batch, full_update=(i % config['actor_freq'] == 0))
+        quantized_latents = agent.encode(batch['observations'], flatten=True)
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
@@ -157,29 +158,40 @@ def main(_):
 
         # Evaluate agent.
         if FLAGS.eval_interval != 0 and (i == 1 or i % FLAGS.eval_interval == 0):
-            renders = []
-            eval_metrics = {}
-            eval_info, trajs, cur_renders = evaluate(
-                agent=agent,
-                env=eval_env,
-                num_eval_episodes=FLAGS.eval_episodes,
-                num_video_episodes=FLAGS.video_episodes,
-                video_frame_skip=FLAGS.video_frame_skip,
-            )
-            renders.extend(cur_renders)
-            for k, v in eval_info.items():
-                eval_metrics[f'evaluation/{k}'] = v
+            if config['agent_name'] not in ['vqvae']:
+                renders = []
+                eval_metrics = {}
+                eval_info, trajs, cur_renders = evaluate(
+                    agent=agent,
+                    env=eval_env,
+                    num_eval_episodes=FLAGS.eval_episodes,
+                    num_video_episodes=FLAGS.video_episodes,
+                    video_frame_skip=FLAGS.video_frame_skip,
+                )
+                renders.extend(cur_renders)
+                for k, v in eval_info.items():
+                    eval_metrics[f'evaluation/{k}'] = v
 
-            if FLAGS.video_episodes > 0:
-                video = get_wandb_video(renders=renders)
-                eval_metrics['video'] = video
+                if FLAGS.video_episodes > 0:
+                    video = get_wandb_video(renders=renders)
+                    eval_metrics['video'] = video
 
-            if FLAGS.enable_wandb:
-                wandb.log(eval_metrics, step=i)
+                if FLAGS.enable_wandb:
+                    wandb.log(eval_metrics, step=i)
 
-                if FLAGS.wandb_mode == 'offline':
-                    trigger_sync()
-            eval_logger.log(eval_metrics, step=i)
+                    if FLAGS.wandb_mode == 'offline':
+                        trigger_sync()
+                eval_logger.log(eval_metrics, step=i)
+            else:
+                assert val_dataset is not None
+                val_batch = next(val_dataset_iter)
+                recon_fig = evaluate_vqvae(
+                    agent=agent,
+                    images=val_batch['observations'],
+                    num_eval_recon_images=FLAGS.eval_episodes,  # Number of image reconstructions
+                )
+
+                save_figure(recon_fig, FLAGS.save_dir, i, filename_prefix='recon_')
 
         # Save agent.
         if i % FLAGS.save_interval == 0:
