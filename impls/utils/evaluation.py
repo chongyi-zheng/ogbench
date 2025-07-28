@@ -43,8 +43,8 @@ def evaluate_vqvae(
     num_cols=8,
 ):
     assert num_eval_recon_images % 8 == 0
+    recon_images = agent.reconstruct(images)  # use the original image as inputs
     images = images.astype(jnp.float32) / 127.5 - 1.0  # put inputs in [-1, 1]
-    recon_images = agent.reconstruct(images)
     images = images.reshape([*images.shape[:-1], -1, 3])
     recon_images = recon_images.reshape([*recon_images.shape[:-1], -1, 3])
 

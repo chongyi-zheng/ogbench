@@ -86,7 +86,7 @@ def main(_):
     #     _, eval_env, finetuning_train_dataset, finetuning_val_dataset = make_env_and_datasets(
     #         FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=FLAGS.finetuning_size, reward_free=False)
     _, eval_env, finetuning_train_dataset, finetuning_val_dataset = make_env_and_datasets(
-            FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=FLAGS.finetuning_size, reward_free=False)
+        FLAGS.env_name, frame_stack=FLAGS.frame_stack, max_size=FLAGS.finetuning_size, reward_free=False)
 
     if FLAGS.video_episodes > 0:
         assert 'singletask' in FLAGS.env_name, 'Rendering is currently only supported for OGBench environments.'
