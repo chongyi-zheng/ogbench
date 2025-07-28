@@ -87,7 +87,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
             )
             aug1_observations = observations + noises1
             aug2_observations = observations + noises2
-        elif 'impala' in self.config['encoder']:
+        elif self.config['encoder'] in ['impala_small', 'resnet_34']:
             aug1_observations = batch['aug1_observations']
             aug2_observations = batch['aug2_observations']
 
@@ -128,7 +128,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         """Compute the ReBRAC actor loss."""
         reprs = self.network.select('encoder')(batch['observations'])
         dist = self.network.select('actor')(reprs, params=grad_params)
-        actions = dist.mode()
+        actions = jnp.clip(dist.mode(), -1, 1)
 
         # Q loss.
         qs = self.network.select('critic')(reprs, actions=actions)
@@ -230,7 +230,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
             )
             aug1_observations = observations + noises1
             aug2_observations = observations + noises2
-        elif 'impala' in self.config['encoder']:
+        elif self.config['encoder'] in ['impala_small', 'resnet_34']:
             aug1_observations = batch['aug1_observations']
             aug2_observations = batch['aug2_observations']
 
@@ -254,6 +254,8 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
 
         new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
         self.target_update(new_network, 'encoder')
+        new_rng, rng = jax.random.split(rng)
+        self.target_center_update(new_network, batch, rng)
 
         return self.replace(network=new_network, rng=new_rng), info
 
@@ -302,6 +304,8 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the actor."""
+        if observations.shape == self.config['obs_dims']:
+            observations = jnp.expand_dims(observations, axis=0)
         reprs = self.network.select('encoder')(observations)
         dist = self.network.select('actor')(reprs, temperature=temperature)
         actions = dist.mode()
@@ -310,7 +314,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
             -self.config['actor_noise_clip'],
             self.config['actor_noise_clip'],
         )
-        actions = jnp.clip(actions + noise, -1, 1)
+        actions = jnp.clip(actions + noise, -1, 1).squeeze()
         return actions
 
     @classmethod
@@ -332,6 +336,7 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         rng = jax.random.PRNGKey(seed)
         rng, init_with_output_rng, init_rng = jax.random.split(rng, 3)
 
+        obs_dims = ex_observations.shape[1:]
         action_dim = ex_actions.shape[-1]
 
         # Define encoders.
@@ -383,6 +388,8 @@ class DINOReBRACAgent(flax.struct.PyTreeNode):
         params['modules_target_actor'] = params['modules_actor']
         params['modules_target_encoder'] = params['modules_encoder']
 
+        config['obs_dims'] = obs_dims
+
         return cls(rng, network=network, config=flax.core.FrozenDict(**config))
 
 
@@ -390,6 +397,7 @@ def get_config():
     config = ml_collections.ConfigDict(
         dict(
             agent_name='dino_rebrac',  # Agent name.
+            obs_dims=ml_collections.config_dict.placeholder(tuple), # Observation dimensions (will be set automatically).
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
@@ -400,7 +408,7 @@ def get_config():
             tau=0.005,  # Target network update rate.
             tanh_squash=True,  # Whether to squash actions with tanh.
             actor_fc_scale=0.01,  # Final layer initialization scale for actor.
-            alpha_actor=0.0,  # Actor BC coefficient.
+            alpha_actor=1.0,  # Actor BC coefficient.
             alpha_critic=0.0,  # Critic BC coefficient.
             actor_freq=2,  # Actor update frequency.
             actor_noise=0.2,  # Actor noise scale.

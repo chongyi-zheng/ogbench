@@ -71,7 +71,7 @@ class ReBRACAgent(flax.struct.PyTreeNode):
     def actor_loss(self, batch, grad_params, rng):
         """Compute the ReBRAC actor loss."""
         dist = self.network.select('actor')(batch['observations'], params=grad_params)
-        actions = dist.mode()
+        actions = jnp.clip(dist.mode(), -1, 1)
 
         # Q loss.
         qs = self.network.select('critic')(batch['observations'], actions=actions)

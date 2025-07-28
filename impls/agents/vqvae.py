@@ -45,7 +45,7 @@ class VQVAEAgent(flax.struct.PyTreeNode):
     def vqvae_loss(self, batch, grad_params):
         """Compute the VQVAE loss."""
         images = batch['observations'].astype(jnp.float32) / 127.5 - 1.0  # put inputs in [-1, 1]
-        latents = self.network.select('encoder')(batch['observations'], params=grad_params)  # the encoder will put inputs in [-1, 1] internally
+        latents = self.network.select('encoder')(batch['observations'], flatten=False, params=grad_params)  # the encoder will put inputs in [-1, 1] internally
         quantized_latents, distances = self.network.select('quantizer')(latents, params=grad_params)
         reconstructed_images = self.network.select('decoder')(
             latents + jax.lax.stop_gradient(quantized_latents - latents),
@@ -113,7 +113,7 @@ class VQVAEAgent(flax.struct.PyTreeNode):
 
     @partial(jax.jit, static_argnames=('flatten',))
     def encode(self, images, flatten=False):
-        latents = self.network.select('encoder')(images)
+        latents = self.network.select('encoder')(images, flatten=False)
         quantized_latents, _ = self.network.select('quantizer')(latents)
         if flatten:
             quantized_latents = quantized_latents.reshape(quantized_latents.shape[0], -1)

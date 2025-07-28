@@ -42,7 +42,7 @@ def main():
         slurm_account=account,
         slurm_nodes=1,
         slurm_ntasks_per_node=1,  # tasks can share nodes
-        slurm_cpus_per_task=32,
+        slurm_cpus_per_task=16,
         slurm_mem="400G",
         slurm_gpus_per_node=1,
         slurm_exclude=exclude,
@@ -57,7 +57,7 @@ def main():
             for alpha_actor in [1, 0.1, 0.01]:
                 for alpha_critic in [0.01]:
                     for actor_freq in [2]:
-                        for encoder in ['impala_small', 'resnet_34']:
+                        for encoder in ['resnet_34']:
                             for seed in [20]:
                                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_rebrac_{env_name}_alpha_actor={alpha_actor}_alpha_critic={alpha_critic}_actor_freq={actor_freq}_encoder={encoder}"
                                 log_dir = os.path.expanduser(
@@ -110,6 +110,7 @@ def main():
                                         --agent.alpha_actor={alpha_actor} \
                                         --agent.alpha_critic={alpha_critic} \
                                         --agent.actor_freq={actor_freq} \
+                                        --agent.tanh_squash=False \
                                         --agent.encoder={encoder} \
                                         --seed={seed} \
                                         --save_dir={log_dir} \

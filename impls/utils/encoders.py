@@ -170,7 +170,7 @@ class ResNetEncoder(nn.Module):
     add_spatial_coordinates: bool = True
 
     @nn.compact
-    def __call__(self, observations: jnp.ndarray, train=True):
+    def __call__(self, observations: jnp.ndarray, train=True, flatten=True):
         # put inputs in [-1, 1]
         x = observations.astype(jnp.float32) / 127.5 - 1.0
 
@@ -213,6 +213,8 @@ class ResNetEncoder(nn.Module):
 
         # average pooling
         # x = jnp.mean(x, axis=(-3, -2))
+        if flatten:
+            x = x.reshape(x.shape[0], -1)
 
         return x
 

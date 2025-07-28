@@ -1,3 +1,4 @@
+import gc
 import json
 import os
 import random
@@ -102,24 +103,6 @@ def main(_):
         .prefetch(tf.data.AUTOTUNE)
     )
     pretraining_val_dataset_iter = pretraining_val_dataset.as_numpy_iterator()
-    finetuning_train_dataset = (
-        finetuning_train_dataset
-        .shuffle(200_000)
-        .repeat()
-        .batch(config['batch_size'])
-        .prefetch(10)
-    )
-    finetuning_train_dataset_iter = finetuning_train_dataset.as_numpy_iterator()
-    finetuning_val_dataset = (
-        finetuning_val_dataset
-        .shuffle(20_000)
-        .repeat()
-        .batch(config['batch_size'])
-        .prefetch(10)
-    )
-    finetuning_val_dataset_iter = finetuning_val_dataset.as_numpy_iterator()
-
-    assert config['agent_name'] not in ['mcfac']
 
     # Create agent.
     example_batch = next(pretraining_val_dataset_iter)
@@ -152,43 +135,116 @@ def main(_):
     last_time = time.time()
 
     # Offline RL.
-    for i in tqdm.tqdm(range(1, FLAGS.pretraining_steps + FLAGS.finetuning_steps + 1), smoothing=0.1, dynamic_ncols=True):
-        if i <= FLAGS.pretraining_steps:
-            batch = next(pretraining_train_dataset_iter)
-            train_logger = pretraining_train_logger
-            eval_logger = pretraining_eval_logger
+    for i in tqdm.tqdm(range(1, FLAGS.pretraining_steps + 1), smoothing=0.1, dynamic_ncols=True):
+        batch = next(pretraining_train_dataset_iter)
+        train_logger = pretraining_train_logger
+        eval_logger = pretraining_eval_logger
 
-            # data augmentation
-            if np.random.rand() < FLAGS.p_aug:
-                if FLAGS.inplace_aug:
-                    augment(batch, ['observations', 'next_observations'])
-                else:
-                    for aux_idx in range(FLAGS.num_aug):
-                        augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
-            agent, update_info = agent.pretrain(batch)
-        else:
-            batch = next(finetuning_train_dataset_iter)
-            train_logger = finetuning_train_logger
-            eval_logger = finetuning_eval_logger
-
-            # data augmentation
-            if np.random.rand() < FLAGS.p_aug:
-                if FLAGS.inplace_aug:
-                    augment(batch, ['observations', 'next_observations'])
-                else:
-                    for aux_idx in range(FLAGS.num_aug):
-                        augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
-            agent, update_info = agent.finetune(batch, full_update=(i % config['actor_freq'] == 0))
+        # data augmentation
+        if np.random.rand() < FLAGS.p_aug:
+            if FLAGS.inplace_aug:
+                augment(batch, ['observations', 'next_observations'])
+            else:
+                for aux_idx in range(FLAGS.num_aug):
+                    augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
+        agent, update_info = agent.pretrain(batch)
 
         # Log metrics.
         if i % FLAGS.log_interval == 0:
             train_metrics = {f'training/{k}': v for k, v in update_info.items()}
-            if i <= FLAGS.pretraining_steps:
-                val_dataset_iter = pretraining_val_dataset_iter
-                loss_fn = agent.pretraining_loss
+            val_dataset_iter = pretraining_val_dataset_iter
+            loss_fn = agent.pretraining_loss
+            val_batch = next(val_dataset_iter)
+            # data augmentation
+            if np.random.rand() < FLAGS.p_aug:
+                if FLAGS.inplace_aug:
+                    augment(val_batch, ['observations', 'next_observations'])
+                else:
+                    for aux_idx in range(FLAGS.num_aug):
+                        augment(val_batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
+            _, val_info = loss_fn(val_batch, grad_params=None)
+            train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
+            train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval
+            train_metrics['time/total_time'] = time.time() - first_time
+            last_time = time.time()
+            if FLAGS.enable_wandb:
+                wandb.log(train_metrics, step=i)
+
+                if FLAGS.wandb_mode == 'offline':
+                    trigger_sync()
+
+            train_logger.log(train_metrics, step=i)
+
+        # Evaluate agent.
+        if FLAGS.eval_interval != 0 and (i == 1 or i % FLAGS.eval_interval == 0):
+            renders = []
+            eval_metrics = {}
+            eval_info, trajs, cur_renders = evaluate(
+                agent=agent,
+                env=eval_env,
+                num_eval_episodes=FLAGS.eval_episodes,
+                num_video_episodes=FLAGS.video_episodes,
+                video_frame_skip=FLAGS.video_frame_skip,
+            )
+            renders.extend(cur_renders)
+            for k, v in eval_info.items():
+                eval_metrics[f'evaluation/{k}'] = v
+
+            if FLAGS.video_episodes > 0:
+                video = get_wandb_video(renders=renders)
+                eval_metrics['video'] = video
+
+            if FLAGS.enable_wandb:
+                wandb.log(eval_metrics, step=i)
+
+                if FLAGS.wandb_mode == 'offline':
+                    trigger_sync()
+            eval_logger.log(eval_metrics, step=i)
+
+        # Save agent.
+        if i % FLAGS.save_interval == 0:
+            save_agent(agent, FLAGS.save_dir, i)
+
+    del pretraining_train_dataset_iter, pretraining_train_dataset
+    del pretraining_val_dataset_iter, pretraining_val_dataset
+    gc.collect()
+
+    finetuning_train_dataset = (
+        finetuning_train_dataset
+        .shuffle(200_000)
+        .repeat()
+        .batch(config['batch_size'])
+        .prefetch(10)
+    )
+    finetuning_train_dataset_iter = finetuning_train_dataset.as_numpy_iterator()
+    finetuning_val_dataset = (
+        finetuning_val_dataset
+        .shuffle(20_000)
+        .repeat()
+        .batch(config['batch_size'])
+        .prefetch(10)
+    )
+    finetuning_val_dataset_iter = finetuning_val_dataset.as_numpy_iterator()
+
+    for i in tqdm.tqdm(range(FLAGS.pretraining_steps, FLAGS.pretraining_steps + FLAGS.finetuning_steps + 1), smoothing=0.1, dynamic_ncols=True):
+        batch = next(finetuning_train_dataset_iter)
+        train_logger = finetuning_train_logger
+        eval_logger = finetuning_eval_logger
+
+        # data augmentation
+        if np.random.rand() < FLAGS.p_aug:
+            if FLAGS.inplace_aug:
+                augment(batch, ['observations', 'next_observations'])
             else:
-                val_dataset_iter = finetuning_val_dataset_iter
-                loss_fn = agent.total_loss
+                for aux_idx in range(FLAGS.num_aug):
+                    augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
+        agent, update_info = agent.finetune(batch, full_update=(i % config['actor_freq'] == 0))
+
+        # Log metrics.
+        if i % FLAGS.log_interval == 0:
+            train_metrics = {f'training/{k}': v for k, v in update_info.items()}
+            val_dataset_iter = finetuning_val_dataset_iter
+            loss_fn = agent.total_loss
             val_batch = next(val_dataset_iter)
             # data augmentation
             if np.random.rand() < FLAGS.p_aug:
