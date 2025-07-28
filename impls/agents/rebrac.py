@@ -196,14 +196,17 @@ class ReBRACAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the actor."""
-        dist = self.network.select('actor')(observations, temperature=temperature)
+        if observations.shape == self.config['obs_dims']:
+            observations = jnp.expand_dims(observations, axis=0)
+        reprs = self.network.select('encoder')(observations)
+        dist = self.network.select('actor')(reprs, temperature=temperature)
         actions = dist.mode()
         noise = jnp.clip(
             (jax.random.normal(seed, actions.shape) * self.config['actor_noise'] * temperature),
             -self.config['actor_noise_clip'],
             self.config['actor_noise_clip'],
         )
-        actions = jnp.clip(actions + noise, -1, 1)
+        actions = jnp.clip(actions + noise, -1, 1).squeeze()
         return actions
 
     @classmethod
@@ -225,6 +228,7 @@ class ReBRACAgent(flax.struct.PyTreeNode):
         rng = jax.random.PRNGKey(seed)
         rng, init_rng = jax.random.split(rng, 2)
 
+        obs_dims = ex_observations.shape[1:]
         action_dim = ex_actions.shape[-1]
 
         # Define encoders.
@@ -270,6 +274,8 @@ class ReBRACAgent(flax.struct.PyTreeNode):
         params['modules_target_critic'] = params['modules_critic']
         params['modules_target_actor'] = params['modules_actor']
 
+        config['obs_dims'] = obs_dims
+
         return cls(rng, network=network, config=flax.core.FrozenDict(**config))
 
 
@@ -277,6 +283,7 @@ def get_config():
     config = ml_collections.ConfigDict(
         dict(
             agent_name='rebrac',  # Agent name.
+            obs_dims=ml_collections.config_dict.placeholder(tuple),  # Observation dimensions (will be set automatically).
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.

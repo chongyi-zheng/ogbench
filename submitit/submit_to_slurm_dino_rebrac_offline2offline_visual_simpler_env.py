@@ -13,10 +13,13 @@ def main():
         partition = 'gpu'
         account = None
         exclude = None
-    elif cluster_name == 'della':
+    elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
-        partition = 'gpu-test'
-        account = None
+        # partition = 'gpu-test'
+        # account = None
+        partition = 'pli'
+        account = 'rlchongyiz'
+        exclude = 'della-j16g3,della-k12g2'
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
