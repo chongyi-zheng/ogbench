@@ -19,7 +19,7 @@ def main():
         # account = None
         partition = 'pli'
         account = 'rlchongyiz'
-        exclude = 'della-j16g3,della-k12g2'
+        exclude = 'della-j16g3,della-k12g2,della-k14g1'
     elif cluster_name in ['soak.cs.princeton.edu', 'wash.cs.princeton.edu',
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
@@ -101,7 +101,7 @@ def main():
                     
                                                         rm -rf {log_dir};
                                                         mkdir -p {log_dir};
-                                                        python $PROJECT_DIR/impls/main_offline2offline.py \
+                                                        python $PROJECT_DIR/impls/main_simpler_env_offline2offline.py \
                                                             --enable_wandb=1 \
                                                             --env_name={env_name} \
                                                             --obs_norm_type={obs_norm_type} \
