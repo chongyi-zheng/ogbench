@@ -24,7 +24,7 @@ def main():
                           'rinse.cs.princeton.edu', 'spin.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
         exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
@@ -100,10 +100,10 @@ def main():
                                         --enable_wandb=1 \
                                         --env_name={env_name} \
                                         --finetuning_size=500_000 \
-                                        --pretraining_steps=500_000 \
+                                        --pretraining_steps=250_000 \
                                         --finetuning_steps=250_000 \
                                         --eval_interval=25_000 \
-                                        --save_interval=750_000 \
+                                        --save_interval=500_000 \
                                         --eval_episodes=50 \
                                         --p_aug=0.5 \
                                         --frame_stack=3 \
