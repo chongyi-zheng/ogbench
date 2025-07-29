@@ -12,7 +12,6 @@ def main():
         log_root_dir = '/home/cz8792/network'
         partition = 'gpu'
         account = None
-        nodelist = None
         exclude = None
     elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
@@ -46,7 +45,6 @@ def main():
         slurm_cpus_per_task=16,
         slurm_mem="400G",
         slurm_gpus_per_node=1,
-        slurm_nodelist=nodelist,
         slurm_exclude=exclude,
         slurm_stderr_to_stdout=True,
         slurm_array_parallelism=10,
@@ -112,6 +110,8 @@ def main():
                                                         --finetuning_steps=250_000 \
                                                         --eval_interval=25_000 \
                                                         --save_interval=500_000 \
+                                                        --vqvae_restore_path /home/cz8792/gpfs/exp_logs/ogbench_logs/vqvae/20250727_vqvae_google_robot_pick_coke_can/10/debug/sd010_s_66319823.0.20250727_165712 \
+                                                        --vqvae_restore_epoch 300_000 \
                                                         --agent=impls/agents/sarsa_ifql_vib_gpi.py \
                                                         --agent.batch_size=256 \
                                                         --agent.transition_hidden_dims="(512,512,512,512)" \
