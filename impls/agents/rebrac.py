@@ -198,8 +198,7 @@ class ReBRACAgent(flax.struct.PyTreeNode):
         """Sample actions from the actor."""
         if observations.shape == self.config['obs_dims']:
             observations = jnp.expand_dims(observations, axis=0)
-        reprs = self.network.select('encoder')(observations)
-        dist = self.network.select('actor')(reprs, temperature=temperature)
+        dist = self.network.select('actor')(observations, temperature=temperature)
         actions = dist.mode()
         noise = jnp.clip(
             (jax.random.normal(seed, actions.shape) * self.config['actor_noise'] * temperature),
