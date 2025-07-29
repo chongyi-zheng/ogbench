@@ -12,6 +12,7 @@ from absl import app, flags
 from ml_collections import config_flags
 
 from agents import agents
+from agents.vqvae import get_config as vqvae_get_config
 from utils.datasets import augment
 from utils.env_utils import make_env_and_datasets
 from utils.evaluation import evaluate
@@ -29,6 +30,8 @@ flags.DEFINE_string('dataset_class', 'Dataset', 'Dataset class name.')
 flags.DEFINE_string('save_dir', 'exp/', 'Save directory.')
 flags.DEFINE_string('restore_path', None, 'Restore path.')
 flags.DEFINE_integer('restore_epoch', None, 'Restore epoch.')
+flags.DEFINE_string('vqvae_restore_path', None, 'VQVAE restore path.')
+flags.DEFINE_integer('vqvae_restore_epoch', None, 'VQVAE restore epoch.')
 
 flags.DEFINE_integer('pretraining_steps', 1_000_000, 'Number of offline steps.')
 flags.DEFINE_integer('finetuning_steps', 500_000, 'Replay buffer size.')
@@ -104,7 +107,6 @@ def main(_):
     )
     pretraining_val_dataset_iter = pretraining_val_dataset.as_numpy_iterator()
 
-    # Create agent.
     example_batch = next(pretraining_val_dataset_iter)
 
     # np.all(example_batch['observations'].reshape(-1, 64, 64, 3, 3)[..., 1:, :] == example_batch['next_observations'].reshape(-1, 64, 64, 3, 3)[..., :2, :]) = True
@@ -114,6 +116,30 @@ def main(_):
     # next_img = Image.fromarray(example_batch['next_observations'].reshape(-1, 128, 128, 3, 3)[0, ..., 1, :])
     # next_img.save(os.path.join(FLAGS.save_dir, 'widowx_spoon_on_towel_next_obs_img.png'))
 
+    # Restore vqvae
+    vqvae = None
+    if FLAGS.vqvae_restore_path is not None:
+        assert 'vqvae' in agents
+        vqvae_class = agents['vqvae']
+        vqvae_config = vqvae_get_config()
+        vqvae_config['encoder'] = 'resnet_34'  # (chongyi): make this configurable
+        vqvae_config['decoder'] = 'resnet_34'  # (chongyi): make this configurable
+        vqvae = vqvae_class.create(
+            FLAGS.seed,
+            example_batch['observations'],
+            example_batch['actions'],
+            vqvae_config,
+        )
+
+        vqvae = restore_agent(vqvae, FLAGS.vqvae_restore_path, FLAGS.vqvae_restore_epoch)
+        example_batch['observations'] = np.asarray(
+            vqvae.encode(example_batch['observations'], flatten=True)
+        )
+        example_batch['next_observations'] = np.asarray(
+            vqvae.encode(example_batch['next_observations'], flatten=True)
+        )
+
+    # Create agent.
     agent_class = agents[config['agent_name']]
     agent = agent_class.create(
         FLAGS.seed,
@@ -146,7 +172,22 @@ def main(_):
                 augment(batch, ['observations', 'next_observations'])
             else:
                 for aux_idx in range(FLAGS.num_aug):
-                    augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
+                    augment(batch, ['observations', 'next_observations'], f'aug{aux_idx + 1}_')
+        if FLAGS.vqvae_restore_path is not None:
+            batch['observations'] = np.asarray(
+                vqvae.encode(batch['observations'], flatten=True)
+            )
+            batch['next_observations'] = np.asarray(
+                vqvae.encode(batch['next_observations'], flatten=True)
+            )
+            if 'aug1_observations' in batch:
+                for aux_idx in range(FLAGS.num_aug):
+                    batch[f'aug{aux_idx + 1}_observations'] = np.asarray(
+                        vqvae.encode(batch[f'aug{aux_idx + 1}_observations'], flatten=True)
+                    )
+                    batch[f'aug{aux_idx + 1}_next_observations'] = np.asarray(
+                        vqvae.encode(batch[f'aug{aux_idx + 1}_next_observations'], flatten=True)
+                    )
         agent, update_info = agent.pretrain(batch)
 
         # Log metrics.
@@ -161,7 +202,22 @@ def main(_):
                     augment(val_batch, ['observations', 'next_observations'])
                 else:
                     for aux_idx in range(FLAGS.num_aug):
-                        augment(val_batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
+                        augment(val_batch, ['observations', 'next_observations'], f'aug{aux_idx + 1}_')
+            if FLAGS.vqvae_restore_path is not None:
+                val_batch['observations'] = np.asarray(
+                    vqvae.encode(val_batch['observations'], flatten=True)
+                )
+                val_batch['next_observations'] = np.asarray(
+                    vqvae.encode(val_batch['next_observations'], flatten=True)
+                )
+                if 'aug1_observations' in val_batch:
+                    for aux_idx in range(FLAGS.num_aug):
+                        val_batch[f'aug{aux_idx + 1}_observations'] = np.asarray(
+                            vqvae.encode(val_batch[f'aug{aux_idx + 1}_observations'], flatten=True)
+                        )
+                        val_batch[f'aug{aux_idx + 1}_next_observations'] = np.asarray(
+                            vqvae.encode(val_batch[f'aug{aux_idx + 1}_next_observations'], flatten=True)
+                        )
             _, val_info = loss_fn(val_batch, grad_params=None)
             train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval
@@ -182,6 +238,7 @@ def main(_):
             eval_info, trajs, cur_renders = evaluate(
                 agent=agent,
                 env=eval_env,
+                vqvae=vqvae,
                 num_eval_episodes=FLAGS.eval_episodes,
                 num_video_episodes=FLAGS.video_episodes,
                 video_frame_skip=FLAGS.video_frame_skip,
@@ -237,7 +294,22 @@ def main(_):
                 augment(batch, ['observations', 'next_observations'])
             else:
                 for aux_idx in range(FLAGS.num_aug):
-                    augment(batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
+                    augment(batch, ['observations', 'next_observations'], f'aug{aux_idx + 1}_')
+        if FLAGS.vqvae_restore_path is not None:
+            batch['observations'] = np.asarray(
+                vqvae.encode(batch['observations'], flatten=True)
+            )
+            batch['next_observations'] = np.asarray(
+                vqvae.encode(batch['next_observations'], flatten=True)
+            )
+            if 'aug1_observations' in batch:
+                for aux_idx in range(FLAGS.num_aug):
+                    batch[f'aug{aux_idx + 1}_observations'] = np.asarray(
+                        vqvae.encode(batch[f'aug{aux_idx + 1}_observations'], flatten=True)
+                    )
+                    batch[f'aug{aux_idx + 1}_next_observations'] = np.asarray(
+                        vqvae.encode(batch[f'aug{aux_idx + 1}_next_observations'], flatten=True)
+                    )
         agent, update_info = agent.finetune(batch, full_update=(i % config['actor_freq'] == 0))
 
         # Log metrics.
@@ -252,7 +324,22 @@ def main(_):
                     augment(val_batch, ['observations', 'next_observations'])
                 else:
                     for aux_idx in range(FLAGS.num_aug):
-                        augment(val_batch, ['observations', 'next_observations'], 'aug{}_'.format(aux_idx + 1))
+                        augment(val_batch, ['observations', 'next_observations'], f'aug{aux_idx + 1}_')
+            if FLAGS.vqvae_restore_path is not None:
+                val_batch['observations'] = np.asarray(
+                    vqvae.encode(val_batch['observations'], flatten=True)
+                )
+                val_batch['next_observations'] = np.asarray(
+                    vqvae.encode(val_batch['next_observations'], flatten=True)
+                )
+                if 'aug1_observations' in val_batch:
+                    for aux_idx in range(FLAGS.num_aug):
+                        val_batch[f'aug{aux_idx + 1}_observations'] = np.asarray(
+                            vqvae.encode(val_batch[f'aug{aux_idx + 1}_observations'], flatten=True)
+                        )
+                        val_batch[f'aug{aux_idx + 1}_next_observations'] = np.asarray(
+                            vqvae.encode(val_batch[f'aug{aux_idx + 1}_next_observations'], flatten=True)
+                        )
             _, val_info = loss_fn(val_batch, grad_params=None)
             train_metrics.update({f'validation/{k}': v for k, v in val_info.items()})
             train_metrics['time/epoch_time'] = (time.time() - last_time) / FLAGS.log_interval
@@ -275,6 +362,7 @@ def main(_):
             eval_info, trajs, cur_renders = evaluate(
                 agent=agent,
                 env=eval_env,
+                vqvae=vqvae,
                 num_eval_episodes=FLAGS.eval_episodes,
                 num_video_episodes=FLAGS.video_episodes,
                 video_frame_skip=FLAGS.video_frame_skip,

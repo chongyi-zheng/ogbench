@@ -528,19 +528,21 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the actor."""
+        if observations.shape == self.config['obs_dims']:
+            observations = jnp.expand_dims(observations, axis=0)
         dist = self.network.select('actor')(observations, temperature=temperature)
         actions = dist.sample(seed=seed)
-        actions = jnp.clip(actions, -1, 1)
+        actions = jnp.clip(actions, -1, 1).squeeze()
 
         return actions
 
     @classmethod
     def create(
-            cls,
-            seed,
-            ex_observations,
-            ex_actions,
-            config,
+        cls,
+        seed,
+        ex_observations,
+        ex_actions,
+        config,
     ):
         """Create a new agent.
 
@@ -551,7 +553,7 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
             config: Configuration dictionary.
         """
         rng = jax.random.PRNGKey(seed)
-        rng, init_rng, time_rng = jax.random.split(rng, 3)
+        rng, init_with_output_rng, init_rng = jax.random.split(rng, 3)
 
         # obs_dim = ex_observations.shape[-1]
         # action_dim = ex_actions.shape[-1]
@@ -570,18 +572,25 @@ class SARSAIFQLVIBGPIAgent(flax.struct.PyTreeNode):
         encoders = dict()
         if config['encoder'] is not None:
             encoder_module = encoder_modules[config['encoder']]
-            if 'mlp_hidden_dims' in encoder_module.keywords:
-                obs_dim = encoder_module.keywords['mlp_hidden_dims'][-1]
-            else:
-                obs_dim = encoder_modules['impala'].mlp_hidden_dims[-1]
-            rng, obs_rng = jax.random.split(rng, 2)
-            ex_observations = jax.random.normal(
-                obs_rng, shape=(ex_observations.shape[0], obs_dim), dtype=action_dtype)
+            # if 'mlp_hidden_dims' in encoder_module.keywords:
+            #     obs_dim = encoder_module.keywords['mlp_hidden_dims'][-1]
+            # elif 'stage_sizes' in encoder_module.keywords:
+            #     obs_dim = len(encoder_module.keywords['stage_sizes'][-1])
+            # else:
+            #     obs_dim = encoder_modules['impala'].mlp_hidden_dims[-1]
+            # self.num_filters * (2 ** (len(self.stage_sizes) - 1))
+            # rng, obs_rng = jax.random.split(rng, 2)
+            # ex_observations = jax.random.normal(
+            #     obs_rng, shape=(ex_observations.shape[0], obs_dim), dtype=action_dtype)
 
             encoders['critic'] = encoder_module()
             encoders['critic_vf'] = encoder_module()
             encoders['transition'] = encoder_module()
             encoders['actor'] = GCEncoder(state_encoder=encoder_module())
+
+            ex_observations, _ = encoders.get('critic').init_with_output(
+                init_with_output_rng, ex_observations)
+            obs_dim = ex_observations.shape[-1]
 
         # Define value and actor networks.
         critic_def = Value(

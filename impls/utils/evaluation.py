@@ -68,6 +68,7 @@ def evaluate(
     agent,
     env,
     dataset=None,
+    vqvae=None,
     num_eval_episodes=50,
     num_video_episodes=0,
     video_frame_skip=3,
@@ -101,6 +102,8 @@ def evaluate(
         observation, info = env.reset()
         if dataset is not None:
             observation = dataset.normalize_observations(observation)
+        if vqvae is not None:
+            observation = np.asarray(vqvae.encode(observation, flatten=True))
         done = False
         step = 0
         render = []
@@ -115,6 +118,8 @@ def evaluate(
             next_observation, reward, terminated, truncated, info = env.step(action)
             if dataset is not None:
                 next_observation = dataset.normalize_observations(next_observation)
+            if vqvae is not None:
+                next_observation = np.asarray(vqvae.encode(next_observation, flatten=True))
             done = terminated or truncated
             step += 1
 

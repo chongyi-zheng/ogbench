@@ -113,10 +113,13 @@ class VQVAEAgent(flax.struct.PyTreeNode):
 
     @partial(jax.jit, static_argnames=('flatten',))
     def encode(self, images, flatten=False):
+        if images.shape == self.config['obs_dims']:
+            images = jnp.expand_dims(images, axis=0)
         latents = self.network.select('encoder')(images, flatten=False)
         quantized_latents, _ = self.network.select('quantizer')(latents)
         if flatten:
             quantized_latents = quantized_latents.reshape(quantized_latents.shape[0], -1)
+        quantized_latents = quantized_latents.squeeze()
         return quantized_latents
 
     @jax.jit
@@ -149,6 +152,7 @@ class VQVAEAgent(flax.struct.PyTreeNode):
         rng = jax.random.PRNGKey(seed)
         rng, init_rng = jax.random.split(rng, 2)
 
+        obs_dims = ex_observations.shape[1:]
         # (chongyi): make this 512 configable
         ex_latents = jnp.ones((ex_actions.shape[0], 4, 4, 512), dtype=ex_actions.dtype)
         # ex_latent_idxs = jnp.ones((ex_actions.shape[0],), dtype=jnp.int32)
@@ -185,6 +189,8 @@ class VQVAEAgent(flax.struct.PyTreeNode):
 
         # params = network.params
         # params['modules_target_quantizer'] = params['modules_quantizer']
+        
+        config['obs_dims'] = obs_dims
 
         return cls(rng, network=network, config=flax.core.FrozenDict(**config))
 
@@ -194,6 +200,7 @@ def get_config():
         dict(
             # Agent hyperparameters.
             agent_name='vqvae',  # Agent name.
+            obs_dims=ml_collections.config_dict.placeholder(tuple),
             lr=3e-4,  # Learning rate.
             batch_size=256,  # Batch size.
             codebook_size=1024,  # Codebook size.
