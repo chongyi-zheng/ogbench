@@ -2,6 +2,9 @@ import flax.linen as nn
 import jax.numpy as jnp
 
 import jax
+import distrax
+
+from utils.networks import default_init
 
 
 def squared_euclidean_distance(a: jnp.ndarray,
@@ -95,3 +98,22 @@ class VectorQuantizer(nn.Module):
     # def decode_ids(self, ids: jnp.ndarray) -> jnp.ndarray:
     #     codebook = self.variables["params"]["codebook"]
     #     return jnp.take(codebook, ids, axis=0)
+
+
+class KLQuantizer(nn.Module):
+    """KL divergence quantizer."""
+    latent_dim: int = 512
+
+
+    def setup(self):
+        self.mean_net = nn.Dense(self.latent_dim, kernel_init=default_init())
+        self.log_std_net = nn.Dense(self.latent_dim, kernel_init=default_init())
+
+    @nn.compact
+    def __call__(self, x):
+        means = self.mean_net(x)
+        log_stds = self.log_std_net(x)
+
+        distribution = distrax.MultivariateNormalDiag(loc=means, scale_diag=jnp.exp(log_stds))
+
+        return distribution

@@ -473,7 +473,7 @@ def find_csv_files(log_dir, algos, filename) -> list[Path]:
         if env_name not in csv_files:
             csv_files[env_name] = {algo: files}
         else:
-            csv_files[env_name][algo] = files 
+            csv_files[env_name][algo] = files
     return csv_files
 
 

@@ -54,73 +54,76 @@ def main():
         for env_name in [
             "google_robot_pick_coke_can",
         ]:
-            for seed in [10, 20]:
-                exp_name = f"{datetime.today().strftime('%Y%m%d')}_vqvae_{env_name}"
-                log_dir = os.path.expanduser(
-                    f"{log_root_dir}/exp_logs/ogbench_logs/vqvae/{exp_name}/{seed}")
+            for quantizer_type in ['kl']:
+                for frame_stack in [3, 15]:
+                    for seed in [10, 20]:
+                        exp_name = f"{datetime.today().strftime('%Y%m%d')}_vqvae_{env_name}_quantizer_type={quantizer_type}_frame_stack={frame_stack}"
+                        log_dir = os.path.expanduser(
+                            f"{log_root_dir}/exp_logs/ogbench_logs/vqvae/{exp_name}/{seed}")
 
-                # change the log folder of slurm executor
-                submitit_log_dir = os.path.join(os.path.dirname(log_dir),
-                                                'submitit')
-                executor._executor.folder = Path(
-                    submitit_log_dir).expanduser().absolute()
+                        # change the log folder of slurm executor
+                        submitit_log_dir = os.path.join(os.path.dirname(log_dir),
+                                                        'submitit')
+                        executor._executor.folder = Path(
+                            submitit_log_dir).expanduser().absolute()
 
-                cmds = f"""
-                    unset PYTHONPATH;
-                    source $HOME/.zshrc;
-                    conda activate ogbench;
-                    which python;
-                    echo $CONDA_PREFIX;
+                        cmds = f"""
+                            unset PYTHONPATH;
+                            source $HOME/.zshrc;
+                            conda activate ogbench;
+                            which python;
+                            echo $CONDA_PREFIX;
+        
+                            echo job_id: $SLURM_ARRAY_JOB_ID;
+                            echo task_id: $SLURM_ARRAY_TASK_ID;
+                            squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
+                            echo seed: {seed};
+        
+                            export PROJECT_DIR=$PWD;
+                            export PYTHONPATH=$HOME/research/ogbench/impls:$HOME/research/SimplerEnv;
+                            export PATH="$PATH":"$CONDA_PREFIX"/bin;
+                            export CUDA_VISIBLE_DEVICES=0;
+                            export MUJOCO_GL=egl;
+                            export PYOPENGL_PLATFORM=egl;
+                            export EGL_DEVICE_ID=0;
+                            source $HOME/env_vars.sh
+                            export D4RL_SUPPRESS_IMPORT_ERROR=1;
+                            export LD_PRELOAD=/usr/lib64/libtcmalloc_minimal.so.4;
+                            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
+                            export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
+        
+                            rm -rf {log_dir};
+                            mkdir -p {log_dir};
+                            python $PROJECT_DIR/impls/main_simpler_env.py \
+                                --enable_wandb=1 \
+                                --env_name={env_name} \
+                                --eval_episodes=16 \
+                                --p_aug=0.5 \
+                                --frame_stack={frame_stack} \
+                                --offline_steps=300_000 \
+                                --eval_interval=50_000 \
+                                --save_interval=100_000 \
+                                --agent=impls/agents/vqvae.py \
+                                --agent.quantizer_type={quantizer_type} \
+                                --agent.encoder=resnet_34 \
+                                --agent.decoder=resnet_34 \
+                                --seed={seed} \
+                                --save_dir={log_dir} \
+                            2>&1 | tee {log_dir}/stream.log;
+        
+                            export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
+                            echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                            echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
+                            echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
+                            echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                        """
 
-                    echo job_id: $SLURM_ARRAY_JOB_ID;
-                    echo task_id: $SLURM_ARRAY_TASK_ID;
-                    squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
-                    echo seed: {seed};
+                        cmd_func = submitit.helpers.CommandFunction([
+                            "/bin/zsh", "-c",
+                            cmds,
+                        ], verbose=True)
 
-                    export PROJECT_DIR=$PWD;
-                    export PYTHONPATH=$HOME/research/ogbench/impls:$HOME/research/SimplerEnv;
-                    export PATH="$PATH":"$CONDA_PREFIX"/bin;
-                    export CUDA_VISIBLE_DEVICES=0;
-                    export MUJOCO_GL=egl;
-                    export PYOPENGL_PLATFORM=egl;
-                    export EGL_DEVICE_ID=0;
-                    source $HOME/env_vars.sh
-                    export D4RL_SUPPRESS_IMPORT_ERROR=1;
-                    export LD_PRELOAD=/usr/lib64/libtcmalloc_minimal.so.4;
-                    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
-                    export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-
-                    rm -rf {log_dir};
-                    mkdir -p {log_dir};
-                    python $PROJECT_DIR/impls/main_simpler_env.py \
-                        --enable_wandb=1 \
-                        --env_name={env_name} \
-                        --eval_episodes=16 \
-                        --p_aug=0.5 \
-                        --frame_stack=3 \
-                        --offline_steps=300_000 \
-                        --eval_interval=50_000 \
-                        --save_interval=100_000 \
-                        --agent=impls/agents/vqvae.py \
-                        --agent.encoder=resnet_34 \
-                        --agent.decoder=resnet_34 \
-                        --seed={seed} \
-                        --save_dir={log_dir} \
-                    2>&1 | tee {log_dir}/stream.log;
-
-                    export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
-                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
-                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
-                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                """
-
-                cmd_func = submitit.helpers.CommandFunction([
-                    "/bin/zsh", "-c",
-                    cmds,
-                ], verbose=True)
-
-                executor.submit(cmd_func)
+                        executor.submit(cmd_func)
 
 
 if __name__ == "__main__":
