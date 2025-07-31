@@ -189,7 +189,7 @@ class VQVAEAgent(flax.struct.PyTreeNode):
 
         # Define encoder, decoder, and quantizer networks.
         encoder_def = encoder_modules[config['encoder']]()
-        decoder_def = decoder_modules[config['decoder']]()
+        decoder_def = decoder_modules[config['decoder']](final_channels=ex_observations.shape[-1])
 
         ex_latents, _ = encoder_def.init_with_output(init_with_output_rng, ex_observations, flatten=False)
 
