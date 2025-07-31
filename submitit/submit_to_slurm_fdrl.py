@@ -50,13 +50,12 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["humanoidmaze-medium-navigate-singletask-task3-v0",
-                         "humanoidmaze-medium-navigate-singletask-task4-v0"]:
+        for env_name in ["humanoidmaze-medium-navigate-singletask-task1-v0"]:
             for discount in [0.995]:
-                for alpha_critic in [0]:
+                for alpha_critic in [0.3, 1, 2]:
                     for alpha_actor in [30]:
                         for critic_loss_type in ['q-learning']:
-                            for ret_agg in ['min']:
+                            for ret_agg in ['min', 'mean']:
                                 for q_agg in ['mean']:
                                     for value_layer_norm in [True]:
                                         for actor_layer_norm in [True]:
