@@ -508,9 +508,9 @@ class FDRLAgent(flax.struct.PyTreeNode):
             )
 
             observations = jnp.repeat(
-                jnp.expand_dims(observations, 1),
+                jnp.expand_dims(observations, -2),
                 self.config['num_samples'],
-                axis=1
+                axis=-2
             )
             flow_actions = self.compute_flow_actions(actor_noises, observations)
 
@@ -655,8 +655,8 @@ def get_config():
             expectile=0.9,  # IQL expectile.
             ret_agg='min',  # Aggregation method for return values.
             q_agg='min',  # Aggregation method for Q values.
-            next_action_extraction='sfbc',  # Method to extract the
-            policy_extraction='sfbc',
+            next_action_extraction='fql',  # Method to extract the
+            policy_extraction='fql',
             critic_loss_type='q-learning',  # Type of the critic loss ('sarsa', 'q-learning').
             alpha_critic=1.0,  # vector field bootstrapped regularization coefficient.
             alpha_actor=1.0,  # BC coefficient.
