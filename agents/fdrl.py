@@ -131,6 +131,31 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 next_actions = self.network.select('actor_onestep_flow')(batch['next_observations'], next_actor_noises)
                 next_actions = jnp.clip(next_actions, -1, 1)
 
+            # Both for logging and ensemble weights.
+            q_noises = jax.random.normal(q_rng, (batch_size, self.config['num_samples'], 1))
+            n_observations = jnp.repeat(
+                jnp.expand_dims(batch['observations'], axis=-2),
+                self.config['num_samples'], 
+                axis=-2,
+            )
+            n_actions = jnp.repeat(
+                jnp.expand_dims(batch['actions'], axis=-2),
+                self.config['num_samples'],
+                axis=-2,
+            )
+            q1 = (q_noises + self.network.select('critic_flow1')(
+                q_noises, jnp.zeros_like(q_noises), n_observations, n_actions)).squeeze(-1)
+            q2 = (q_noises + self.network.select('critic_flow2')(
+                q_noises, jnp.zeros_like(q_noises), n_observations, n_actions)).squeeze(-1)
+            if self.config['q_agg'] == 'min':
+                q = jnp.minimum(q1, q2)
+            else:
+                q = (q1 + q2) / 2
+            # from the SUNRISE paper: https://arxiv.org/pdf/2007.04938
+            q_stds = jnp.std(q, axis=-1)
+            weights = jax.nn.sigmoid(-self.config['ensemble_weight_temp'] * q_stds) + 0.5
+            weights = jax.lax.stop_gradient(weights)
+
             noises = jax.random.normal(noise_rng, (batch_size, 1))
             times = jax.random.uniform(time_rng, (batch_size, 1))
             next_returns1 = self.compute_flow_returns(
@@ -156,7 +181,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
             vector_field2 = self.network.select('critic_flow2')(
                 noisy_returns, times, batch['observations'], batch['actions'], params=grad_params)
             vector_field_loss = ((vector_field1 - target_vector_field) ** 2 +
-                                 (vector_field2 - target_vector_field) ** 2).mean()
+                                 (vector_field2 - target_vector_field) ** 2).mean(axis=-1)
 
             noisy_next_returns1 = self.compute_flow_returns(
                 noises, batch['next_observations'], next_actions, end_times=times,
@@ -187,30 +212,21 @@ class FDRLAgent(flax.struct.PyTreeNode):
             else:
                 target_bootstrapped_vector_field = (target_bootstrapped_vector_field1 + target_bootstrapped_vector_field2) / 2
             bootstrapped_vector_field_loss = ((bootstrapped_vector_field1 - target_bootstrapped_vector_field) ** 2 +
-                                              (bootstrapped_vector_field2 - target_bootstrapped_vector_field) ** 2).mean()
+                                              (bootstrapped_vector_field2 - target_bootstrapped_vector_field) ** 2).mean(axis=-1)
 
-            # Additional metrics for logging.
-            q_noises = jax.random.normal(q_rng, (batch_size, 1))
-            q1 = (q_noises + self.network.select('critic_flow1')(
-                q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
-            q2 = (q_noises + self.network.select('critic_flow2')(
-                q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
-            if self.config['q_agg'] == 'min':
-                q = jnp.minimum(q1, q2)
-            else:
-                q = (q1 + q2) / 2
-
-            critic_loss = self.config['vector_field_alpha'] * vector_field_loss + self.config[
-                'alpha_critic'] * bootstrapped_vector_field_loss
+            critic_loss = (self.config['vector_field_alpha'] * vector_field_loss +
+                           self.config['alpha_critic'] * bootstrapped_vector_field_loss)
+            critic_loss = (weights * critic_loss).mean()
 
         return critic_loss, {
+            'critic_loss': critic_loss,
             'vector_field_loss': vector_field_loss,
             'bootstrapped_vector_field_loss': bootstrapped_vector_field_loss,
-            # 'q_loss': q_loss,
-            'critic_loss': critic_loss,
             'q_mean': q.mean(),
+            'q_std': q_stds.mean(),
             'q_max': q.max(),
             'q_min': q.min(),
+            'weight': weights.mean(),
         }
 
     def actor_loss(self, batch, grad_params, rng):
@@ -655,6 +671,7 @@ def get_config():
             expectile=0.9,  # IQL expectile.
             ret_agg='min',  # Aggregation method for return values.
             q_agg='min',  # Aggregation method for Q values.
+            ensemble_weight_temp=10.0,  # Temperature for the Q ensemble weights.
             next_action_extraction='fql',  # Method to extract the
             policy_extraction='fql',
             critic_loss_type='q-learning',  # Type of the critic loss ('sarsa', 'q-learning').
