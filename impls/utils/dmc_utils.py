@@ -358,6 +358,7 @@ def get_dataset(
     """
     dataset_dir = os.path.expanduser(dataset_dir)
     reward_free_prefix = 'reward_free' if reward_free else 'reward_labeled'
+    env_name = env_name.replace('_dense', '')
     env_suffix = env_name.split('_')[0] if reward_free else env_name
     train_h5path = os.path.join(
         dataset_dir,

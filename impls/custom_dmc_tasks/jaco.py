@@ -16,6 +16,7 @@
 
 import collections
 
+import numpy as np
 from dm_control import composer
 from dm_control.composer import initializers
 from dm_control.composer.variation import distributions
@@ -28,7 +29,6 @@ from dm_control.manipulation.shared import robots
 from dm_control.manipulation.shared import workspaces
 from dm_control.utils import rewards
 from dm_env import specs
-import numpy as np
 
 _ReachWorkspace = collections.namedtuple(
     '_ReachWorkspace', ['target_bbox', 'tcp_bbox', 'arm_offset'])
@@ -63,7 +63,11 @@ def make(task_id, obs_type, seed, image_wh=None):
     obs_settings = observations.VISION if obs_type == 'pixels' else observations.PERFECT_FEATURES
     if image_wh is not None:
         obs_settings = obs_settings._replace(camera=obs_settings.camera._replace(height=64, width=64))
-    task = _reach(task_id, obs_settings=obs_settings, use_site=True)
+    if 'dense' in task_id:
+        task_id = task_id.split('_dense')[0]
+        task = _reach_dense(task_id, obs_settings=obs_settings, use_site=True)
+    else:
+        task = _reach(task_id, obs_settings=obs_settings, use_site=True)
     return composer.Environment(task,
                                 time_limit=_TIME_LIMIT,
                                 random_state=seed)
@@ -111,7 +115,7 @@ class MultiTaskReach(composer.Task):
             ]
             assert len(self._targets) > 0
 
-        #target_pos_distribution = distributions.Uniform(*TASKS[task_id])
+        # target_pos_distribution = distributions.Uniform(*TASKS[task_id])
         self._prop = prop
         if prop:
             # The prop itself is used to visualize the target location.
@@ -127,9 +131,9 @@ class MultiTaskReach(composer.Task):
                 self._target = self._make_target_site(parent_entity=arena,
                                                       visible=True)
 
-            #obs = observable.MJCFFeature('pos', self._target)
-            #obs.configure(**obs_settings.prop_pose._asdict())
-            #self._task_observables['target_position'] = obs
+            # obs = observable.MJCFFeature('pos', self._target)
+            # obs.configure(**obs_settings.prop_pose._asdict())
+            # self._task_observables['target_position'] = obs
 
         # Add sites for visualizing the prop and target bounding boxes.
         workspaces.add_bbox_site(body=self.root_entity.mjcf_model.worldbody,
@@ -195,6 +199,19 @@ class MultiTaskReach(composer.Task):
                 physics.bind(self._target).pos = self._targets[0]
 
 
+class MultiTaskReachDense(MultiTaskReach):
+    def get_reward(self, physics):
+        hand_pos = physics.bind(self._hand.tool_center_point).xpos
+        rews = []
+        for target_pos in self._targets:
+            distance = np.linalg.norm(hand_pos - target_pos)
+            rews.append(-distance)
+        rews = np.array(rews).astype(np.float32)
+        if len(self._targets) == 1:
+            return rews[0]
+        return rews
+
+
 def _reach(task_id, obs_settings, use_site):
     """Configure and instantiate a `Reach` task.
 
@@ -224,4 +241,37 @@ def _reach(task_id, obs_settings, use_site):
                           obs_settings=obs_settings,
                           workspace=workspace,
                           control_timestep=constants.CONTROL_TIMESTEP)
+    return task
+
+
+def _reach_dense(task_id, obs_settings, use_site):
+    """Configure and instantiate a `Reach` task.
+
+  Args:
+    obs_settings: An `observations.ObservationSettings` instance.
+    use_site: Boolean, if True then the target will be a fixed site, otherwise
+      it will be a moveable Duplo brick.
+
+  Returns:
+    An instance of `reach.Reach`.
+  """
+    arena = arenas.Standard()
+    arm = robots.make_arm(obs_settings=obs_settings)
+    hand = robots.make_hand(obs_settings=obs_settings)
+    if use_site:
+        workspace = _SITE_WORKSPACE
+        prop = None
+    else:
+        workspace = _DUPLO_WORKSPACE
+        prop = props.Duplo(observable_options=observations.make_options(
+            obs_settings, observations.FREEPROP_OBSERVABLES))
+    task = MultiTaskReachDense(task_id,
+                               arena=arena,
+                               arm=arm,
+                               hand=hand,
+                               prop=prop,
+                               obs_settings=obs_settings,
+                               workspace=workspace,
+                               control_timestep=constants.CONTROL_TIMESTEP)
+
     return task
