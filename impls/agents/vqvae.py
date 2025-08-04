@@ -6,7 +6,6 @@ import jax
 import jax.numpy as jnp
 import ml_collections
 import optax
-from torch.ao.quantization.quantizer import Quantizer
 
 from utils.encoders import encoder_modules
 from utils.decoders import decoder_modules
