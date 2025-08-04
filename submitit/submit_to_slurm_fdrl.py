@@ -23,7 +23,7 @@ def main():
                           'node030.ionic.cs.princeton.edu', 'node202.ionic.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
         exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
@@ -46,21 +46,20 @@ def main():
         slurm_gpus_per_node=1,
         slurm_exclude=exclude,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=30,
+        slurm_array_parallelism=20,
     )
 
     with executor.batch():  # job array
-        for env_name in ["humanoidmaze-medium-navigate-singletask-task2-v0",
-                         "humanoidmaze-medium-navigate-singletask-task4-v0"]:
-            for discount in [0.995]:
-                for alpha_critic in [0.3, 1]:
-                    for alpha_actor in [30]:
+        for env_name in ["puzzle-4x4-play-singletask-task4-v0"]:
+            for discount in [0.99]:
+                for alpha_critic in [0.01, 0.03, 0.1]:
+                    for alpha_actor in [300]:
                         for critic_loss_type in ['q-learning']:
                             for next_action_extraction in ['fql']:
                                 for policy_extraction in ['fql']:
                                     for ret_agg in ['min', 'mean']:
                                         for q_agg in ['mean']:
-                                            for ensemble_weight_temp in [0.1, 1.0, 10.0, 20.0, 50.0]:
+                                            for ensemble_weight_temp in [0.1, 10.0, 20.0, 50.0, 100.0]:
                                                 for value_layer_norm in [True]:
                                                     for actor_layer_norm in [True]:
                                                         for seed in [10, 20, 30]:
