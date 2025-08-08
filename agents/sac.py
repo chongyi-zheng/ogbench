@@ -164,7 +164,7 @@ class SACAgent(flax.struct.PyTreeNode):
         # Define networks.
         critic_def = Value(
             hidden_dims=config['value_hidden_dims'],
-            layer_norm=config['layer_norm'],
+            layer_norm=config['value_layer_norm'],
             num_ensembles=2,
         )
         actor_def = Actor(
@@ -208,8 +208,8 @@ def get_config():
             batch_size=256,  # Batch size.
             actor_hidden_dims=(512, 512, 512, 512),  # Actor network hidden dimensions.
             value_hidden_dims=(512, 512, 512, 512),  # Value network hidden dimensions.
-            layer_norm=True,  # Whether to use layer normalization.
-            actor_layer_norm=False,  # Whether to use layer normalization for the actor.
+            value_layer_norm=True,  # Whether to use layer normalization for the critic.
+            actor_layer_norm=True,  # Whether to use layer normalization for the actor.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
             target_entropy=ml_collections.config_dict.placeholder(float),  # Target entropy (None for automatic tuning).

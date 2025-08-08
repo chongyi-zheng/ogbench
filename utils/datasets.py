@@ -56,8 +56,8 @@ class Dataset(FrozenDict):
         self.return_next_actions = False  # Whether to additionally return next actions; set outside the class.
 
         # Compute terminal and initial locations.
-        self.terminal_locs = np.nonzero(self['terminals'] > 0)[0]
-        self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
+        # self.terminal_locs = np.nonzero(self['terminals'] > 0)[0]
+        # self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
 
     def get_random_idxs(self, num_idxs):
         """Return `num_idxs` random indices."""

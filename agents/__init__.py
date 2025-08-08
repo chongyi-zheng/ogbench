@@ -1,3 +1,4 @@
+from agents.dual_td_nce import DualTDNCEAgent
 from agents.fdrl import FDRLAgent
 from agents.fql import FQLAgent
 from agents.ifql import IFQLAgent
@@ -7,6 +8,7 @@ from agents.rebrac import ReBRACAgent
 from agents.sac import SACAgent
 
 agents = dict(
+    dual_td_nce=DualTDNCEAgent,
     fdrl=FDRLAgent,
     fql=FQLAgent,
     ifql=IFQLAgent,

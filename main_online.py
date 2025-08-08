@@ -10,12 +10,11 @@ import wandb
 from absl import app, flags
 from agents import agents
 from ml_collections import config_flags
-from utils.online_env_utils import make_online_env
+from envs.env_utils import make_env_and_datasets
 from utils.datasets import ReplayBuffer
 from utils.evaluation import evaluate, flatten
 from utils.flax_utils import restore_agent, save_agent
 from utils.log_utils import CsvLogger, get_exp_name, get_flag_dict, get_wandb_video, setup_wandb
-from utils.vis_utils import visualize_trajs
 
 FLAGS = flags.FLAGS
 
@@ -23,7 +22,7 @@ flags.DEFINE_integer('enable_wandb', 1, 'Whether to use wandb.')
 flags.DEFINE_string('wandb_run_group', 'debug', 'Run group.')
 flags.DEFINE_string('wandb_mode', 'offline', 'Wandb mode.')
 flags.DEFINE_integer('seed', 0, 'Random seed.')
-flags.DEFINE_string('env_name', 'online-ant-xy-v0', 'Environment name.')
+flags.DEFINE_string('env_name', 'antmaze-large-navigate-singletask-v0', 'Environment name.')
 flags.DEFINE_string('save_dir', 'exp/', 'Save directory.')
 flags.DEFINE_string('restore_path', None, 'Restore path.')
 flags.DEFINE_integer('restore_epoch', None, 'Restore epoch.')
@@ -36,6 +35,7 @@ flags.DEFINE_integer('log_interval', 5000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 100000, 'Evaluation interval.')
 flags.DEFINE_integer('save_interval', 1000000, 'Saving interval.')
 flags.DEFINE_integer('terminate_at_end', 0, 'Whether to set terminated=True when truncated=True.')
+flags.DEFINE_integer('replay_buffer_size', 1000000, 'Maximum size of the replay buffer.')
 
 flags.DEFINE_integer('eval_episodes', 50, 'Number of episodes for each task.')
 flags.DEFINE_float('eval_temperature', 0, 'Actor temperature for evaluation.')
@@ -63,8 +63,7 @@ def main(_):
     config = FLAGS.agent
 
     # Set up environments and replay buffer.
-    env = make_online_env(FLAGS.env_name)
-    eval_env = make_online_env(FLAGS.env_name)
+    env, eval_env, _, _ = make_env_and_datasets(FLAGS.env_name)
 
     example_transition = dict(
         observations=env.observation_space.sample(),
@@ -74,7 +73,7 @@ def main(_):
         next_observations=env.observation_space.sample(),
     )
 
-    replay_buffer = ReplayBuffer.create(example_transition, size=int(1e6))
+    replay_buffer = ReplayBuffer.create(example_transition, size=FLAGS.replay_buffer_size)
 
     # Initialize agent.
     random.seed(FLAGS.seed)
@@ -146,7 +145,11 @@ def main(_):
             train_metrics['time/total_time'] = time.time() - first_time
             train_metrics.update(expl_metrics)
             last_time = time.time()
-            wandb.log(train_metrics, step=i)
+            if FLAGS.enable_wandb:
+                wandb.log(train_metrics, step=i)
+
+                if FLAGS.wandb_mode == 'offline':
+                    trigger_sync()
             train_logger.log(train_metrics, step=i)
 
         # Evaluate agent.
@@ -167,11 +170,11 @@ def main(_):
                 video = get_wandb_video(renders=renders)
                 eval_metrics['video'] = video
 
-            traj_image = visualize_trajs(FLAGS.env_name, trajs)
-            if traj_image is not None:
-                eval_metrics['traj'] = wandb.Image(traj_image)
+            if FLAGS.enable_wandb:
+                wandb.log(eval_metrics, step=i)
 
-            wandb.log(eval_metrics, step=i)
+                if FLAGS.wandb_mode == 'offline':
+                    trigger_sync()
             eval_logger.log(eval_metrics, step=i)
 
         # Save agent.
