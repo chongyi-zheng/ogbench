@@ -50,10 +50,14 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["antmaze-teleport-navigate-singletask-task3-v0"]:
+        for env_name in ["antmaze-teleport-navigate-singletask-task1-v0", 
+                         "antmaze-teleport-navigate-singletask-task2-v0",
+                         "antmaze-teleport-navigate-singletask-task3-v0",
+                         "antmaze-teleport-navigate-singletask-task4-v0",
+                         "antmaze-teleport-navigate-singletask-task5-v0"]:
             for discount in [0.995]:
-                for alpha_critic in [3, 10, 30]:
-                    for alpha_actor in [3, 10, 30]:
+                for alpha_critic in [3]:
+                    for alpha_actor in [10]:
                         for critic_loss_type in ['q-learning']:
                             for next_action_extraction in ['fql']:
                                 for policy_extraction in ['fql']:
@@ -62,7 +66,7 @@ def main():
                                             for ensemble_weight_temp in [0.0]:
                                                 for value_layer_norm in [True]:
                                                     for actor_layer_norm in [True]:
-                                                        for seed in [10, 20, 30]:
+                                                        for seed in [40, 50, 60]:
                                                             exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_actor={alpha_actor}_critic_loss_type={critic_loss_type}_next_a_extrac={next_action_extraction}_pi_extrac={policy_extraction}_ensem_w_temp={ensemble_weight_temp}_value_ln={value_layer_norm}_actor_ln={actor_layer_norm}_ret_agg={ret_agg}_q_agg={q_agg}"
                                                             log_dir = os.path.expanduser(
                                                                 f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
