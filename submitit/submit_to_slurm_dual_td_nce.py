@@ -57,7 +57,7 @@ def main():
                     for seed in [10, 20, 30]:
                         exp_name = f"{datetime.today().strftime('%Y%m%d')}_dual_td_nce_{env_name}_const_std={const_std}_norm_q_loss={normalize_q_loss}"
                         log_dir = os.path.expanduser(
-                            f"{log_root_dir}/exp_logs/dual_rl_logs/dual_rl/{exp_name}/{seed}")
+                            f"{log_root_dir}/exp_logs/dual_rl_logs/dual_td_nce/{exp_name}/{seed}")
                         # change the log folder of slurm executor
                         submitit_log_dir = os.path.join(os.path.dirname(log_dir),
                                                         'submitit')
@@ -88,7 +88,7 @@ def main():
         
                             rm -rf {log_dir};
                             mkdir -p {log_dir};
-                            python $PROJECT_DIR/main.py \
+                            python $PROJECT_DIR/main_online.py \
                                 --enable_wandb=1 \
                                 --env_name={env_name} \
                                 --train_steps=1_000_000 \
