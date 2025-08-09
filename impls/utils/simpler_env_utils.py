@@ -215,20 +215,20 @@ class TrajectoryTransform(metaclass=abc.ABCMeta):
     expected_tensor_spec: TENSOR_SPEC
     step_map_fn: Optional[Any] = None
 
-    def get_for_cached_trajectory_transform(self):
-        """Creates a copy of this traj transform to use with caching.
-
-        The returned TrajectoryTransfrom copy will be initialized with the default
-        version of the `episode_to_steps_map_fn`, because the effect of that
-        function has already been materialized in the cached copy of the dataset.
-        Returns:
-          trajectory_transform: A copy of the TrajectoryTransform with overridden
-            `episode_to_steps_map_fn`.
-        """
-        traj_copy = dataclasses.replace(self)
-        traj_copy.episode_dataset_spec = traj_copy.episode_to_steps_fn_dataset_spec
-        traj_copy.episode_to_steps_map_fn = lambda e: e[rlds_types.STEPS]
-        return traj_copy
+    # def get_for_cached_trajectory_transform(self):
+    #     """Creates a copy of this traj transform to use with caching.
+    #
+    #     The returned TrajectoryTransfrom copy will be initialized with the default
+    #     version of the `episode_to_steps_map_fn`, because the effect of that
+    #     function has already been materialized in the cached copy of the dataset.
+    #     Returns:
+    #       trajectory_transform: A copy of the TrajectoryTransform with overridden
+    #         `episode_to_steps_map_fn`.
+    #     """
+    #     traj_copy = dataclasses.replace(self)
+    #     traj_copy.episode_dataset_spec = traj_copy.episode_to_steps_fn_dataset_spec
+    #     traj_copy.episode_to_steps_map_fn = lambda e: e[rlds_types.STEPS]
+    #     return traj_copy
 
     def transform_episodic_rlds_dataset(self, episodes_dataset: tf.data.Dataset):
         """Applies this TrajectoryTransform to the dataset of episodes."""
@@ -247,21 +247,21 @@ class TrajectoryTransform(metaclass=abc.ABCMeta):
 
         return self._create_pattern_dataset(steps_dataset)
 
-    def create_test_dataset(
-            self,
-    ) -> tf.data.Dataset:
-        """Creates a test dataset of trajectories.
-
-        It is guaranteed that the structure of this dataset will be the same as
-        when flowing real data. Hence this is a useful construct for tests or
-        initialization of JAX models.
-        Returns:
-          dataset: A test dataset made of zeros structurally identical to the
-            target dataset of trajectories.
-        """
-        zeros = transformations.zeros_from_spec(self.expected_tensor_spec)
-
-        return tf.data.Dataset.from_tensors(zeros)
+    # def create_test_dataset(
+    #         self,
+    # ) -> tf.data.Dataset:
+    #     """Creates a test dataset of trajectories.
+    #
+    #     It is guaranteed that the structure of this dataset will be the same as
+    #     when flowing real data. Hence this is a useful construct for tests or
+    #     initialization of JAX models.
+    #     Returns:
+    #       dataset: A test dataset made of zeros structurally identical to the
+    #         target dataset of trajectories.
+    #     """
+    #     zeros = transformations.zeros_from_spec(self.expected_tensor_spec)
+    #
+    #     return tf.data.Dataset.from_tensors(zeros)
 
     def _create_pattern_dataset(
             self, steps_dataset: tf.data.Dataset) -> tf.data.Dataset:
@@ -280,7 +280,11 @@ class TrajectoryTransform(metaclass=abc.ABCMeta):
 
 
 class TrajectoryTransformBuilder:
-    """Facilitates creation of the `TrajectoryTransform`."""
+    """
+    References: https://github.com/google-deepmind/open_x_embodiment/blob/main/colabs/Open_X_Embodiment_Datasets.ipynb.
+    
+    Facilitates creation of the `TrajectoryTransform`.
+    """
 
     def __init__(self,
                  dataset_spec: RLDS_SPEC,
@@ -400,6 +404,23 @@ def n_step_pattern_builder(n: int) -> Any:
         return traj
 
     return transform_fn
+
+
+# def episode_to_steps_map_fn(episode):
+#     steps = episode[rlds_types.STEPS]
+#     batched_steps = rlds.transformations.batch(steps, size=2, shift=1)
+#
+#     def batched_steps_to_transition(batch):
+#         """Converts a pair of consecutive steps to a custom transition format."""
+#         return {'observations': batch[rlds.OBSERVATION][0],
+#                 'next_observations': batch[rlds.OBSERVATION][1],
+#                 'actions': batch[rlds.ACTION][0],
+#                 'next_actions': batch[rlds.ACTION][1],
+#                 'rewards': batch[rlds.REWARD][0],
+#                 'terminals': tf.cast(batch[rlds.IS_LAST][0], tf.float32),
+#                 'masks': 1.0 - batch[rlds.REWARD][0]}
+#
+#     return batched_steps.map(batched_steps_to_transition)
 
 
 def rescale_action_with_bound(
@@ -528,13 +549,14 @@ def bridge_map_action(to_step: rlds.Step, from_step: rlds.Step):
 
 
 def base_stacked_step_map_fn(step: rlds.Step, frame_stack: int = 1):
+    observations = tf.transpose(step['observation'][:frame_stack], perm=[1, 2, 0, 3])
+    next_observations = tf.transpose(step['observation'][1:frame_stack + 1], perm=[1, 2, 0, 3])
+    observations = tf.reshape(observations, [*observations.shape[:-2], -1])
+    next_observations = tf.reshape(next_observations, [*next_observations.shape[:-2], -1])
+
     return {
-        'observations': tf.concat([
-            step['observation'][idx] for idx in range(frame_stack)
-        ], axis=-1),
-        'next_observations': tf.concat([
-            step['observation'][idx] for idx in range(1, frame_stack + 1)
-        ], axis=-1),
+        'observations': observations,
+        'next_observations': next_observations,
         'actions': step['action'][frame_stack - 1],
         'next_actions': step['action'][frame_stack],
         'rewards': step['reward'][frame_stack - 1],
@@ -692,7 +714,7 @@ def make_env_and_datasets(
                                         map_action=google_robot_map_action)
     elif 'widowx' in env.get_wrapper_attr('robot_uid'):
         step_map_fn = functools.partial(base_step_map_fn,
-                                        map_action=google_robot_map_action)
+                                        map_action=bridge_map_action)
     else:
         raise NotImplementedError()
 
@@ -700,7 +722,9 @@ def make_env_and_datasets(
     stacked_step_map_fn = functools.partial(
         base_stacked_step_map_fn, frame_stack=frame_stack)
     trajectory_transform = TrajectoryTransformBuilder(
-        rlds_spec, step_map_fn=step_map_fn,
+        rlds_spec,
+        # episode_to_steps_map_fn=episode_to_steps_map_fn,
+        step_map_fn=step_map_fn,
         pattern_fn=n_step_pattern_builder(trajectory_length)).build(
         validate_expected_tensor_spec=False)
 

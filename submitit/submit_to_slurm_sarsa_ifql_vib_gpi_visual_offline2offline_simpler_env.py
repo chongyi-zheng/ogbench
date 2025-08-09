@@ -54,7 +54,7 @@ def main():
         for env_name in [
             "google_robot_pick_coke_can"
         ]:
-            for alpha in [30.0, 10.0]:
+            for alpha in [30000, 3000, 300]:
                 for num_flow_goals in [16]:
                     for actor_freq in [4]:
                         for expectile in [0.9]:
@@ -109,7 +109,7 @@ def main():
                                                     --finetuning_steps=250_000 \
                                                     --eval_interval=25_000 \
                                                     --save_interval=500_000 \
-                                                    --vqvae_restore_path /home/cz8792/gpfs/exp_logs/ogbench_logs/vqvae/20250727_vqvae_google_robot_pick_coke_can/10/debug/sd010_s_66319823.0.20250727_165712 \
+                                                    --vqvae_restore_path /home/cz8792/gpfs/exp_logs/ogbench_logs/vqvae/20250731_vqvae_google_robot_pick_coke_can_quantizer_type=kl_frame_stack=3/10/debug/sd010_s_66455138.0.20250731_174433 \
                                                     --vqvae_restore_epoch 300_000 \
                                                     --agent=impls/agents/sarsa_ifql_vib_gpi.py \
                                                     --agent.batch_size=256 \

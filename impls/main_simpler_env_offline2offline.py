@@ -122,8 +122,13 @@ def main(_):
         assert 'vqvae' in agents
         vqvae_class = agents['vqvae']
         vqvae_config = vqvae_get_config()
-        vqvae_config['encoder'] = 'resnet_34'  # (chongyi): make this configurable
-        vqvae_config['decoder'] = 'resnet_34'  # (chongyi): make this configurable
+        # vqvae_config['encoder'] = 'resnet_34'  # (chongyi): make this configurable
+        # vqvae_config['decoder'] = 'resnet_34'  # (chongyi): make this configurable
+        # if 'quantizer_type=kl' in
+        with open(os.path.join(FLAGS.vqvae_restore_path, 'flags.json'), 'r') as f:
+            vqvae_flag_dict = json.load(f)
+        vqvae_config.update(vqvae_flag_dict['agent'])
+
         vqvae = vqvae_class.create(
             FLAGS.seed,
             example_batch['observations'],
@@ -271,7 +276,7 @@ def main(_):
         .shuffle(200_000)
         .repeat()
         .batch(config['batch_size'])
-        .prefetch(10)
+        .prefetch(tf.data.AUTOTUNE)
     )
     finetuning_train_dataset_iter = finetuning_train_dataset.as_numpy_iterator()
     finetuning_val_dataset = (
@@ -279,7 +284,7 @@ def main(_):
         .shuffle(20_000)
         .repeat()
         .batch(config['batch_size'])
-        .prefetch(10)
+        .prefetch(tf.data.AUTOTUNE)
     )
     finetuning_val_dataset_iter = finetuning_val_dataset.as_numpy_iterator()
 
