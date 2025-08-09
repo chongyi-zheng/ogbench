@@ -62,7 +62,7 @@ def main():
                                 for latent_dim in [512]:
                                     for value_layer_norm in [True]:
                                         for seed in [10, 20]:
-                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_kl_weight={kl_weight}_latent_dim={latent_dim}_value_ln={value_layer_norm}"
+                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_sarsa_ifql_vib_gpi_offline2offline_{env_name}_alpha={alpha}_num_fg={num_flow_goals}_actor_freq={actor_freq}_expectile={expectile}_kl_weight={kl_weight}_latent_dim={latent_dim}_value_ln={value_layer_norm}_fs=3"
                                             log_dir = os.path.expanduser(
                                                 f"{log_root_dir}/exp_logs/ogbench_logs/sarsa_ifql_vib_gpi_offline2offline/{exp_name}/{seed}")
 
