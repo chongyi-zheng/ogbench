@@ -10,7 +10,7 @@ import wandb
 from absl import app, flags
 from agents import agents
 from ml_collections import config_flags
-from envs.env_utils import make_env_and_datasets
+from utils.online_env_utils import make_online_env
 from utils.datasets import ReplayBuffer
 from utils.evaluation import evaluate, flatten
 from utils.flax_utils import restore_agent, save_agent
@@ -22,7 +22,7 @@ flags.DEFINE_integer('enable_wandb', 1, 'Whether to use wandb.')
 flags.DEFINE_string('wandb_run_group', 'debug', 'Run group.')
 flags.DEFINE_string('wandb_mode', 'offline', 'Wandb mode.')
 flags.DEFINE_integer('seed', 0, 'Random seed.')
-flags.DEFINE_string('env_name', 'antmaze-large-navigate-singletask-v0', 'Environment name.')
+flags.DEFINE_string('env_name', 'online-ant-xy-v0', 'Environment name.')
 flags.DEFINE_string('save_dir', 'exp/', 'Save directory.')
 flags.DEFINE_string('restore_path', None, 'Restore path.')
 flags.DEFINE_integer('restore_epoch', None, 'Restore epoch.')
@@ -63,7 +63,8 @@ def main(_):
     config = FLAGS.agent
 
     # Set up environments and replay buffer.
-    env, eval_env, _, _ = make_env_and_datasets(FLAGS.env_name)
+    env = make_online_env(FLAGS.env_name)
+    eval_env = make_online_env(FLAGS.env_name)
 
     example_transition = dict(
         observations=env.observation_space.sample(),

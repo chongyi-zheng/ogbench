@@ -44,8 +44,7 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["pointmaze-large-navigate-singletask-task2-v0",
-                         "antmaze-large-navigate-singletask-task1-v0"]:
+        for env_name in ["online-ant-xy-v0"]:
             for seed in [10, 20, 30]:
                 exp_name = f"{datetime.today().strftime('%Y%m%d')}_sac_{env_name}"
                 log_dir = os.path.expanduser(

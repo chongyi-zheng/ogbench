@@ -50,8 +50,7 @@ def main():
     )
 
     with executor.batch():  # job array
-        for env_name in ["pointmaze-large-navigate-singletask-task2-v0",
-                         "antmaze-large-navigate-singletask-task1-v0"]:
+        for env_name in ["online-ant-xy-v0"]:
             for const_std in [False]:
                 for normalize_q_loss in [True, False]:
                     for seed in [10, 20, 30]:
