@@ -13,7 +13,7 @@ def main():
         partition = 'gpu'
         account = None
         exclude = None
-    elif cluster_name == 'della':
+    elif 'della' in cluster_name:
         log_root_dir = '/home/cz8792/gpfs'
         partition = 'gpu-test'
         account = None
