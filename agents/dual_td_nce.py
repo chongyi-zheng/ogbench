@@ -212,16 +212,20 @@ class DualTDNCEAgent(flax.struct.PyTreeNode):
             hidden_dims=config['actor_hidden_dims'],
             action_dim=action_dim,
             layer_norm=config['actor_layer_norm'],
-            state_dependent_std=False,
+            tanh_squash=config['tanh_squash'],
+            state_dependent_std=config['state_dependent_std'],
             const_std=config['const_std'],
+            final_fc_init_scale=config['actor_fc_scale'],
             encoder=encoders.get('actor'),
         )
         actor_bc_def = Actor(
             hidden_dims=config['actor_hidden_dims'],
             action_dim=action_dim,
             layer_norm=config['actor_layer_norm'],
-            state_dependent_std=False,
+            tanh_squash=config['tanh_squash'],
+            state_dependent_std=config['state_dependent_std'],
             const_std=config['const_std'],
+            final_fc_init_scale=config['actor_fc_scale'],
             encoder=encoders.get('actor'),
         )
 
@@ -257,6 +261,9 @@ def get_config():
             actor_layer_norm=True,  # Whether to use layer normalization for the actor.
             discount=0.99,  # Discount factor.
             tau=0.005,  # Target network update rate.
+            tanh_squash=True,  # Whether to squash actions with tanh.
+            state_dependent_std=True,  # Whether to use state-dependent standard deviations for actor.
+            actor_fc_scale=0.01,  # Final layer initialization scale for actor.
             const_std=False,  # Whether to use constant standard deviation for the actor.
             normalize_q_loss=False,  # Whether to normalize the Q loss.
             encoder=ml_collections.config_dict.placeholder(str),  # Visual encoder name (None, 'impala_small', etc.).
