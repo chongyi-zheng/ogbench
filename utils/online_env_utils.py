@@ -1,5 +1,5 @@
 import gymnasium
-from utils.env_utils import EpisodeMonitor
+from envs.env_utils import EpisodeMonitor
 
 
 def make_online_env(env_name):
