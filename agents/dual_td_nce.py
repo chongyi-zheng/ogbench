@@ -43,7 +43,6 @@ class DualTDNCEAgent(flax.struct.PyTreeNode):
             'bc_loss': bc_loss,
             'bc_log_prob': log_prob.mean(),
             'mse': jnp.mean((dist.mode() - batch['actions']) ** 2),
-            'std': jnp.mean(dist.scale_diag),
         }
 
     def critic_loss(self, batch, grad_params):
