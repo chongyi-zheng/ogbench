@@ -23,7 +23,7 @@ def main():
                           'node030.ionic.cs.princeton.edu', 'node202.ionic.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
         exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
@@ -50,18 +50,18 @@ def main():
     )
     
     with executor.batch():  # job array
-        for env_name in ["antsoccer-arena-navigate-singletask-task1-v0",
-                         "antsoccer-arena-navigate-singletask-task2-v0",
-                         "antsoccer-arena-navigate-singletask-task3-v0",
-                         "antsoccer-arena-navigate-singletask-task4-v0",
-                         "antsoccer-arena-navigate-singletask-task5-v0"]:
+        for env_name in ["humanoidmaze-medium-navigate-singletask-task1-v0",
+                         "humanoidmaze-medium-navigate-singletask-task2-v0",
+                         "humanoidmaze-medium-navigate-singletask-task3-v0",
+                         "humanoidmaze-medium-navigate-singletask-task4-v0",
+                         "humanoidmaze-medium-navigate-singletask-task5-v0"]:
             for discount in [0.995]:
-                for alpha_critic in [0.3]:
-                    for alpha_actor in [10]:
+                for alpha_critic in [30]:
+                    for alpha_actor in [10, 30]:
                         for critic_loss_type in ['q-learning']:
                             for next_action_extraction in ['sfbc']:
                                 for policy_extraction in ['sfbc']:
-                                    for ret_agg in ['mean']:
+                                    for ret_agg in ['min', 'mean']:
                                         for q_agg in ['mean']:
                                             for ensemble_weight_temp in [0.3]:
                                                 for value_layer_norm in [True]:
