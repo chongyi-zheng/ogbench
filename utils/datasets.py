@@ -54,6 +54,7 @@ class Dataset(FrozenDict):
         self.frame_stack = None  # Number of frames to stack; set outside the class.
         self.p_aug = None  # Image augmentation probability; set outside the class.
         self.return_next_actions = False  # Whether to additionally return next actions; set outside the class.
+        self.return_initial_observations = False  # Whether to additionally return intial states.
 
         # Compute terminal and initial locations.
         # self.terminal_locs = np.nonzero(self['terminals'] > 0)[0]
@@ -65,6 +66,10 @@ class Dataset(FrozenDict):
 
     def sample(self, batch_size: int, idxs=None):
         """Sample a batch of transitions."""
+        if self.return_initial_observations or self.frame_stack is not None:
+            self.terminal_locs = np.nonzero(self['terminals'] > 0)[0]
+            self.initial_locs = np.concatenate([[0], self.terminal_locs[:-1] + 1])
+
         if idxs is None:
             idxs = self.get_random_idxs(batch_size)
         batch = self.get_subset(idxs)
@@ -95,6 +100,10 @@ class Dataset(FrozenDict):
         if self.return_next_actions:
             # WARNING: This is incorrect at the end of the trajectory. Use with caution.
             result['next_actions'] = self._dict['actions'][np.minimum(idxs + 1, self.size - 1)]
+        if self.return_initial_observations:
+            initial_state_idxs = self.initial_locs[
+                np.searchsorted(self.initial_locs, idxs, side='right') - 1]
+            result['initial_observations'] = self._dict['observations'][initial_state_idxs]
         return result
 
     def augment(self, batch, keys):

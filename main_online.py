@@ -70,11 +70,14 @@ def main(_):
         observations=env.observation_space.sample(),
         actions=env.action_space.sample(),
         rewards=0.0,
+        terminals=0.0,
         masks=1.0,
         next_observations=env.observation_space.sample(),
     )
 
     replay_buffer = ReplayBuffer.create(example_transition, size=FLAGS.replay_buffer_size)
+    if config['agent_name'] in ['dual_lsif']:
+        replay_buffer.return_initial_observations = True
 
     # Initialize agent.
     random.seed(FLAGS.seed)
@@ -120,6 +123,7 @@ def main(_):
                 observations=ob,
                 actions=action,
                 rewards=reward,
+                terminals=truncated,
                 masks=float(not terminated),
                 next_observations=next_ob,
             )
