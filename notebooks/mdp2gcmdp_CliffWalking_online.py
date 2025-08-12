@@ -28,7 +28,7 @@ from gymnasium.envs.toy_text.cliffwalking import (
 plt.ioff()
 
 # Create output directory for figures
-FIGURE_DIR = os.path.dirname(os.path.abspath(__file__))
+FIGURE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'figures')
 print(f"Saving figures to: {FIGURE_DIR}")
 
 
@@ -36,7 +36,7 @@ class CliffWalkingEnv(gymnasium.Wrapper):
     def __init__(self, random_init_state=False, max_episode_steps=1000, 
                  render_mode="rgb_array", **kwargs):
         env = gymnasium.make(
-            "CliffWalking-v0",
+            "CliffWalking-v1",
             max_episode_steps=max_episode_steps,
             render_mode=render_mode,
             **kwargs
@@ -310,20 +310,20 @@ class AugmentedReplayBuffer(ReplayBuffer):
 
 
 # Online Experience Collection and Exploration
-def collect_experience(env, policy, buffer, num_episodes, epsilon=0.1, use_epsilon_greedy=True, max_ep_length=None):
+def collect_experience(env, policy, buffer, num_episodes, epsilon=0.1, use_epsilon_greedy=True):
     """Collect experience using epsilon-greedy exploration"""
     collected_transitions = 0
     successful_episodes = 0
     
-    if max_ep_length is None:
-        max_ep_length = max_episode_steps
+    # if max_ep_length is None:
+    #     max_ep_length = max_episode_steps
     
     for episode in range(num_episodes):
         obs, info = env.reset()
         done = False
-        episode_length = 0
+        # episode_length = 0
         
-        while not done and episode_length < max_ep_length:
+        while not done:
             if use_epsilon_greedy and np.random.rand() < epsilon:
                 # Random action for exploration
                 action = np.random.randint(env.nA)
@@ -335,7 +335,8 @@ def collect_experience(env, policy, buffer, num_episodes, epsilon=0.1, use_epsil
                     action = np.random.choice(np.arange(env.nA), p=policy[obs])
             
             next_obs, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
+            # done = terminated or truncated
+            done = truncated
             
             # Store transition in replay buffer
             buffer.push(obs, action, reward, next_obs, not terminated, truncated)
@@ -346,7 +347,7 @@ def collect_experience(env, policy, buffer, num_episodes, epsilon=0.1, use_epsil
                 successful_episodes += 1
             
             obs = next_obs
-            episode_length += 1
+            # episode_length += 1
     
     return collected_transitions, successful_episodes
 
@@ -494,7 +495,8 @@ def run_q_learning():
         next_qs = critic.apply(target_params, next_observations, next_actions)
         next_qs = next_qs.reshape([len(batch['observations']), env.nA])
         next_q = jnp.max(next_qs, axis=-1)
-        target_q = batch['rewards'] + discount * batch['masks'] * next_q
+        # target_q = batch['rewards'] + discount * batch['masks'] * next_q
+        target_q = batch['rewards'] + discount * next_q
 
         loss = jnp.mean((q - target_q) ** 2)
         
@@ -540,13 +542,13 @@ def run_q_learning():
         for _ in range(num_eval_episodes):
             done = False
             obs, _ = eval_env.reset()
-            episode_length = 0
-            while not done and episode_length < max_episode_steps:
+            # episode_length = 0
+            while not done:
                 action = np.random.choice(np.arange(eval_env.nA), p=pi[obs])
                 next_obs, reward, terminated, truncated, _ = eval_env.step(action)
                 done = terminated or truncated
                 obs = next_obs
-                episode_length += 1
+                # episode_length += 1
                 if obs == 47:  # reached goal
                     successes.append(True)
                     break
@@ -559,13 +561,13 @@ def run_q_learning():
         for _ in range(num_eval_episodes):
             done = False
             obs, _ = aug_eval_env.reset()
-            episode_length = 0
-            while not done and episode_length < max_episode_steps:
+            # episode_length = 0
+            while not done:
                 action = np.random.choice(np.arange(aug_eval_env.nA), p=pi[obs])
                 next_obs, reward, terminated, truncated, _ = aug_eval_env.step(action)
                 done = terminated or truncated
                 obs = next_obs
-                episode_length += 1
+                # episode_length += 1
                 if obs == aug_eval_env.nS - 2:  # reached s+
                     aug_successes.append(True)
                     break
@@ -601,9 +603,9 @@ def run_q_learning():
             current_policy = get_epsilon_greedy_policy(np.array(q), current_epsilon)
             
             # Collect experience
-            collect_experience(env, current_policy, replay_buffer, 
-                              experience_episodes_per_collection, 
-                              epsilon=current_epsilon)
+            collect_experience(env, current_policy, replay_buffer,
+                               experience_episodes_per_collection,
+                               epsilon=current_epsilon)
         
         # Training step
         if len(replay_buffer) >= min_buffer_size:
