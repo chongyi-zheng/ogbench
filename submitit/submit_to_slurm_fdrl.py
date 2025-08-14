@@ -56,7 +56,7 @@ def main():
                          "humanoidmaze-medium-navigate-singletask-task4-v0",
                          "humanoidmaze-medium-navigate-singletask-task5-v0"]:
             for discount in [0.995]:
-                for alpha_critic in [30]:
+                for alpha_critic in [1]:
                     for alpha_actor in [10, 30]:
                         for critic_loss_type in ['q-learning']:
                             for next_action_extraction in ['sfbc']:
