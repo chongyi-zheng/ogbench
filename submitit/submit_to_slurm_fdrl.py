@@ -49,8 +49,6 @@ def main():
         slurm_array_parallelism=20,
     )
 
-    # 20250721_fdrl_antsoccer-arena-navigate-singletask-task1-v0_discount=0.995_alpha_critic=0.3_alpha_actor=10_critic_loss_type=q-learning_value_layer_norm=True_actor_layer_norm=True_single_noises
-
     with executor.batch():  # job array
         for env_name in ["antsoccer-arena-navigate-singletask-task1-v0"]:
             for discount in [0.995]:
