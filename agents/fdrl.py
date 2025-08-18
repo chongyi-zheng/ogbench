@@ -241,7 +241,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
             'vector_field_loss': vector_field_loss,
             'bootstrapped_vector_field_loss': bootstrapped_vector_field_loss,
             'q_mean': q.mean(),
-            'q_std': q_stds.mean(),
+            # 'q_std': q_stds.mean(),
             'q_max': q.max(),
             'q_min': q.min(),
             'weight': weights.mean(),
@@ -373,7 +373,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
         return self.replace(network=new_network, rng=new_rng), info
 
-    @partial(jax.jit, static_argnames=('flow_network_name',))
+    @partial(jax.jit, static_argnames=('flow_network_name', 'return_jac_eps_prod'))
     def compute_flow_returns(
         self,
         noises,
