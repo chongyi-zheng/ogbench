@@ -95,15 +95,15 @@ class FDRLAgent(flax.struct.PyTreeNode):
             critic_loss = vector_field_loss + self.config['alpha_critic'] * bootstrapped_vector_field_loss
         elif self.config['critic_loss_type'] == 'q-learning':
             batch_size = batch['actions'].shape[0]
-            rng, actor_rng, noise_rng, time_rng, q_rng = jax.random.split(rng, 5)
+            rng, actor_rng, next_q_rng, noise_rng, time_rng, q_rng, ret_rng = jax.random.split(rng, 7)
 
-            if self.config['next_action_extraction'] == 'sfbc':
+            if 'sfbc' in self.config['next_action_extraction']:
                 next_actor_noises = jax.random.normal(
                     actor_rng,
                     (batch_size, self.config['num_samples'], self.config['action_dim'])
                 )
-                q_noises = jax.random.normal(
-                    q_rng,
+                next_q_noises = jax.random.normal(
+                    next_q_rng,
                     (batch_size, self.config['num_samples'], 1)
                 )
 
@@ -115,17 +115,17 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 flow_next_actions = self.compute_flow_actions(next_actor_noises, next_observations)
 
                 # Pick the action with the highest Q-value.
-                q1 = (q_noises + self.network.select('critic_flow1')(
-                    q_noises, jnp.zeros_like(q_noises), next_observations, flow_next_actions)).squeeze(-1)
-                q2 = (q_noises + self.network.select('critic_flow2')(
-                    q_noises, jnp.zeros_like(q_noises), next_observations, flow_next_actions)).squeeze(-1)
+                next_q1 = (next_q_noises + self.network.select('critic_flow1')(
+                    next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
+                next_q2 = (next_q_noises + self.network.select('critic_flow2')(
+                    next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
 
                 if self.config['q_agg'] == 'min':
-                    q = jnp.minimum(q1, q2)
+                    next_q = jnp.minimum(next_q1, next_q2)
                 else:
-                    q = (q1 + q2) / 2
+                    next_q = (next_q1 + next_q2) / 2
 
-                next_actions = flow_next_actions[jnp.arange(batch_size), jnp.argmax(q, axis=-1)]
+                next_actions = flow_next_actions[jnp.arange(batch_size), jnp.argmax(next_q, axis=-1)]
             else:
                 next_actor_noises = jax.random.normal(actor_rng, (batch_size, self.config['action_dim']))
                 next_actions = self.network.select('actor_onestep_flow')(batch['next_observations'], next_actor_noises)
@@ -151,10 +151,28 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 q = jnp.minimum(q1, q2)
             else:
                 q = (q1 + q2) / 2
-            # from the SUNRISE paper: https://arxiv.org/pdf/2007.04938
-            q_stds = jnp.std(q, axis=-1)
-            weights = jax.nn.sigmoid(-self.config['ensemble_weight_temp'] * q_stds) + 0.5
-            weights = jax.lax.stop_gradient(weights)
+            if self.config['ensemble_weight_type'] == 'q_std':
+                # from the SUNRISE paper: https://arxiv.org/pdf/2007.04938
+                q_stds = jnp.std(q, axis=-1)
+                weights = jax.nn.sigmoid(-self.config['ensemble_weight_temp'] * q_stds) + 0.5
+                weights = jax.lax.stop_gradient(weights)
+            elif self.config['ensemble_weight_type'] == 'ret_std_jac_std':
+                ret_noises = jax.random.normal(ret_rng, (batch_size, self.config['num_samples'], 1))
+                _, ret_vars1 = self.compute_flow_returns(
+                    ret_noises, n_observations, n_actions,
+                    flow_network_name='critic_flow1', return_jac_eps_prod=True)
+                _, ret_vars2 = self.compute_flow_returns(
+                    ret_noises, n_observations, n_actions,
+                    flow_network_name='critic_flow2', return_jac_eps_prod=True)
+                if self.config['q_agg'] == 'min':
+                    ret_vars = jnp.minimum(ret_vars1, ret_vars2)
+                else:
+                    ret_vars = (ret_vars1 + ret_vars2) / 2
+                ret_stds = jnp.sqrt(ret_vars + 1e-8)
+                weights = jax.nn.sigmoid(-self.config['ensemble_weight_temp'] * ret_stds) + 0.5
+                weights = jax.lax.stop_gradient(weights)
+            else:
+                raise NotImplementedError
 
             noises = jax.random.normal(noise_rng, (batch_size, 1))
             times = jax.random.uniform(time_rng, (batch_size, 1))
@@ -364,9 +382,11 @@ class FDRLAgent(flax.struct.PyTreeNode):
         init_times=None,
         end_times=None,
         flow_network_name='critic_flow',
+        return_jac_eps_prod=False,
     ):
         """Compute returns from the return flow model using the Euler method."""
         noisy_returns = noises
+        noisy_jac_eps_prod = jnp.ones_like(noises)
         if init_times is None:
             init_times = jnp.zeros((*noisy_returns.shape[:-1], 1), dtype=noisy_returns.dtype)
         if end_times is None:
@@ -378,13 +398,21 @@ class FDRLAgent(flax.struct.PyTreeNode):
             carry: (noisy_goals, )
             i: current step index
             """
-            (noisy_returns,) = carry
+            (noisy_returns, noisy_jac_eps_prod) = carry
 
             times = i * step_size + init_times
             if self.config['ode_solver'] == 'euler':
-                vector_field = self.network.select(flow_network_name)(
-                    noisy_returns, times, observations, actions)
+                # vector_field = self.network.select(flow_network_name)(
+                #     noisy_returns, times, observations, actions)
+
+                vector_field, jac_eps_prod = jax.jvp(
+                    lambda ret: self.network.select(flow_network_name)(ret, times, observations, actions),
+                    (noisy_returns, ),
+                    (noisy_jac_eps_prod, ),
+                )
+
                 new_noisy_returns = noisy_returns + step_size * vector_field
+                new_noisy_jac_eps_prod = noisy_jac_eps_prod + step_size * jac_eps_prod
             elif self.config['ode_solver'] == 'midpoint':
                 vector_field = self.network.select(flow_network_name)(
                     noisy_returns, times, observations, actions)
@@ -404,18 +432,26 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 self.config['max_reward'] / (1 - self.config['discount']),
             )
 
-            return (new_noisy_returns,), None
+            return (new_noisy_returns, new_noisy_jac_eps_prod), None
+            # return (new_noisy_returns,), None
 
         # Use lax.scan to do the iteration
-        (noisy_returns,), _ = jax.lax.scan(
-            func, (noisy_returns,), jnp.arange(self.config['num_flow_steps_critic']))
+        (noisy_returns, noisy_jac_eps_prod), _ = jax.lax.scan(
+            func, (noisy_returns, noisy_jac_eps_prod), jnp.arange(self.config['num_flow_steps_critic']))
+        # (noisy_returns,), _ = jax.lax.scan(
+        #     func, (noisy_returns,), jnp.arange(self.config['num_flow_steps_critic']))
         # noisy_returns = jnp.clip(
         #     noisy_returns,
         #     self.config['min_reward'] / (1 - self.config['discount']),
         #     self.config['max_reward'] / (1 - self.config['discount']),
         # )
 
-        return noisy_returns
+        if return_jac_eps_prod:
+            return noisy_returns, noisy_jac_eps_prod
+        else:
+            return noisy_returns
+
+        # return noisy_returns
 
     @jax.jit
     def compute_flow_actions(
@@ -512,7 +548,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 q = (q1 + q2) / 2
 
             actions = actions[jnp.argmax(q)]
-        elif self.config['policy_extraction'] == 'sfbc':
+        elif 'sfbc' in self.config['policy_extraction']:
             action_seed, q_seed = jax.random.split(seed)
             actor_noises = jax.random.normal(
                 action_seed,
@@ -671,6 +707,7 @@ def get_config():
             expectile=0.9,  # IQL expectile.
             ret_agg='min',  # Aggregation method for return values.
             q_agg='min',  # Aggregation method for Q values.
+            ensemble_weight_type='q_std',  # Type of ensemble weights ('q_std', 'ret_std').
             ensemble_weight_temp=10.0,  # Temperature for the Q ensemble weights.
             next_action_extraction='fql',  # Method to extract the
             policy_extraction='fql',
