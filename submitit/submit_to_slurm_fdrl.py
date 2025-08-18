@@ -23,7 +23,7 @@ def main():
                           'node030.ionic.cs.princeton.edu', 'node202.ionic.cs.princeton.edu']:
         log_root_dir = '/n/fs/rl-chongyiz'
         partition = None
-        account = 'allcs'
+        account = 'pnlp'
         exclude = None
     elif cluster_name == 'neuronic.cs.princeton.edu':
         log_root_dir = '/n/fs/prl-chongyiz'
@@ -46,10 +46,12 @@ def main():
         slurm_gpus_per_node=1,
         slurm_exclude=exclude,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=20,
+        slurm_array_parallelism=10,
     )
 
     with executor.batch():  # job array
+        # for env_name in ["antmaze-large-stitch-singletask-task1-v0",
+        #                  "antmaze-large-explore-singletask-task1-v0"]:
         for env_name in ["antsoccer-arena-navigate-singletask-task1-v0"]:
             for discount in [0.995]:
                 for alpha_critic in [0.3]:
@@ -58,8 +60,9 @@ def main():
                             for policy_extraction in ['sfbc']:
                                 for ret_agg in ['min', 'mean']:
                                     for q_agg in ['mean']:
-                                        for ensemble_weight_type in ['q_std']:
-                                            for ensemble_weight_temp in [0, 300, 1000, 3000]:
+                                        for ensemble_weight_type in ['ret_std_jac_std']:
+                                            # for ensemble_weight_temp in [0, 3, 30, 300, 3000]:
+                                            for ensemble_weight_temp in [300, 1000, 3000]:
                                                 for value_layer_norm in [True]:
                                                     for actor_layer_norm in [True]:
                                                         for seed in [10, 20]:
