@@ -2,6 +2,7 @@ from collections import Counter, defaultdict
 import tqdm
 import copy
 import matplotlib.pyplot as plt
+import scipy
 from scipy.ndimage import gaussian_filter1d
 
 import numpy as np
@@ -31,6 +32,7 @@ flags.DEFINE_integer('batch_size', 256, 'The batch size.')
 flags.DEFINE_integer('repr_dim', 4, 'Forward backward representation dimensions.')
 flags.DEFINE_integer('hidden_dim', 32, 'Forward backward network hidden dimensions.')
 flags.DEFINE_integer('log_linear', 0, 'Whether to use the log linear parameterization for FB networks.')
+flags.DEFINE_integer('normalized_latent', 0, 'Whether to normalize the latents and backward representations.')
 flags.DEFINE_float('orthonorm_coef', 0.0, 'Orthonormalization regularization coefficient.')
 
 
@@ -38,6 +40,7 @@ class FBCritic(nn.Module):
     repr_dim: int = 4
     hidden_dim: int = 32
     log_linear: bool = False
+    normalized_backward_reprs: bool = False
 
     def setup(self):
         self.forward_mlp = nn.Sequential([
@@ -67,7 +70,9 @@ class FBCritic(nn.Module):
         forward_reprs = self.forward_mlp(forward_repr_inputs)
         backward_reprs = self.backward_mlp(backward_repr_inputs)
 
-        # backward_reprs = backward_reprs / jnp.linalg.norm(backward_reprs, axis=-1, keepdims=True) * jnp.sqrt(self.repr_dim)
+        if self.normalized_backward_reprs:
+            backward_reprs = backward_reprs / jnp.linalg.norm(
+                backward_reprs, axis=-1, keepdims=True) * jnp.sqrt(self.repr_dim)
         prob_ratios = jnp.einsum('ik,jk->ij', forward_reprs, backward_reprs)
 
         if self.log_linear:
@@ -92,8 +97,9 @@ class FBCritic(nn.Module):
         backward_repr_inputs = jnp.concatenate([future_observations, future_actions], axis=-1)
 
         backward_reprs = self.backward_mlp(backward_repr_inputs)
-        # backward_reprs = backward_reprs / jnp.linalg.norm(
-        #     backward_reprs, axis=-1, keepdims=True) * jnp.sqrt(self.repr_dim)
+        if self.normalized_backward_reprs:
+            backward_reprs = backward_reprs / jnp.linalg.norm(
+                backward_reprs, axis=-1, keepdims=True) * jnp.sqrt(self.repr_dim)
 
         return backward_reprs
 
@@ -219,7 +225,8 @@ def sample_batch(dataset, batch_size):
     future_idxs = np.minimum(idxs + offsets, final_state_idxs)
 
     latents = np.random.normal(size=(batch_size, FLAGS.repr_dim))
-    # latents = latents / np.linalg.norm(latents, axis=-1, keepdims=True) * np.sqrt(FLAGS.repr_dim)
+    if FLAGS.normalized_latent:
+        latents = latents / np.linalg.norm(latents, axis=-1, keepdims=True) * np.sqrt(FLAGS.repr_dim)
 
     batch = dict(
         observations=dataset['observations'][idxs],
@@ -259,12 +266,17 @@ def evaluate_fn(fb_critic, params, batch):
         axis=0
     ).reshape(-1)
     backward_reprs = fb_critic.apply(params, observations, actions, method='backward_reprs')
+    backward_reprs = np.asarray(backward_reprs)
+    backward_repr_norms = np.linalg.norm(backward_reprs, axis=-1)
 
-    null_basis = compute_null_basis(backward_reprs)
+    # (chongyi): The matrix used to compute the nullspace is (repr_dim, |S||A|)
+    # null_basis = compute_null_basis(backward_reprs)
+    null_basis = scipy.linalg.null_space(backward_reprs.T)
     num_null_basis = null_basis.shape[-1]
 
     info = dict(
         num_null_basis=num_null_basis,
+        backward_repr_norms=np.mean(backward_repr_norms),
     )
 
     return info
@@ -310,7 +322,8 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
     rng = jax.random.key(np.random.randint(2 ** 32))
     rng, init_rng = jax.random.split(rng, 2)
 
-    fb_critic = FBCritic(repr_dim=FLAGS.repr_dim, hidden_dim=FLAGS.hidden_dim, log_linear=FLAGS.log_linear)
+    fb_critic = FBCritic(repr_dim=FLAGS.repr_dim, hidden_dim=FLAGS.hidden_dim,
+                         log_linear=FLAGS.log_linear, normalized_backward_reprs=FLAGS.normalized_latent)
     example_batch = sample_batch(dataset, 2)
     params = fb_critic.init(
         init_rng,
@@ -371,7 +384,7 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
         )
         fb_loss = (
             0.5 * jnp.sum((random_prob_ratios - FLAGS.discount * target_next_prob_ratios) ** 2) / (FLAGS.batch_size * FLAGS.batch_size)
-            + (1 - FLAGS.discount) * jnp.sum(jnp.diag(current_prob_ratios)) / FLAGS.batch_size
+            - (1 - FLAGS.discount) * jnp.sum(jnp.diag(current_prob_ratios)) / FLAGS.batch_size
         )
 
         I = jnp.eye(FLAGS.batch_size)
@@ -447,16 +460,18 @@ def main(_):
         [1., 2., 3.],
         [2., 4., 6.]
     ], dtype=jnp.float32)
-    null_basis = compute_null_basis(A)
-    assert np.allclose(np.abs(A @ null_basis), 0.0, atol=1e-6)
+    # null_basis = compute_null_basis(A)
+    scipy_null_basis = scipy.linalg.null_space(A)
+    assert np.allclose(np.abs(A @ scipy_null_basis), 0.0, atol=1e-6)
 
     # full rank
     A = jnp.array([
         [2., 1.],
         [5., 3.],
     ])
-    null_basis = compute_null_basis(A)
-    assert null_basis.shape[-1] == 0
+    # null_basis = compute_null_basis(A)
+    scipy_null_basis = scipy.linalg.null_space(A)
+    assert scipy_null_basis.shape[-1] == 0
 
     behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
     dataset = collect_dataset(behavioral_policy)
@@ -467,7 +482,9 @@ def main(_):
 
     f, axes = plot_metrics(metrics, f_axes=None)
     f.tight_layout()
-    f.savefig("figures/mc_td_fb_counter_examples.png", dpi=300)
+    f.suptitle('repr_dim = {}, norm_b_repr = {}'.format(FLAGS.repr_dim, FLAGS.normalized_latent))
+    f.savefig("figures/mc_td_fb_counter_examples_repr_dim={}_norm_b_repr={}.png".format(
+        FLAGS.repr_dim, FLAGS.normalized_latent), dpi=300)
     print()
 
 
