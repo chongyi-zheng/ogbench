@@ -46,7 +46,7 @@ def main():
         slurm_gpus_per_node=1,
         slurm_exclude=exclude,
         slurm_stderr_to_stdout=True,
-        slurm_array_parallelism=10,
+        slurm_array_parallelism=20,
     )
 
     with executor.batch():  # job array
