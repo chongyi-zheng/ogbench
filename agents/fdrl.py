@@ -156,7 +156,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 q_stds = jnp.std(q, axis=-1)
                 weights = jax.nn.sigmoid(-self.config['ensemble_weight_temp'] * q_stds) + 0.5
                 weights = jax.lax.stop_gradient(weights)
-            elif self.config['ensemble_weight_type'] == 'ret_std_jac_std':
+            elif self.config['ensemble_weight_type'] == 'ret_std_jac_est':
                 ret_noises = jax.random.normal(ret_rng, (batch_size, self.config['num_samples'], 1))
                 _, ret_vars1 = self.compute_flow_returns(
                     ret_noises, n_observations, n_actions,
@@ -426,11 +426,12 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 new_noisy_returns = noisy_returns + step_size * vector_field
             else:
                 raise NotImplementedError
-            new_noisy_returns = jnp.clip(
-                new_noisy_returns,
-                self.config['min_reward'] / (1 - self.config['discount']),
-                self.config['max_reward'] / (1 - self.config['discount']),
-            )
+            if self.config['clip_flow_returns']:
+                new_noisy_returns = jnp.clip(
+                    new_noisy_returns,
+                    self.config['min_reward'] / (1 - self.config['discount']),
+                    self.config['max_reward'] / (1 - self.config['discount']),
+                )
 
             return (new_noisy_returns, new_noisy_jac_eps_prod), None
             # return (new_noisy_returns,), None
@@ -707,6 +708,7 @@ def get_config():
             expectile=0.9,  # IQL expectile.
             ret_agg='min',  # Aggregation method for return values.
             q_agg='min',  # Aggregation method for Q values.
+            clip_flow_returns=False,  # Whether to clip flow returns.
             ensemble_weight_type='q_std',  # Type of ensemble weights ('q_std', 'ret_std').
             ensemble_weight_temp=10.0,  # Temperature for the Q ensemble weights.
             next_action_extraction='fql',  # Method to extract the
