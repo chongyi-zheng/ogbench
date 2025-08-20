@@ -159,47 +159,63 @@ def collect_dataset(behavioral_policy):
     return dataset
 
 
-def compute_succssor_reprs(dataset, behavioral_policy):
+def compute_succssor_reprs(dataset, policy):
     # beta = np.ones([num_observations, num_actions])
     # beta /= num_actions
+    assert policy.shape == (FLAGS.num_observations, FLAGS.num_actions)
+
     transition_probs_sa = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations])
     for obs in range(FLAGS.num_observations):
         for action in range(FLAGS.num_actions):
             next_obs = step(obs, action)
             transition_probs_sa[obs, action, next_obs] += 1
     transition_probs_sa = transition_probs_sa / np.sum(transition_probs_sa, axis=-1, keepdims=True)
-    transition_probs_s = np.sum(transition_probs_sa * behavioral_policy[..., None], axis=-1)
+    transition_probs_s = np.sum(transition_probs_sa * policy[..., None], axis=-1)
     # transition_probs_sa = jnp.array(transition_probs_sa)
     # transition_probs_s = jnp.array(transition_probs_s)
 
     # ground truth successor representations
-    gt_sr_sa = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations])
-    gt_sr_s = np.zeros([FLAGS.num_observations, FLAGS.num_observations])
+    gt_sr_sa_s = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations])
+    gt_sr_s_s = np.zeros([FLAGS.num_observations, FLAGS.num_observations])
     for _ in tqdm.trange(1000):
-        gt_sr_s = (
+        gt_sr_s_s = (
             (1 - FLAGS.discount) * np.eye(FLAGS.num_observations)
             + FLAGS.discount * np.einsum(
                 'ij,jk->ik',
                 transition_probs_s,
-                gt_sr_s
+                gt_sr_s_s
             )
         )
-        gt_sr_sa = (
+        gt_sr_sa_s = (
             (1 - FLAGS.discount) * np.eye(FLAGS.num_observations)[:, None]
             + FLAGS.discount * np.einsum(
                 'ijk,kl->ijl',
                 transition_probs_sa,
-                np.sum(behavioral_policy[..., None] * gt_sr_sa, axis=1)
+                np.sum(policy[..., None] * gt_sr_sa_s, axis=1)
             )
         )
+    gt_sr_s_sa = gt_sr_s_s[..., None] * policy[None]
+    gt_sr_sa_sa = gt_sr_sa_s[..., None] * policy[None, None]
 
     # empirical state marginal
-    counts = Counter(dataset['observations'])
-    emp_marg_s_beta = np.array([counts[obs] for obs in range(FLAGS.num_observations)])
-    emp_marg_s_beta = emp_marg_s_beta / np.sum(emp_marg_s_beta)
+    # counts = Counter(dataset['observations'])
+    # emp_marg_s_beta = np.array([counts[obs] for obs in range(FLAGS.num_observations)])
+    # emp_marg_s_beta = emp_marg_s_beta / np.sum(emp_marg_s_beta)
     # marginal_s_beta = jnp.array(marginal_s_beta)
+    emp_marg_s_beta = np.zeros(FLAGS.num_observations)
+    for s in range(FLAGS.num_observations):
+        emp_marg_s_beta[s] = np.sum(dataset['observations'] == s)
+    emp_marg_s_beta /= np.sum(emp_marg_s_beta, keepdims=True)
 
-    srs = dict(gt_sr_sa=gt_sr_sa, gt_sr_s=gt_sr_s, emp_marg_s_beta=emp_marg_s_beta)
+    emp_marg_sa_beta = np.zeros([FLAGS.num_observations, FLAGS.num_actions])
+    for s in range(FLAGS.num_observations):
+        for a in range(FLAGS.num_actions):
+            emp_marg_sa_beta[s, a] = np.sum(np.logical_and(dataset['observations'] == s, dataset['actions'] == a))
+    emp_marg_sa_beta /= np.sum(emp_marg_sa_beta, keepdims=True)
+
+    srs = dict(gt_sr_sa_s=gt_sr_sa_s, gt_sr_s_s=gt_sr_s_s,
+               gt_sr_s_sa=gt_sr_s_sa, gt_sr_sa_sa=gt_sr_sa_sa,
+               emp_marg_s_beta=emp_marg_s_beta, emp_marg_sa_beta=emp_marg_sa_beta)
 
     return srs
 
@@ -279,7 +295,7 @@ def plot_metrics(metrics, f_axes=None, logyscale_stats=[], title='', label=None)
     return f, axes
 
 
-def train_and_eval(dataset, srs, num_training_steps=10_000, eval_interval=1_000):
+def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
     rng = jax.random.key(np.random.randint(2 ** 32))
     rng, init_rng = jax.random.split(rng, 2)
 
@@ -389,7 +405,7 @@ def train_and_eval(dataset, srs, num_training_steps=10_000, eval_interval=1_000)
 
         return params, target_params, opt_state, rng, info
 
-    def evaluate_fn(params, rng):
+    def evaluate_fn(params, dataset, rng):
         # compute the error of the discounted state occupancy measure
         # note that the discounted state occupancy measure is the same for any policy because we have a single-step MDP.
         observations = jnp.repeat(
@@ -404,23 +420,44 @@ def train_and_eval(dataset, srs, num_training_steps=10_000, eval_interval=1_000)
         ).reshape(-1)
         latents = jax.random.normal(rng, shape=(FLAGS.num_observations * FLAGS.num_actions, FLAGS.repr_dim))
         if FLAGS.normalized_latent:
-            latents = latents / np.linalg.norm(latents, axis=-1, keepdims=True) * np.sqrt(FLAGS.repr_dim)
-        prob_ratios = fb_critic.apply(params, observations, actions, latents, observations, actions)
-        prob_ratios = np.array(prob_ratios)
+            latents = latents / jnp.linalg.norm(latents, axis=-1, keepdims=True) * jnp.sqrt(FLAGS.repr_dim)
+
+        forward_reprs = fb_critic.apply(
+            params, observations, actions, latents,
+            method='forward_reprs'
+        )
+        backward_reprs = fb_critic.apply(
+            params, observations, actions,
+            method='backward_reprs'
+        )
+        backward_repr_norms = jnp.linalg.norm(backward_reprs, axis=-1, keepdims=True)
+        if FLAGS.normalized_latent:
+            backward_reprs = backward_reprs / backward_repr_norms * jnp.sqrt(FLAGS.repr_dim)
+        prob_ratios = jnp.einsum('ik,jk->ij', forward_reprs, backward_reprs)
+        if FLAGS.log_linear:
+            prob_ratios = jnp.exp(prob_ratios)
+            forward_latent_inner_prods = jnp.sum(jnp.exp(forward_reprs * latents), axis=-1)
+        else:
+            forward_latent_inner_prods = jnp.sum(forward_reprs * latents, axis=-1)
+        forward_latent_inner_prods = forward_latent_inner_prods.reshape(FLAGS.num_observations, FLAGS.num_actions)
+        policy = jax.nn.one_hot(jnp.argmax(forward_latent_inner_prods, axis=-1), FLAGS.num_actions)
+        policy = np.asarray(policy)
+
         # TODO (chongyi): the ground truth ratios should depend on the policy because of the future actions.
-        gt_ratios = srs['gt_sr_sa'] / srs['emp_marg_s_beta']
+        # gt_ratios = srs['gt_sr_sa_s'][..., None] * policy[None, None] / srs['emp_marg_sa_beta'][None, None]
+        srs = compute_succssor_reprs(dataset, policy)
+        gt_ratios = srs['gt_sr_sa_sa'] / srs['emp_marg_sa_beta'][None, None]
+        prob_ratios = prob_ratios.reshape(FLAGS.num_observations, FLAGS.num_actions,
+                                          FLAGS.num_observations, FLAGS.num_actions)
+        prob_ratios = np.asarray(prob_ratios)
 
         prob_ratio_error = np.nanmean((prob_ratios - gt_ratios) ** 2)
 
         # compute the number of null basis
-        backward_reprs = fb_critic.apply(params, observations, actions, method='backward_reprs')
-        backward_reprs = np.asarray(backward_reprs)
-        backward_repr_norms = np.linalg.norm(backward_reprs, axis=-1, keepdims=True)
-        if FLAGS.normalized_latent:
-            backward_reprs = backward_reprs / backward_repr_norms * np.sqrt(FLAGS.repr_dim)
-
         # (chongyi): The matrix used to compute the nullspace is (repr_dim, |S||A|)
         # null_basis = compute_null_basis(backward_reprs)
+        backward_reprs = np.asarray(backward_reprs)
+        backward_repr_norms = np.asarray(backward_repr_norms)
         null_basis = scipy.linalg.null_space(backward_reprs.T)
         num_null_basis = null_basis.shape[-1]
 
@@ -446,7 +483,7 @@ def train_and_eval(dataset, srs, num_training_steps=10_000, eval_interval=1_000)
 
         if step == 1 or step % eval_interval == 0:
             rng, eval_rng = jax.random.split(rng)
-            eval_info = evaluate_fn(params, eval_rng)
+            eval_info = evaluate_fn(params, dataset, eval_rng)
             for k, v in eval_info.items():
                 metrics['eval/' + k].append(
                     np.array([step, v])
@@ -480,12 +517,12 @@ def main(_):
 
     behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
     dataset = collect_dataset(behavioral_policy)
-    srs = compute_succssor_reprs(dataset, behavioral_policy)
+    # srs = compute_succssor_reprs(dataset, behavioral_policy)
 
     # TODO (chongyi): use different loss type
     # loss_types = ['mc_lsif', 'td_lsif']
     metrics = train_and_eval(
-        dataset, srs,
+        dataset,
         num_training_steps=FLAGS.num_training_steps, eval_interval=FLAGS.eval_interval
     )
 
