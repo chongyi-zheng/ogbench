@@ -34,6 +34,7 @@ flags.DEFINE_integer('hidden_dim', 32, 'Forward backward network hidden dimensio
 flags.DEFINE_integer('log_linear', 0, 'Whether to use the log linear parameterization for FB networks.')
 flags.DEFINE_integer('normalized_latent', 0, 'Whether to normalize the latents and backward representations.')
 flags.DEFINE_float('orthonorm_coef', 0.0, 'Orthonormalization regularization coefficient.')
+flags.DEFINE_float('null_reward_scale', 1.0, 'Scalar for the null reward function.')
 
 
 class FBCritic(nn.Module):
@@ -159,7 +160,7 @@ def collect_dataset(behavioral_policy):
     return dataset
 
 
-def compute_succssor_reprs(dataset, policy):
+def compute_successor_reprs(dataset, policy):
     # beta = np.ones([num_observations, num_actions])
     # beta /= num_actions
     assert policy.shape == (FLAGS.num_observations, FLAGS.num_actions)
@@ -220,6 +221,29 @@ def compute_succssor_reprs(dataset, policy):
     return srs
 
 
+def compute_opt_qs(batch_rewards):
+    # compute optimal value function via value iteration
+    transition_probs_sa = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations])
+    for obs in range(FLAGS.num_observations):
+        for action in range(FLAGS.num_actions):
+            next_obs = step(obs, action)
+            transition_probs_sa[obs, action, next_obs] += 1
+    transition_probs_sa = transition_probs_sa / np.sum(transition_probs_sa, axis=-1, keepdims=True)
+
+    q_opts = []
+    for rewards in batch_rewards:
+        rewards = rewards.reshape(FLAGS.num_observations, FLAGS.num_actions)
+
+        q_opt = np.zeros([FLAGS.num_observations, FLAGS.num_actions])
+        for _ in range(1000):
+            q_opt = (1 - FLAGS.discount) * rewards + FLAGS.discount * transition_probs_sa @ np.max(q_opt, axis=-1)
+        q_opts.append(q_opt)
+
+    q_opts = np.asarray(q_opts)
+
+    return q_opts
+
+
 def compute_null_basis(matrix, atol=0.0, rtol=None):
     num_rows, num_cols = matrix.shape
     u, s, v_transpose = jnp.linalg.svd(matrix, full_matrices=True)
@@ -232,7 +256,7 @@ def compute_null_basis(matrix, atol=0.0, rtol=None):
     return v_transpose[rank:].T  # shape (n, n - rank)
 
 
-def sample_batch(dataset, batch_size):
+def sample_batch(dataset, batch_size, repr_dim):
     idxs = np.random.randint(FLAGS.dataset_size, size=(batch_size,))
     rand_idxs = np.random.randint(FLAGS.dataset_size, size=(batch_size,))
 
@@ -240,9 +264,9 @@ def sample_batch(dataset, batch_size):
     final_state_idxs = dataset['terminal_locs'][np.searchsorted(dataset['terminal_locs'], idxs)]
     future_idxs = np.minimum(idxs + offsets, final_state_idxs)
 
-    latents = np.random.normal(size=(batch_size, FLAGS.repr_dim))
+    latents = np.random.normal(size=(batch_size, repr_dim))
     if FLAGS.normalized_latent:
-        latents = latents / np.linalg.norm(latents, axis=-1, keepdims=True) * np.sqrt(FLAGS.repr_dim)
+        latents = latents / np.linalg.norm(latents, axis=-1, keepdims=True) * np.sqrt(repr_dim)
 
     batch = dict(
         observations=dataset['observations'][idxs],
@@ -295,13 +319,13 @@ def plot_metrics(metrics, f_axes=None, logyscale_stats=[], title='', label=None)
     return f, axes
 
 
-def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
+def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interval=1_000):
     rng = jax.random.key(np.random.randint(2 ** 32))
     rng, init_rng = jax.random.split(rng, 2)
 
-    fb_critic = FBCritic(repr_dim=FLAGS.repr_dim, hidden_dim=FLAGS.hidden_dim,
+    fb_critic = FBCritic(repr_dim=repr_dim, hidden_dim=FLAGS.hidden_dim,
                          log_linear=FLAGS.log_linear, normalized_backward_reprs=FLAGS.normalized_latent)
-    example_batch = sample_batch(dataset, 2)
+    example_batch = sample_batch(dataset, 2, repr_dim)
     params = fb_critic.init(
         init_rng,
         example_batch['observations'], example_batch['actions'], example_batch['latents'],
@@ -332,7 +356,7 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
             jnp.expand_dims(latents, axis=1),
             FLAGS.num_actions,
             axis=1
-        ).reshape(-1, FLAGS.repr_dim)
+        ).reshape(-1, repr_dim)
         next_forward_reprs = fb_critic.apply(
             params, n_next_observations, n_next_actions, n_latents,
             method='forward_reprs'
@@ -418,9 +442,9 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
             FLAGS.num_observations,
             axis=0
         ).reshape(-1)
-        latents = jax.random.normal(rng, shape=(FLAGS.num_observations * FLAGS.num_actions, FLAGS.repr_dim))
+        latents = jax.random.normal(rng, shape=(FLAGS.num_observations * FLAGS.num_actions, repr_dim))
         if FLAGS.normalized_latent:
-            latents = latents / jnp.linalg.norm(latents, axis=-1, keepdims=True) * jnp.sqrt(FLAGS.repr_dim)
+            latents = latents / jnp.linalg.norm(latents, axis=-1, keepdims=True) * jnp.sqrt(repr_dim)
 
         forward_reprs = fb_critic.apply(
             params, observations, actions, latents,
@@ -432,7 +456,7 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
         )
         backward_repr_norms = jnp.linalg.norm(backward_reprs, axis=-1, keepdims=True)
         if FLAGS.normalized_latent:
-            backward_reprs = backward_reprs / backward_repr_norms * jnp.sqrt(FLAGS.repr_dim)
+            backward_reprs = backward_reprs / backward_repr_norms * jnp.sqrt(repr_dim)
         prob_ratios = jnp.einsum('ik,jk->ij', forward_reprs, backward_reprs)
         if FLAGS.log_linear:
             prob_ratios = jnp.exp(prob_ratios)
@@ -445,7 +469,8 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
 
         # TODO (chongyi): the ground truth ratios should depend on the policy because of the future actions.
         # gt_ratios = srs['gt_sr_sa_s'][..., None] * policy[None, None] / srs['emp_marg_sa_beta'][None, None]
-        srs = compute_succssor_reprs(dataset, policy)
+        # behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
+        srs = compute_successor_reprs(dataset, policy)
         gt_ratios = srs['gt_sr_sa_sa'] / srs['emp_marg_sa_beta'][None, None]
         prob_ratios = prob_ratios.reshape(FLAGS.num_observations, FLAGS.num_actions,
                                           FLAGS.num_observations, FLAGS.num_actions)
@@ -472,7 +497,7 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
     metrics = defaultdict(list)
     for step in tqdm.trange(num_training_steps):
         rng, update_rng = jax.random.split(rng)
-        batch = sample_batch(dataset, FLAGS.batch_size)
+        batch = sample_batch(dataset, FLAGS.batch_size, repr_dim)
         params, target_params, opt_state, rng, info = update_fn(
             params, target_params, opt_state, batch, update_rng)
 
@@ -492,7 +517,7 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
     for k, v in metrics.items():
         metrics[k] = np.asarray(v)
 
-    return metrics
+    return fb_critic, params, metrics
 
 
 def main(_):
@@ -517,20 +542,100 @@ def main(_):
 
     behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
     dataset = collect_dataset(behavioral_policy)
-    # srs = compute_succssor_reprs(dataset, behavioral_policy)
+    srs = compute_successor_reprs(dataset, behavioral_policy)
 
     # TODO (chongyi): use different loss type
     # loss_types = ['mc_lsif', 'td_lsif']
-    metrics = train_and_eval(
-        dataset,
-        num_training_steps=FLAGS.num_training_steps, eval_interval=FLAGS.eval_interval
-    )
+    metrics = defaultdict(list)
+    null_reward_scales = [1.0]
+    repr_dims = [4, 16]
+    for null_reward_scale in null_reward_scales:
+        opt_q_abs_errors = []
+        for repr_dim in repr_dims:
+            fb_critic, params, train_eval_metrics = train_and_eval(
+                dataset, repr_dim=repr_dim,
+                num_training_steps=FLAGS.num_training_steps, eval_interval=FLAGS.eval_interval
+            )
 
-    f, axes = plot_metrics(metrics, f_axes=None)
+            print("repr_dim = {}, prob_ratio_error = {}".format(
+                repr_dim, train_eval_metrics['eval/prob_ratio_error'][-1, 1])
+            )
+
+            # final evaluation to find the null reward
+            observations = jnp.repeat(
+                jnp.expand_dims(jnp.arange(FLAGS.num_observations), axis=1),
+                FLAGS.num_actions,
+                axis=1,
+            ).reshape(-1)
+            actions = jnp.repeat(
+                jnp.expand_dims(jnp.arange(FLAGS.num_actions), axis=0),
+                FLAGS.num_observations,
+                axis=0
+            ).reshape(-1)
+            backward_reprs = fb_critic.apply(
+                params, observations, actions,
+                method='backward_reprs'
+            )
+            if FLAGS.normalized_latent:
+                backward_reprs = backward_reprs / jnp.linalg.norm(backward_reprs, axis=-1, keepdims=True) * jnp.sqrt(repr_dim)
+            backward_reprs = np.asarray(backward_reprs)
+            null_basis = scipy.linalg.null_space(backward_reprs.T)
+            num_null_basis = null_basis.shape[-1]
+            if num_null_basis > 0:
+                # null reward can also be linear combination of null basis
+                rewards = null_reward_scale * null_basis
+            else:
+                rewards = null_reward_scale * np.random.uniform(size=(FLAGS.num_observations * FLAGS.num_actions, 10))
+            reward_latents = ((backward_reprs * srs['emp_marg_sa_beta'].reshape(-1)[..., None]).T @ rewards).T
+
+            reward_latents = jnp.asarray(reward_latents)
+            n_observations = jnp.repeat(
+                jnp.expand_dims(observations, axis=1),
+                reward_latents.shape[0],
+                axis=1
+            ).reshape(-1)
+            n_actions = jnp.repeat(
+                jnp.expand_dims(actions, axis=1),
+                reward_latents.shape[0],
+                axis=1
+            ).reshape(-1)
+            n_reward_latents = jnp.repeat(
+                jnp.expand_dims(reward_latents, axis=0),
+                FLAGS.num_observations * FLAGS.num_actions,
+                axis=0
+            ).reshape(-1, repr_dim)
+            forward_reprs = fb_critic.apply(
+                params, n_observations, n_actions, n_reward_latents,
+                method='forward_reprs'
+            )
+            forward_reprs = forward_reprs.reshape(-1, *reward_latents.shape)
+
+            q_latents = jnp.sum(forward_reprs * reward_latents[None], axis=-1).T
+            q_latents = np.asarray(q_latents).reshape([-1, FLAGS.num_observations, FLAGS.num_actions])
+            q_opts = compute_opt_qs(rewards.T)
+
+            q_error = jnp.mean(jnp.abs(q_latents - q_opts))
+
+            opt_q_abs_errors.append([repr_dim, q_error])
+            print("Optimal q abs error with repr_dim = {}, null reward scalar = {}: {}".format(repr_dim, null_reward_scale, q_error))
+        metrics['opt_q_abs_error'].append(opt_q_abs_errors)
+
+    for k, v in metrics.items():
+        metrics[k] = np.array(v)
+
+    f, ax = plt.subplots(nrows=1, ncols=1)
+    v = metrics['opt_q_abs_error']
+    for idx, null_reward_scale in enumerate(null_reward_scales):
+        x, y = v[idx, :, 0], v[idx, :, 1]
+        ax.plot(x, y, 'o', label='reward scale = {}'.format(null_reward_scale))
+    ax.set_xticks(repr_dims)
+    ax.yaxis.get_major_locator().set_params(integer=True)
+    ax.set_xlabel('repr dim')
+    ax.set_ylabel('Optimal Q absolute errors')
+    f.suptitle('Optimal Q absolute errors')
+
     f.tight_layout()
-    f.suptitle("repr_dim = {}".format(FLAGS.repr_dim))
-    f.savefig("figures/mc_td_fb_counter_examples_repr_dim={}.png".format(
-        FLAGS.repr_dim), dpi=300)
+    f.savefig("figures/mc_td_fb_counter_examples_opt_q_abs_error.png", dpi=300)
     print()
 
 
