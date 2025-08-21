@@ -95,7 +95,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
             critic_loss = vector_field_loss + self.config['alpha_critic'] * bootstrapped_vector_field_loss
         elif self.config['critic_loss_type'] == 'q-learning':
             batch_size = batch['actions'].shape[0]
-            rng, actor_rng, next_q_rng, noise_rng, time_rng, q_rng, ret_rng = jax.random.split(rng, 7)
+            rng, actor_rng, next_q_rng, noise_rng, time_rng, q_rng, ret_rng, probe_rng = jax.random.split(rng, 8)
 
             if 'sfbc' in self.config['next_action_extraction']:
                 next_actor_noises = jax.random.normal(
@@ -158,11 +158,12 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 weights = jax.lax.stop_gradient(weights)
             elif self.config['ensemble_weight_type'] == 'ret_std_jac_est':
                 ret_noises = jax.random.normal(ret_rng, (batch_size, self.config['num_samples'], 1))
+                probe_noises = jax.random.normal(probe_rng, (batch_size, self.config['num_samples'], 1))
                 _, ret_vars1 = self.compute_flow_returns(
-                    ret_noises, n_observations, n_actions,
+                    ret_noises, n_observations, n_actions, probes=probe_noises,
                     flow_network_name='critic_flow1', return_jac_eps_prod=True)
                 _, ret_vars2 = self.compute_flow_returns(
-                    ret_noises, n_observations, n_actions,
+                    ret_noises, n_observations, n_actions, probes=probe_noises,
                     flow_network_name='critic_flow2', return_jac_eps_prod=True)
                 if self.config['q_agg'] == 'min':
                     ret_vars = jnp.minimum(ret_vars1, ret_vars2)
@@ -379,6 +380,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
         noises,
         observations,
         actions,
+        probes=None,
         init_times=None,
         end_times=None,
         flow_network_name='critic_flow',
@@ -386,7 +388,9 @@ class FDRLAgent(flax.struct.PyTreeNode):
     ):
         """Compute returns from the return flow model using the Euler method."""
         noisy_returns = noises
-        noisy_jac_eps_prod = jnp.ones_like(noises)
+        if probes is None:
+            probes = noises
+        noisy_jac_eps_prod = probes
         if init_times is None:
             init_times = jnp.zeros((*noisy_returns.shape[:-1], 1), dtype=noisy_returns.dtype)
         if end_times is None:
