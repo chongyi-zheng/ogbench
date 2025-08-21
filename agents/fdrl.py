@@ -24,16 +24,17 @@ class FDRLAgent(flax.struct.PyTreeNode):
         """Compute the flow critic loss. (Q-learning)"""
         if self.config['critic_loss_type'] == 'sarsa':
             batch_size = batch['actions'].shape[0]
-            rng, actor_rng, noise_rng, time_rng, q_rng = jax.random.split(rng, 5)
+            rng, actor_rng, noise_rng, probe_rng, time_rng, q_rng = jax.random.split(rng, 5)
 
             noises = jax.random.normal(noise_rng, (batch_size, 1))
+            probes = jax.random.normal(probe_rng, (batch_size, 1))
             times = jax.random.uniform(time_rng, (batch_size, 1))
             next_returns1 = self.compute_flow_returns(
                 noises, batch['next_observations'], batch['next_actions'],
-                flow_network_name='target_critic_flow1')
+                probs=probes, flow_network_name='target_critic_flow1')
             next_returns2 = self.compute_flow_returns(
                 noises, batch['next_observations'], batch['next_actions'],
-                flow_network_name='target_critic_flow2')
+                probes=probes, flow_network_name='target_critic_flow2')
             if self.config['ret_agg'] == 'min':
                 next_returns = jnp.minimum(next_returns1, next_returns2)
             else:
@@ -52,11 +53,11 @@ class FDRLAgent(flax.struct.PyTreeNode):
                                  (vector_field2 - target_vector_field) ** 2).mean()
 
             noisy_next_returns1 = self.compute_flow_returns(
-                noises, batch['next_observations'], batch['next_actions'], end_times=times,
-                flow_network_name='target_critic_flow1')
+                noises, batch['next_observations'], batch['next_actions'],
+                probes=probes, end_times=times, flow_network_name='target_critic_flow1')
             noisy_next_returns2 = self.compute_flow_returns(
-                noises, batch['next_observations'], batch['next_actions'], end_times=times,
-                flow_network_name='target_critic_flow2')
+                noises, batch['next_observations'], batch['next_actions'],
+                probes=probes, end_times=times, flow_network_name='target_critic_flow2')
             if self.config['ret_agg'] == 'min':
                 noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
             else:
@@ -95,7 +96,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
             critic_loss = vector_field_loss + self.config['alpha_critic'] * bootstrapped_vector_field_loss
         elif self.config['critic_loss_type'] == 'q-learning':
             batch_size = batch['actions'].shape[0]
-            rng, actor_rng, next_q_rng, noise_rng, time_rng, q_rng, ret_rng, probe_rng = jax.random.split(rng, 8)
+            rng, actor_rng, next_q_rng, noise_rng, probe_rng, time_rng, q_rng, ret_rng, ret_probe_rng = jax.random.split(rng, 9)
 
             if 'sfbc' in self.config['next_action_extraction']:
                 next_actor_noises = jax.random.normal(
@@ -132,57 +133,71 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 next_actions = jnp.clip(next_actions, -1, 1)
 
             # Both for logging and ensemble weights.
-            q_noises = jax.random.normal(q_rng, (batch_size, self.config['num_samples'], 1))
-            n_observations = jnp.repeat(
-                jnp.expand_dims(batch['observations'], axis=-2),
-                self.config['num_samples'], 
-                axis=-2,
-            )
-            n_actions = jnp.repeat(
-                jnp.expand_dims(batch['actions'], axis=-2),
-                self.config['num_samples'],
-                axis=-2,
-            )
-            q1 = (q_noises + self.network.select('critic_flow1')(
-                q_noises, jnp.zeros_like(q_noises), n_observations, n_actions)).squeeze(-1)
-            q2 = (q_noises + self.network.select('critic_flow2')(
-                q_noises, jnp.zeros_like(q_noises), n_observations, n_actions)).squeeze(-1)
-            if self.config['q_agg'] == 'min':
-                q = jnp.minimum(q1, q2)
-            else:
-                q = (q1 + q2) / 2
             if self.config['ensemble_weight_type'] == 'q_std':
+                n_observations = jnp.repeat(
+                    jnp.expand_dims(batch['observations'], axis=-2),
+                    self.config['num_samples'],
+                    axis=-2,
+                )
+                n_actions = jnp.repeat(
+                    jnp.expand_dims(batch['actions'], axis=-2),
+                    self.config['num_samples'],
+                    axis=-2,
+                )
+
+                q_noises = jax.random.normal(q_rng, (batch_size, self.config['num_samples'], 1))
+                q1 = (q_noises + self.network.select('critic_flow1')(
+                    q_noises, jnp.zeros_like(q_noises), n_observations, n_actions)).squeeze(-1)
+                q2 = (q_noises + self.network.select('critic_flow2')(
+                    q_noises, jnp.zeros_like(q_noises), n_observations, n_actions)).squeeze(-1)
+                if self.config['q_agg'] == 'min':
+                    q = jnp.minimum(q1, q2)
+                else:
+                    q = (q1 + q2) / 2
+
                 # from the SUNRISE paper: https://arxiv.org/pdf/2007.04938
                 q_stds = jnp.std(q, axis=-1)
                 weights = jax.nn.sigmoid(-self.config['ensemble_weight_temp'] * q_stds) + 0.5
                 weights = jax.lax.stop_gradient(weights)
             elif self.config['ensemble_weight_type'] == 'ret_std_jac_est':
-                ret_noises = jax.random.normal(ret_rng, (batch_size, self.config['num_samples'], 1))
-                probe_noises = jax.random.normal(probe_rng, (batch_size, self.config['num_samples'], 1))
+                q_noises = jax.random.normal(q_rng, (batch_size, 1))
+                q1 = (q_noises + self.network.select('critic_flow1')(
+                    q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
+                q2 = (q_noises + self.network.select('critic_flow2')(
+                    q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
+                if self.config['q_agg'] == 'min':
+                    q = jnp.minimum(q1, q2)
+                else:
+                    q = (q1 + q2) / 2
+
+                ret_noises = jax.random.normal(ret_rng, (batch_size, 1))
+                ret_probes = jax.random.normal(ret_probe_rng, (batch_size, 1))
                 _, ret_vars1 = self.compute_flow_returns(
-                    ret_noises, n_observations, n_actions, probes=probe_noises,
+                    ret_noises, batch['observations'], batch['actions'], probes=ret_probes,
                     flow_network_name='critic_flow1', return_jac_eps_prod=True)
                 _, ret_vars2 = self.compute_flow_returns(
-                    ret_noises, n_observations, n_actions, probes=probe_noises,
+                    ret_noises, batch['observations'], batch['actions'], probes=ret_probes,
                     flow_network_name='critic_flow2', return_jac_eps_prod=True)
                 if self.config['q_agg'] == 'min':
                     ret_vars = jnp.minimum(ret_vars1, ret_vars2)
                 else:
                     ret_vars = (ret_vars1 + ret_vars2) / 2
-                ret_stds = jnp.sqrt(ret_vars + 1e-8)
+                ret_stds = jnp.sqrt(ret_vars).squeeze(-1)
+                q_stds = ret_stds  # for logging
                 weights = jax.nn.sigmoid(-self.config['ensemble_weight_temp'] * ret_stds) + 0.5
                 weights = jax.lax.stop_gradient(weights)
             else:
                 raise NotImplementedError
 
             noises = jax.random.normal(noise_rng, (batch_size, 1))
+            probes = jax.random.normal(probe_rng, (batch_size, 1))
             times = jax.random.uniform(time_rng, (batch_size, 1))
             next_returns1 = self.compute_flow_returns(
                 noises, batch['next_observations'], next_actions,
-                flow_network_name='target_critic_flow1')
+                probes=probes, flow_network_name='target_critic_flow1')
             next_returns2 = self.compute_flow_returns(
                 noises, batch['next_observations'], next_actions,
-                flow_network_name='target_critic_flow2')
+                probes=probes, flow_network_name='target_critic_flow2')
 
             if self.config['ret_agg'] == 'min':
                 next_returns = jnp.minimum(next_returns1, next_returns2)
@@ -242,7 +257,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
             'vector_field_loss': vector_field_loss,
             'bootstrapped_vector_field_loss': bootstrapped_vector_field_loss,
             'q_mean': q.mean(),
-            # 'q_std': q_stds.mean(),
+            'q_std': q_stds.mean(),
             'q_max': q.max(),
             'q_min': q.min(),
             'weight': weights.mean(),
