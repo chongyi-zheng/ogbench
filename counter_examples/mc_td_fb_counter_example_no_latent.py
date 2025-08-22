@@ -369,8 +369,8 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
             observations, actions
         )
         fb_loss = (
-            0.5 * jnp.mean((random_prob_ratios - FLAGS.discount * target_next_prob_ratios) ** 2)
-            - (1 - FLAGS.discount) * jnp.mean(jnp.diag(current_prob_ratios))
+            0.5 * jnp.sum((random_prob_ratios - FLAGS.discount * target_next_prob_ratios) ** 2) / (FLAGS.batch_size * FLAGS.batch_size)
+            - (1 - FLAGS.discount) * jnp.sum(jnp.diag(current_prob_ratios)) / FLAGS.batch_size
         )
 
         I = jnp.eye(FLAGS.batch_size)
