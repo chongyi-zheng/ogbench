@@ -182,7 +182,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
                     ret_vars = jnp.minimum(ret_vars1, ret_vars2)
                 else:
                     ret_vars = (ret_vars1 + ret_vars2) / 2
-                ret_stds = jnp.sqrt(ret_vars).squeeze(-1)
+                ret_stds = jnp.sqrt(ret_vars + 1e-12).squeeze(-1)
+                ret_stds = jnp.nan_to_num(ret_stds, nan=jnp.finfo(ret_stds.dtype).max)
                 q_stds = ret_stds  # for logging
                 weights = jax.nn.sigmoid(-self.config['ensemble_weight_temp'] * ret_stds) + 0.5
                 weights = jax.lax.stop_gradient(weights)
@@ -254,10 +255,12 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
         return critic_loss, {
             'critic_loss': critic_loss,
-            'vector_field_loss': vector_field_loss,
-            'bootstrapped_vector_field_loss': bootstrapped_vector_field_loss,
+            'vector_field_loss': vector_field_loss.mean(),
+            'bootstrapped_vector_field_loss': bootstrapped_vector_field_loss.mean(),
             'q_mean': q.mean(),
             'q_std': q_stds.mean(),
+            'q_std_max': q_stds.max(),
+            'q_std_min': q_stds.min(),
             'q_max': q.max(),
             'q_min': q.min(),
             'weight': weights.mean(),
@@ -278,73 +281,59 @@ class FDRLAgent(flax.struct.PyTreeNode):
         pred = self.network.select('actor_flow')(batch['observations'], x_t, t, params=grad_params)
         bc_flow_loss = jnp.mean((pred - vel) ** 2)
 
-        # Distillation loss.
-        rng, noise_rng = jax.random.split(rng)
-        noises = jax.random.normal(noise_rng, (batch_size, action_dim))
-        target_flow_actions = self.compute_flow_actions(noises, batch['observations'])
-        actor_actions = self.network.select('actor_onestep_flow')(
-            batch['observations'], noises, params=grad_params)
-        actor_actions = jnp.clip(actor_actions, -1, 1)
-        distill_loss = jnp.mean((actor_actions - target_flow_actions) ** 2)
+        if self.config['policy_extraction'] == 'ddpgbc':
+            # Distillation loss.
+            rng, noise_rng = jax.random.split(rng)
+            noises = jax.random.normal(noise_rng, (batch_size, action_dim))
+            target_flow_actions = self.compute_flow_actions(noises, batch['observations'])
+            actor_actions = self.network.select('actor_onestep_flow')(
+                batch['observations'], noises, params=grad_params)
+            actor_actions = jnp.clip(actor_actions, -1, 1)
+            distill_loss = jnp.mean((actor_actions - target_flow_actions) ** 2)
 
-        # Q loss.
-        q_noises = jax.random.normal(q_rng, (batch_size, 1))
-        # q1 = self.compute_flow_returns(
-        #     q_noises, batch['observations'], actor_actions,
-        #     flow_network_name='critic_flow1').squeeze(-1)
-        # q2 = self.compute_flow_returns(
-        #     q_noises, batch['observations'], actor_actions,
-        #     flow_network_name='critic_flow2').squeeze(-1)
-        q1 = (q_noises + self.network.select('critic_flow1')(
-            q_noises, jnp.zeros_like(q_noises), batch['observations'], actor_actions)).squeeze(-1)
-        q2 = (q_noises + self.network.select('critic_flow2')(
-            q_noises, jnp.zeros_like(q_noises), batch['observations'], actor_actions)).squeeze(-1)
-        if self.config['q_agg'] == 'min':
-            q = jnp.minimum(q1, q2)
+            # Q loss.
+            q_noises = jax.random.normal(q_rng, (batch_size, 1))
+            q1 = (q_noises + self.network.select('critic_flow1')(
+                q_noises, jnp.zeros_like(q_noises), batch['observations'], actor_actions)).squeeze(-1)
+            q2 = (q_noises + self.network.select('critic_flow2')(
+                q_noises, jnp.zeros_like(q_noises), batch['observations'], actor_actions)).squeeze(-1)
+            if self.config['q_agg'] == 'min':
+                q = jnp.minimum(q1, q2)
+            else:
+                q = (q1 + q2) / 2
+
+            q_loss = -q.mean()
+            if self.config['normalize_q_loss']:
+                lam = jax.lax.stop_gradient(1 / jnp.abs(q).mean())
+                q_loss = lam * q_loss
+
+            # Total loss.
+            actor_loss = bc_flow_loss + self.config['alpha_actor'] * distill_loss + q_loss
+
+            info = {
+                'actor_loss': actor_loss,
+                'bc_flow_loss': bc_flow_loss,
+                'distill_loss': distill_loss,
+                'q_loss': q_loss,
+                'q': q.mean(),
+            }
+        elif 'sfbc' in self.config['policy_extraction']:
+            actor_loss = bc_flow_loss
+
+            info = {
+                'actor_loss': actor_loss,
+                'bc_flow_loss': bc_flow_loss,
+            }
         else:
-            q = (q1 + q2) / 2
-        # qs = self.network.select('critic')(batch['observations'], actions=actor_actions)
-        # q = jnp.mean(qs, axis=0)
-
-        q_loss = -q.mean()
-        if self.config['normalize_q_loss']:
-            lam = jax.lax.stop_gradient(1 / jnp.abs(q).mean())
-            q_loss = lam * q_loss
-
-        # Total loss.
-        actor_loss = bc_flow_loss + self.config['alpha_actor'] * distill_loss + q_loss
+            raise NotImplementedError
 
         # Additional metrics for logging.
         actor_noises = jax.random.normal(actor_rng, (batch_size, action_dim))
         actions = self.network.select('actor_onestep_flow')(batch['observations'], actor_noises)
         mse = jnp.mean((actions - batch['actions']) ** 2)
+        info.update(dict(mse=mse))
 
-        return actor_loss, {
-            'actor_loss': actor_loss,
-            'bc_flow_loss': bc_flow_loss,
-            'distill_loss': distill_loss,
-            'q_loss': q_loss,
-            'q': q.mean(),
-            'mse': mse,
-        }
-
-    # def actor_loss(self, batch, grad_params, rng=None):
-    #     """Compute the behavioral flow-matching actor loss."""
-    #     batch_size, action_dim = batch['actions'].shape
-    #     rng, x_rng, t_rng = jax.random.split(rng, 3)
-    #
-    #     x_0 = jax.random.normal(x_rng, (batch_size, action_dim))
-    #     x_1 = batch['actions']
-    #     t = jax.random.uniform(t_rng, (batch_size, 1))
-    #     x_t = t * x_1 + (1 - t) * x_0
-    #     vel = x_1 - x_0
-    #
-    #     pred = self.network.select('actor_flow')(batch['observations'], x_t, t, params=grad_params)
-    #     actor_loss = jnp.mean((pred - vel) ** 2)
-    #
-    #     return actor_loss, {
-    #         'actor_loss': actor_loss,
-    #     }
+        return actor_loss, info
 
     @jax.jit
     def total_loss(self, batch, grad_params, rng=None):
@@ -519,7 +508,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
         temperature=1.0,
     ):
         """Sample actions from the one-step policy."""
-        if self.config['policy_extraction'] == 'fql':
+        if 'ddpgbc' in self.config['policy_extraction']:
             action_seed, noise_seed = jax.random.split(seed)
             noises = jax.random.normal(
                 action_seed,
@@ -727,11 +716,11 @@ def get_config():
             expectile=0.9,  # IQL expectile.
             ret_agg='min',  # Aggregation method for return values.
             q_agg='min',  # Aggregation method for Q values.
-            clip_flow_returns=False,  # Whether to clip flow returns.
+            clip_flow_returns=True,  # Whether to clip flow returns.
             ensemble_weight_type='q_std',  # Type of ensemble weights ('q_std', 'ret_std').
             ensemble_weight_temp=10.0,  # Temperature for the Q ensemble weights.
-            next_action_extraction='fql',  # Method to extract the
-            policy_extraction='fql',
+            next_action_extraction='ddpgbc',  # Method to extract the
+            policy_extraction='ddpgbc',
             critic_loss_type='q-learning',  # Type of the critic loss ('sarsa', 'q-learning').
             alpha_critic=1.0,  # vector field bootstrapped regularization coefficient.
             alpha_actor=1.0,  # BC coefficient.
