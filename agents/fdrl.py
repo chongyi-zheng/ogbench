@@ -24,17 +24,16 @@ class FDRLAgent(flax.struct.PyTreeNode):
         """Compute the flow critic loss. (Q-learning)"""
         if self.config['critic_loss_type'] == 'sarsa':
             batch_size = batch['actions'].shape[0]
-            rng, actor_rng, noise_rng, probe_rng, time_rng, q_rng = jax.random.split(rng, 5)
+            rng, actor_rng, noise_rng, time_rng, q_rng = jax.random.split(rng, 4)
 
             noises = jax.random.normal(noise_rng, (batch_size, 1))
-            probes = jax.random.normal(probe_rng, (batch_size, 1))
             times = jax.random.uniform(time_rng, (batch_size, 1))
             next_returns1 = self.compute_flow_returns(
                 noises, batch['next_observations'], batch['next_actions'],
-                probs=probes, flow_network_name='target_critic_flow1')
+                flow_network_name='target_critic_flow1')
             next_returns2 = self.compute_flow_returns(
                 noises, batch['next_observations'], batch['next_actions'],
-                probes=probes, flow_network_name='target_critic_flow2')
+                flow_network_name='target_critic_flow2')
             if self.config['ret_agg'] == 'min':
                 next_returns = jnp.minimum(next_returns1, next_returns2)
             else:
@@ -54,10 +53,10 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
             noisy_next_returns1 = self.compute_flow_returns(
                 noises, batch['next_observations'], batch['next_actions'],
-                probes=probes, end_times=times, flow_network_name='target_critic_flow1')
+                end_times=times, flow_network_name='target_critic_flow1')
             noisy_next_returns2 = self.compute_flow_returns(
                 noises, batch['next_observations'], batch['next_actions'],
-                probes=probes, end_times=times, flow_network_name='target_critic_flow2')
+                end_times=times, flow_network_name='target_critic_flow2')
             if self.config['ret_agg'] == 'min':
                 noisy_next_returns = jnp.minimum(noisy_next_returns1, noisy_next_returns2)
             else:
@@ -96,7 +95,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
             critic_loss = vector_field_loss + self.config['alpha_critic'] * bootstrapped_vector_field_loss
         elif self.config['critic_loss_type'] == 'q-learning':
             batch_size = batch['actions'].shape[0]
-            rng, actor_rng, next_q_rng, noise_rng, probe_rng, time_rng, q_rng, ret_rng, ret_probe_rng = jax.random.split(rng, 9)
+            rng, actor_rng, next_q_rng, noise_rng, time_rng, q_rng, ret_rng = jax.random.split(rng, 7)
 
             if 'sfbc' in self.config['next_action_extraction']:
                 next_actor_noises = jax.random.normal(
@@ -171,12 +170,11 @@ class FDRLAgent(flax.struct.PyTreeNode):
                     q = (q1 + q2) / 2
 
                 ret_noises = jax.random.normal(ret_rng, (batch_size, 1))
-                ret_probes = jax.random.normal(ret_probe_rng, (batch_size, 1))
                 _, ret_vars1 = self.compute_flow_returns(
-                    ret_noises, batch['observations'], batch['actions'], probes=ret_probes,
+                    ret_noises, batch['observations'], batch['actions'],
                     flow_network_name='critic_flow1', return_jac_eps_prod=True)
                 _, ret_vars2 = self.compute_flow_returns(
-                    ret_noises, batch['observations'], batch['actions'], probes=ret_probes,
+                    ret_noises, batch['observations'], batch['actions'],
                     flow_network_name='critic_flow2', return_jac_eps_prod=True)
                 if self.config['q_agg'] == 'min':
                     ret_vars = jnp.minimum(ret_vars1, ret_vars2)
@@ -191,14 +189,13 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 raise NotImplementedError
 
             noises = jax.random.normal(noise_rng, (batch_size, 1))
-            probes = jax.random.normal(probe_rng, (batch_size, 1))
             times = jax.random.uniform(time_rng, (batch_size, 1))
             next_returns1 = self.compute_flow_returns(
                 noises, batch['next_observations'], next_actions,
-                probes=probes, flow_network_name='target_critic_flow1')
+                flow_network_name='target_critic_flow1')
             next_returns2 = self.compute_flow_returns(
                 noises, batch['next_observations'], next_actions,
-                probes=probes, flow_network_name='target_critic_flow2')
+                flow_network_name='target_critic_flow2')
 
             if self.config['ret_agg'] == 'min':
                 next_returns = jnp.minimum(next_returns1, next_returns2)
@@ -384,7 +381,6 @@ class FDRLAgent(flax.struct.PyTreeNode):
         noises,
         observations,
         actions,
-        probes=None,
         init_times=None,
         end_times=None,
         flow_network_name='critic_flow',
@@ -392,9 +388,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
     ):
         """Compute returns from the return flow model using the Euler method."""
         noisy_returns = noises
-        if probes is None:
-            probes = noises
-        noisy_jac_eps_prod = probes
+        noisy_jac_eps_prod = jnp.ones_like(noises)
         if init_times is None:
             init_times = jnp.zeros((*noisy_returns.shape[:-1], 1), dtype=noisy_returns.dtype)
         if end_times is None:
