@@ -200,7 +200,7 @@ def compute_successor_reprs(dataset, policy):
             next_obs = step(obs, action)
             transition_probs_sa[obs, action, next_obs] += 1
     transition_probs_sa = transition_probs_sa / np.sum(transition_probs_sa, axis=-1, keepdims=True)
-    transition_probs_s = np.sum(transition_probs_sa * policy[..., None], axis=-1)
+    transition_probs_s = np.sum(transition_probs_sa * policy[..., None], axis=1)
     # transition_probs_sa = jnp.array(transition_probs_sa)
     # transition_probs_s = jnp.array(transition_probs_s)
 
@@ -225,7 +225,7 @@ def compute_successor_reprs(dataset, policy):
             )
         )
     gt_sr_s_sa = gt_sr_s_s[..., None] * policy[None]
-    gt_sr_sa_sa_tmp = gt_sr_sa_s[..., None] * policy[None, None]
+    # gt_sr_sa_sa_tmp = gt_sr_sa_s[..., None] * policy[None, None]
 
     gt_sr_sa_sa = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions])
     for _ in tqdm.trange(1000):
@@ -345,6 +345,11 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
     )
     target_params = copy.deepcopy(params)
 
+    behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
+    srs = compute_successor_reprs(dataset, behavioral_policy)
+    behavioral_policy = jnp.asarray(behavioral_policy)
+    gt_ratios = jnp.asarray(srs['gt_sr_sa_sa'] / srs['emp_marg_sa_beta'][None, None])
+
     @jax.jit
     def fb_loss_fn(params, target_params, batch, rng):
         observations = batch['observations']
@@ -354,11 +359,16 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
         random_observations = batch['random_observations']
         random_actions = batch['random_actions']
 
-        target_next_prob_ratios = fb_critic.apply(
-            target_params, next_observations, next_actions,
-            random_observations, random_actions
-        )
-        target_next_prob_ratios = jax.lax.stop_gradient(target_next_prob_ratios)
+        # target_next_prob_ratios = fb_critic.apply(
+        #     params, next_observations, next_actions,
+        #     random_observations, random_actions
+        # )
+        # target_next_prob_ratios = jax.lax.stop_gradient(target_next_prob_ratios)
+
+        # target_next_prob_ratios = gt_ratios[next_observations, next_actions][:, random_observations, random_actions]
+
+        target_next_prob_ratios = gt_ratios[next_observations][:, :, random_observations, random_actions]
+        target_next_prob_ratios = jnp.sum(target_next_prob_ratios * behavioral_policy[next_observations][..., None], axis=1)
 
         random_prob_ratios = fb_critic.apply(
             params, observations, actions,
@@ -395,7 +405,7 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
 
         return loss, info
 
-    optimizer = optax.adam(learning_rate=3e-3)
+    optimizer = optax.sgd(learning_rate=3e-1)
     opt_state = optimizer.init(params)
     grad_fn = jax.value_and_grad(fb_loss_fn, has_aux=True)
 
@@ -518,7 +528,7 @@ def main(_):
     # loss_types = ['mc_lsif', 'td_lsif']
     metrics = train_and_eval(dataset, num_training_steps=FLAGS.num_training_steps, eval_interval=FLAGS.eval_interval)
 
-    f, axes = plot_metrics(metrics, f_axes=None)
+    f, axes = plot_metrics(metrics, f_axes=None, logyscale_stats=['eval/prob_ratio_error'])
     f.tight_layout()
     f.suptitle('repr_dim = {}'.format(FLAGS.repr_dim))
     f.savefig("figures/mc_td_fb_counter_examples_no_latent_repr_dim={}.png".format(

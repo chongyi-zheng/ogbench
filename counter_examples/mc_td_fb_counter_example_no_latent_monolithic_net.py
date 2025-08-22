@@ -17,7 +17,7 @@ from absl import app, flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_integer('num_observations', 4, 'Number of observations.')
-flags.DEFINE_integer('num_actions', 4, 'Number of actions.')
+flags.DEFINE_integer('num_actions', 3, 'Number of actions.')
 flags.DEFINE_integer('initial_obs', 0, 'The initial observation.')
 flags.DEFINE_float('discount', 0.9, 'The discount factor.')
 
@@ -34,7 +34,6 @@ flags.DEFINE_integer('hidden_dim', 32, 'Forward backward network hidden dimensio
 flags.DEFINE_integer('log_linear', 0, 'Whether to use the log linear parameterization for FB networks.')
 flags.DEFINE_integer('normalized_latent', 0, 'Whether to normalize the latents and backward representations.')
 flags.DEFINE_float('orthonorm_coef', 0.0, 'Orthonormalization regularization coefficient.')
-flags.DEFINE_float('null_reward_scale', 1.0, 'Scalar for the null reward function.')
 
 
 class FBCritic(nn.Module):
@@ -44,48 +43,84 @@ class FBCritic(nn.Module):
     normalized_backward_reprs: bool = False
 
     def setup(self):
-        self.forward_mlp = nn.Sequential([
-            nn.Dense(self.hidden_dim),
-            nn.gelu,
-            nn.Dense(self.hidden_dim),
-            nn.gelu,
-            nn.Dense(self.repr_dim),
-        ])
-        self.backward_mlp = nn.Sequential([
-            nn.Dense(self.hidden_dim),
-            nn.gelu,
-            nn.Dense(self.hidden_dim),
-            nn.gelu,
-            nn.Dense(self.repr_dim),
-        ])
+        # self.forward_mlp = nn.Sequential([
+        #     nn.Dense(self.repr_dim, use_bias=False),
+        # ])
+        # self.backward_mlp = nn.Sequential([
+        #     nn.Dense(self.repr_dim, use_bias=False),
+        # ])
+        self.mlp = nn.Dense(1)
 
     @nn.compact
-    def __call__(self, observations, actions, latents, future_observations, future_actions):
-        observations = jax.nn.one_hot(observations, FLAGS.num_observations)
-        actions = jax.nn.one_hot(actions, FLAGS.num_actions)
-        future_observations = jax.nn.one_hot(future_observations, FLAGS.num_observations)
-        future_actions = jax.nn.one_hot(future_actions, FLAGS.num_actions)
-        forward_repr_inputs = jnp.concatenate([observations, actions, latents], axis=-1)
-        backward_repr_inputs = jnp.concatenate([future_observations, future_actions], axis=-1)
+    def __call__(self, observations, actions, future_observations, future_actions):
+        # observations = jax.nn.one_hot(observations, FLAGS.num_observations)
+        # actions = jax.nn.one_hot(actions, FLAGS.num_actions)
+        # future_observations = jax.nn.one_hot(future_observations, FLAGS.num_observations)
+        # future_actions = jax.nn.one_hot(future_actions, FLAGS.num_actions)
+        # forward_repr_input_indices = jnp.ravel_multi_index(
+        #     jnp.stack([observations, actions], axis=0),
+        #     (FLAGS.num_observations, FLAGS.num_actions),
+        #     mode='clip'  # JIT compatible
+        # )
+        # forward_repr_inputs = jax.nn.one_hot(
+        #     forward_repr_input_indices,
+        #     FLAGS.num_observations * FLAGS.num_actions,
+        #     axis=-1
+        # )
+        # backward_repr_input_indices = jnp.ravel_multi_index(
+        #     jnp.stack([future_observations, future_actions], axis=0),
+        #     (FLAGS.num_observations, FLAGS.num_actions),
+        #     mode='clip'  # JIT compatible
+        # )
+        # backward_repr_inputs = jax.nn.one_hot(
+        #     backward_repr_input_indices,
+        #     FLAGS.num_observations * FLAGS.num_actions,
+        #     axis=-1
+        # )
+        #
+        # forward_reprs = self.forward_mlp(forward_repr_inputs)
+        # backward_reprs = self.backward_mlp(backward_repr_inputs)
+        #
+        # if self.normalized_backward_reprs:
+        #     backward_reprs = backward_reprs / jnp.linalg.norm(
+        #         backward_reprs, axis=-1, keepdims=True) * jnp.sqrt(self.repr_dim)
+        # prob_ratios = jnp.einsum('ik,jk->ij', forward_reprs, backward_reprs)
+        #
+        # if self.log_linear:
+        #     prob_ratios = jnp.exp(prob_ratios)
+        #
+        # return prob_ratios
 
-        forward_reprs = self.forward_mlp(forward_repr_inputs)
-        backward_reprs = self.backward_mlp(backward_repr_inputs)
+        input_indices = jnp.ravel_multi_index(
+            jnp.stack([observations, actions, future_observations, future_actions], axis=0),
+            (FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions),
+            mode='clip'  # JIT compatible
+        )
+        inputs = jax.nn.one_hot(
+            input_indices,
+            FLAGS.num_observations * FLAGS.num_actions * FLAGS.num_observations * FLAGS.num_actions,
+            axis=-1
+        )
 
-        if self.normalized_backward_reprs:
-            backward_reprs = backward_reprs / jnp.linalg.norm(
-                backward_reprs, axis=-1, keepdims=True) * jnp.sqrt(self.repr_dim)
-        prob_ratios = jnp.einsum('ik,jk->ij', forward_reprs, backward_reprs)
-
-        if self.log_linear:
-            prob_ratios = jnp.exp(prob_ratios)
+        prob_ratios = self.mlp(inputs)
 
         return prob_ratios
 
     @nn.compact
-    def forward_reprs(self, observations, actions, latents):
-        observations = jax.nn.one_hot(observations, FLAGS.num_observations)
-        actions = jax.nn.one_hot(actions, FLAGS.num_actions)
-        forward_repr_inputs = jnp.concatenate([observations, actions, latents], axis=-1)
+    def forward_reprs(self, observations, actions):
+        # observations = jax.nn.one_hot(observations, FLAGS.num_observations)
+        # actions = jax.nn.one_hot(actions, FLAGS.num_actions)
+        # forward_repr_inputs = jnp.concatenate([observations, actions, latents], axis=-1)
+        forward_repr_input_indices = jnp.ravel_multi_index(
+            jnp.stack([observations, actions], axis=0),
+            (FLAGS.num_observations, FLAGS.num_actions),
+            mode='clip'  # JIT compatible
+        )
+        forward_repr_inputs = jax.nn.one_hot(
+            forward_repr_input_indices,
+            FLAGS.num_observations * FLAGS.num_actions,
+            axis=-1
+        )
 
         forward_reprs = self.forward_mlp(forward_repr_inputs)
 
@@ -93,9 +128,19 @@ class FBCritic(nn.Module):
 
     @nn.compact
     def backward_reprs(self, future_observations, future_actions):
-        future_observations = jax.nn.one_hot(future_observations, FLAGS.num_observations)
-        future_actions = jax.nn.one_hot(future_actions, FLAGS.num_actions)
-        backward_repr_inputs = jnp.concatenate([future_observations, future_actions], axis=-1)
+        # future_observations = jax.nn.one_hot(future_observations, FLAGS.num_observations)
+        # future_actions = jax.nn.one_hot(future_actions, FLAGS.num_actions)
+        # backward_repr_inputs = jnp.concatenate([future_observations, future_actions], axis=-1)
+        backward_repr_input_indices = jnp.ravel_multi_index(
+            jnp.stack([future_observations, future_actions], axis=0),
+            (FLAGS.num_observations, FLAGS.num_actions),
+            mode='clip'  # JIT compatible
+        )
+        backward_repr_inputs = jax.nn.one_hot(
+            backward_repr_input_indices,
+            FLAGS.num_observations * FLAGS.num_actions,
+            axis=-1
+        )
 
         backward_reprs = self.backward_mlp(backward_repr_inputs)
         if self.normalized_backward_reprs:
@@ -107,7 +152,7 @@ class FBCritic(nn.Module):
 
 def step(observation, action):
     if observation == 0:
-        next_observation = observation + action
+        next_observation = observation + action + 1
     else:
         next_observation = observation
     return next_observation
@@ -171,7 +216,7 @@ def compute_successor_reprs(dataset, policy):
             next_obs = step(obs, action)
             transition_probs_sa[obs, action, next_obs] += 1
     transition_probs_sa = transition_probs_sa / np.sum(transition_probs_sa, axis=-1, keepdims=True)
-    transition_probs_s = np.sum(transition_probs_sa * policy[..., None], axis=-1)
+    transition_probs_s = np.sum(transition_probs_sa * policy[..., None], axis=1)
     # transition_probs_sa = jnp.array(transition_probs_sa)
     # transition_probs_s = jnp.array(transition_probs_s)
 
@@ -196,7 +241,7 @@ def compute_successor_reprs(dataset, policy):
             )
         )
     gt_sr_s_sa = gt_sr_s_s[..., None] * policy[None]
-    # gt_sr_sa_sa = gt_sr_sa_s[..., None] * policy[None, None]
+    # gt_sr_sa_sa_tmp = gt_sr_sa_s[..., None] * policy[None, None]
 
     gt_sr_sa_sa = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions])
     for _ in tqdm.trange(1000):
@@ -208,6 +253,19 @@ def compute_successor_reprs(dataset, policy):
                 np.sum(policy[..., None, None] * gt_sr_sa_sa, axis=1)
             )
         )
+
+    # policy1 = np.zeros_like(policy)
+    # policy1[:, 0] = 1.0
+    # gt_sr_sa_sa1 = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions])
+    # for _ in tqdm.trange(1000):
+    #     gt_sr_sa_sa1 = (
+    #         (1 - FLAGS.discount) * np.eye(FLAGS.num_observations * FLAGS.num_actions).reshape([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions])
+    #         + FLAGS.discount * np.einsum(
+    #             'ijk,klm->ijlm',
+    #             transition_probs_sa,
+    #             np.sum(policy1[..., None, None] * gt_sr_sa_sa1, axis=1)
+    #         )
+    #     )
 
     # empirical state marginal
     # counts = Counter(dataset['observations'])
@@ -232,33 +290,6 @@ def compute_successor_reprs(dataset, policy):
     return srs
 
 
-def compute_opt_qs(batch_rewards):
-    # compute optimal value function via value iteration
-    transition_probs_sa = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations])
-    for obs in range(FLAGS.num_observations):
-        for action in range(FLAGS.num_actions):
-            next_obs = step(obs, action)
-            transition_probs_sa[obs, action, next_obs] += 1
-    transition_probs_sa = transition_probs_sa / np.sum(transition_probs_sa, axis=-1, keepdims=True)
-
-    q_opts = []
-    for rewards in batch_rewards:
-        rewards = rewards.reshape(FLAGS.num_observations, FLAGS.num_actions)
-
-        q_opt = np.zeros([FLAGS.num_observations, FLAGS.num_actions])
-        for _ in range(1000):
-            q_opt = (1 - FLAGS.discount) * rewards + FLAGS.discount * jnp.einsum(
-                'ijk,k->ij',
-                transition_probs_sa,
-                np.max(q_opt, axis=-1)
-            )
-        q_opts.append(q_opt)
-
-    q_opts = np.asarray(q_opts)
-
-    return q_opts
-
-
 def compute_null_basis(matrix, atol=0.0, rtol=None):
     num_rows, num_cols = matrix.shape
     u, s, v_transpose = jnp.linalg.svd(matrix, full_matrices=True)
@@ -271,17 +302,13 @@ def compute_null_basis(matrix, atol=0.0, rtol=None):
     return v_transpose[rank:].T  # shape (n, n - rank)
 
 
-def sample_batch(dataset, batch_size, repr_dim):
+def sample_batch(dataset, batch_size):
     idxs = np.random.randint(FLAGS.dataset_size, size=(batch_size,))
     rand_idxs = np.random.randint(FLAGS.dataset_size, size=(batch_size,))
 
     offsets = np.random.geometric(p=1 - FLAGS.discount, size=(batch_size,)) - 1  # in [0, inf)
     final_state_idxs = dataset['terminal_locs'][np.searchsorted(dataset['terminal_locs'], idxs)]
     future_idxs = np.minimum(idxs + offsets, final_state_idxs)
-
-    latents = np.random.normal(size=(batch_size, repr_dim))
-    if FLAGS.normalized_latent:
-        latents = latents / np.linalg.norm(latents, axis=-1, keepdims=True) * np.sqrt(repr_dim)
 
     batch = dict(
         observations=dataset['observations'][idxs],
@@ -292,7 +319,6 @@ def sample_batch(dataset, batch_size, repr_dim):
         future_actions=dataset['actions'][future_idxs],
         random_observations=dataset['observations'][rand_idxs],
         random_actions=dataset['actions'][rand_idxs],
-        latents=latents,
     )
 
     return batch
@@ -334,83 +360,67 @@ def plot_metrics(metrics, f_axes=None, logyscale_stats=[], title='', label=None)
     return f, axes
 
 
-def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interval=1_000):
+def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
     rng = jax.random.key(np.random.randint(2 ** 32))
     rng, init_rng = jax.random.split(rng, 2)
 
-    fb_critic = FBCritic(repr_dim=repr_dim, hidden_dim=FLAGS.hidden_dim,
+    fb_critic = FBCritic(repr_dim=FLAGS.repr_dim, hidden_dim=FLAGS.hidden_dim,
                          log_linear=FLAGS.log_linear, normalized_backward_reprs=FLAGS.normalized_latent)
-    example_batch = sample_batch(dataset, 2, repr_dim)
+    example_batch = sample_batch(dataset, 2)
     params = fb_critic.init(
         init_rng,
-        example_batch['observations'], example_batch['actions'], example_batch['latents'],
+        example_batch['observations'], example_batch['actions'],
         example_batch['future_observations'], example_batch['future_actions']
     )
     target_params = copy.deepcopy(params)
+
+    behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
+    srs = compute_successor_reprs(dataset, behavioral_policy)
+    gt_ratios = jnp.asarray(srs['gt_sr_sa_sa'] / srs['emp_marg_sa_beta'][None, None])
 
     @jax.jit
     def fb_loss_fn(params, target_params, batch, rng):
         observations = batch['observations']
         actions = batch['actions']
         next_observations = batch['next_observations']
+        next_actions = batch['next_actions']
         random_observations = batch['random_observations']
         random_actions = batch['random_actions']
-        latents = batch['latents']
 
-        n_next_observations = jnp.repeat(
-            jnp.expand_dims(next_observations, axis=1),
-            FLAGS.num_actions,
-            axis=1
-        ).reshape(-1)
-        n_next_actions = jnp.repeat(
-            jnp.expand_dims(jnp.arange(FLAGS.num_actions), axis=0),
-            FLAGS.batch_size,
-            axis=0
-        ).reshape(-1)
-        n_latents = jnp.repeat(
-            jnp.expand_dims(latents, axis=1),
-            FLAGS.num_actions,
-            axis=1
-        ).reshape(-1, repr_dim)
-        next_forward_reprs = fb_critic.apply(
-            params, n_next_observations, n_next_actions, n_latents,
-            method='forward_reprs'
-        )
-        if fb_critic.log_linear:
-            next_prob_ratios = jnp.sum(jnp.exp(next_forward_reprs * n_latents), axis=-1)
-        else:
-            next_prob_ratios = jnp.sum(next_forward_reprs * n_latents, axis=-1)
-        next_prob_ratios = next_prob_ratios.reshape(FLAGS.batch_size, FLAGS.num_actions)
-        next_actions = jnp.argmax(next_prob_ratios, axis=-1)
-        next_actions = jax.lax.stop_gradient(next_actions)
-
-        target_next_prob_ratios = fb_critic.apply(
-            target_params, next_observations, next_actions, latents,
-            random_observations, random_actions
-        )
-        target_next_prob_ratios = jax.lax.stop_gradient(target_next_prob_ratios)
+        # target_next_prob_ratios = fb_critic.apply(
+        #     target_params, next_observations, next_actions,
+        #     random_observations, random_actions
+        # )
+        # target_next_prob_ratios = jax.lax.stop_gradient(target_next_prob_ratios)
+        target_next_prob_ratios = gt_ratios[next_observations, next_actions, random_observations, random_actions]
+        target_next_prob_ratios = target_next_prob_ratios[..., None]
 
         random_prob_ratios = fb_critic.apply(
-            params, observations, actions, latents,
+            params, observations, actions,
             random_observations, random_actions
         )
         current_prob_ratios = fb_critic.apply(
-            params, observations, actions, latents,
+            params, observations, actions,
             observations, actions
         )
+        # fb_loss = (
+        #     0.5 * jnp.sum((random_prob_ratios - FLAGS.discount * target_next_prob_ratios) ** 2) / (FLAGS.batch_size * FLAGS.batch_size)
+        #     - (1 - FLAGS.discount) * jnp.sum(jnp.diag(current_prob_ratios)) / FLAGS.batch_size
+        # )
         fb_loss = (
-            0.5 * jnp.sum((random_prob_ratios - FLAGS.discount * target_next_prob_ratios) ** 2) / (FLAGS.batch_size * FLAGS.batch_size)
-            - (1 - FLAGS.discount) * jnp.sum(jnp.diag(current_prob_ratios)) / FLAGS.batch_size
+            0.5 * jnp.mean((random_prob_ratios - FLAGS.discount * target_next_prob_ratios) ** 2)
+            - (1 - FLAGS.discount) * jnp.mean(current_prob_ratios)
         )
 
-        I = jnp.eye(FLAGS.batch_size)
-        current_backward_reprs = fb_critic.apply(
-            params, observations, actions, method='backward_reprs')
-        covariance = jnp.matmul(current_backward_reprs, current_backward_reprs.T)
-        ortho_loss = (
-            -2 * jnp.sum(jnp.diag(covariance)) / FLAGS.batch_size
-            + jnp.sum(((1 - I) * covariance) ** 2) / (FLAGS.batch_size - 1)
-        )
+        # I = jnp.eye(FLAGS.batch_size)
+        # current_backward_reprs = fb_critic.apply(
+        #     params, observations, actions, method='backward_reprs')
+        # covariance = jnp.matmul(current_backward_reprs, current_backward_reprs.T)
+        # ortho_loss = (
+        #     -2 * jnp.sum(jnp.diag(covariance)) / FLAGS.batch_size
+        #     + jnp.sum(((1 - I) * covariance) ** 2) / (FLAGS.batch_size - 1)
+        # )
+        ortho_loss = 0.0
 
         loss = fb_loss + FLAGS.orthonorm_coef * ortho_loss
 
@@ -433,6 +443,9 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
     def update_fn(params, target_params, opt_state, batch, rng):
         rng, loss_rng = jax.random.split(rng, 2)
 
+        # for k, v in batch.items():
+        #     batch[k] = jnp.asarray(v)
+
         (_, info), grad = grad_fn(params, target_params, batch, loss_rng)
         updates, opt_state = optimizer.update(grad, opt_state, params)
         params = optax.apply_updates(params, updates)
@@ -444,67 +457,105 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
 
         return params, target_params, opt_state, rng, info
 
-    def evaluate_fn(params, dataset, rng):
-        # compute the error of the discounted state occupancy measure
-        # note that the discounted state occupancy measure is the same for any policy because we have a single-step MDP.
+    def evaluate_fn(params):
+        # observations = jnp.repeat(
+        #     jnp.expand_dims(jnp.arange(FLAGS.num_observations), axis=1),
+        #     FLAGS.num_actions,
+        #     axis=1,
+        # ).reshape(-1)
+        # actions = jnp.repeat(
+        #     jnp.expand_dims(jnp.arange(FLAGS.num_actions), axis=0),
+        #     FLAGS.num_observations,
+        #     axis=0
+        # ).reshape(-1)
+        # prob_ratios = fb_critic.apply(params, observations, actions, observations, actions)
+
         observations = jnp.repeat(
-            jnp.expand_dims(jnp.arange(FLAGS.num_observations), axis=1),
+            jnp.repeat(
+                jnp.repeat(
+                    jnp.arange(FLAGS.num_observations)[:, None, None, None],
+                    FLAGS.num_actions,
+                    axis=1,
+                ),
+                FLAGS.num_observations,
+                axis=2,
+            ),
+            FLAGS.num_actions,
+            axis=3,
+        ).reshape(-1)
+        actions = jnp.repeat(
+            jnp.repeat(
+                jnp.repeat(
+                    jnp.arange(FLAGS.num_actions)[None, :, None, None],
+                    FLAGS.num_observations,
+                    axis=0,
+                ),
+                FLAGS.num_observations,
+                axis=2,
+            ),
+            FLAGS.num_actions,
+            axis=3,
+        ).reshape(-1)
+        future_observations = jnp.repeat(
+            jnp.repeat(
+                jnp.repeat(
+                    jnp.arange(FLAGS.num_observations)[None, None, :, None],
+                    FLAGS.num_actions,
+                    axis=3,
+                ),
+                FLAGS.num_observations,
+                axis=0,
+            ),
             FLAGS.num_actions,
             axis=1,
         ).reshape(-1)
-        actions = jnp.repeat(
-            jnp.expand_dims(jnp.arange(FLAGS.num_actions), axis=0),
-            FLAGS.num_observations,
-            axis=0
+        future_actions = jnp.repeat(
+            jnp.repeat(
+                jnp.repeat(
+                    jnp.arange(FLAGS.num_actions)[None, None, None, :],
+                    FLAGS.num_observations,
+                    axis=2,
+                ),
+                FLAGS.num_observations,
+                axis=0,
+            ),
+            FLAGS.num_actions,
+            axis=1,
         ).reshape(-1)
-        latents = jax.random.normal(rng, shape=(FLAGS.num_observations * FLAGS.num_actions, repr_dim))
-        if FLAGS.normalized_latent:
-            latents = latents / jnp.linalg.norm(latents, axis=-1, keepdims=True) * jnp.sqrt(repr_dim)
+        prob_ratios = fb_critic.apply(params, observations, actions, future_observations, future_actions)
 
-        forward_reprs = fb_critic.apply(
-            params, observations, actions, latents,
-            method='forward_reprs'
-        )
-        backward_reprs = fb_critic.apply(
-            params, observations, actions,
-            method='backward_reprs'
-        )
-        backward_repr_norms = jnp.linalg.norm(backward_reprs, axis=-1, keepdims=True)
-        if FLAGS.normalized_latent:
-            backward_reprs = backward_reprs / backward_repr_norms * jnp.sqrt(repr_dim)
-        prob_ratios = jnp.einsum('ik,jk->ij', forward_reprs, backward_reprs)
-        if FLAGS.log_linear:
-            prob_ratios = jnp.exp(prob_ratios)
-            forward_latent_inner_prods = jnp.sum(jnp.exp(forward_reprs * latents), axis=-1)
-        else:
-            forward_latent_inner_prods = jnp.sum(forward_reprs * latents, axis=-1)
-        forward_latent_inner_prods = forward_latent_inner_prods.reshape(FLAGS.num_observations, FLAGS.num_actions)
-        policy = jax.nn.one_hot(jnp.argmax(forward_latent_inner_prods, axis=-1), FLAGS.num_actions)
-        policy = np.asarray(policy)
+        # backward_reprs = fb_critic.apply(params, observations, actions, method='backward_reprs')
+        # backward_repr_norms = jnp.linalg.norm(backward_reprs, axis=-1, keepdims=True)
+        # backward_reprs = np.asarray(backward_reprs)
+        # backward_repr_norms = np.asarray(backward_repr_norms)
 
-        # TODO (chongyi): the ground truth ratios should depend on the policy because of the future actions.
-        # gt_ratios = srs['gt_sr_sa_s'][..., None] * policy[None, None] / srs['emp_marg_sa_beta'][None, None]
-        # behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
-        srs = compute_successor_reprs(dataset, policy)
+        behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
+        srs = compute_successor_reprs(dataset, behavioral_policy)
         gt_ratios = srs['gt_sr_sa_sa'] / srs['emp_marg_sa_beta'][None, None]
         prob_ratios = prob_ratios.reshape(FLAGS.num_observations, FLAGS.num_actions,
                                           FLAGS.num_observations, FLAGS.num_actions)
         prob_ratios = np.asarray(prob_ratios)
 
-        prob_ratio_error = np.nanmean((prob_ratios - gt_ratios) ** 2)
+        prob_ratio_error = np.nanmean(np.abs(prob_ratios - gt_ratios))
 
-        # compute the number of null basis
+        # large_batch = sample_batch(dataset, 1_000_000)
+        # marg_sa_beta = np.zeros([FLAGS.num_observations, FLAGS.num_actions])
+        # for s in range(FLAGS.num_observations):
+        #     for a in range(FLAGS.num_actions):
+        #         marg_sa_beta[s, a] = np.sum(
+        #             np.logical_and(large_batch['random_observations'] == s, large_batch['random_actions'] == a)
+        #         )
+        # marg_sa_beta /= np.sum(marg_sa_beta, keepdims=True)
+
         # (chongyi): The matrix used to compute the nullspace is (repr_dim, |S||A|)
         # null_basis = compute_null_basis(backward_reprs)
-        backward_reprs = np.asarray(backward_reprs)
-        backward_repr_norms = np.asarray(backward_repr_norms)
-        null_basis = scipy.linalg.null_space(backward_reprs.T)
-        num_null_basis = null_basis.shape[-1]
+        # null_basis = scipy.linalg.null_space(backward_reprs.T)
+        # num_null_basis = null_basis.shape[-1]
 
         info = dict(
             prob_ratio_error=prob_ratio_error,
-            num_null_basis=num_null_basis,
-            backward_repr_norms=np.mean(backward_repr_norms),
+            # num_null_basis=num_null_basis,
+            # backward_repr_norms=np.mean(backward_repr_norms),
         )
 
         return info
@@ -512,7 +563,7 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
     metrics = defaultdict(list)
     for step in tqdm.trange(num_training_steps):
         rng, update_rng = jax.random.split(rng)
-        batch = sample_batch(dataset, FLAGS.batch_size, repr_dim)
+        batch = sample_batch(dataset, FLAGS.batch_size)
         params, target_params, opt_state, rng, info = update_fn(
             params, target_params, opt_state, batch, update_rng)
 
@@ -522,8 +573,7 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
             )
 
         if step == 1 or step % eval_interval == 0:
-            rng, eval_rng = jax.random.split(rng)
-            eval_info = evaluate_fn(params, dataset, eval_rng)
+            eval_info = evaluate_fn(params)
             for k, v in eval_info.items():
                 metrics['eval/' + k].append(
                     np.array([step, v])
@@ -532,7 +582,7 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
     for k, v in metrics.items():
         metrics[k] = np.asarray(v)
 
-    return fb_critic, params, metrics
+    return metrics
 
 
 def main(_):
@@ -557,102 +607,16 @@ def main(_):
 
     behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
     dataset = collect_dataset(behavioral_policy)
-    srs = compute_successor_reprs(dataset, behavioral_policy)
 
     # TODO (chongyi): use different loss type
     # loss_types = ['mc_lsif', 'td_lsif']
-    metrics = defaultdict(list)
-    null_reward_scales = [1.0]
-    repr_dims = [4, 8, 12, 15, 16, 32, 64]
-    for null_reward_scale in null_reward_scales:
-        opt_q_abs_errors = []
-        for repr_dim in repr_dims:
-            fb_critic, params, train_eval_metrics = train_and_eval(
-                dataset, repr_dim=repr_dim,
-                num_training_steps=FLAGS.num_training_steps, eval_interval=FLAGS.eval_interval
-            )
+    metrics = train_and_eval(dataset, num_training_steps=FLAGS.num_training_steps, eval_interval=FLAGS.eval_interval)
 
-            print("repr_dim = {}, prob_ratio_error = {}".format(
-                repr_dim, train_eval_metrics['eval/prob_ratio_error'][-1, 1])
-            )
-
-            # final evaluation to find the null reward
-            observations = jnp.repeat(
-                jnp.expand_dims(jnp.arange(FLAGS.num_observations), axis=1),
-                FLAGS.num_actions,
-                axis=1,
-            ).reshape(-1)
-            actions = jnp.repeat(
-                jnp.expand_dims(jnp.arange(FLAGS.num_actions), axis=0),
-                FLAGS.num_observations,
-                axis=0
-            ).reshape(-1)
-            backward_reprs = fb_critic.apply(
-                params, observations, actions,
-                method='backward_reprs'
-            )
-            # if FLAGS.normalized_latent:
-            #     backward_reprs = backward_reprs / jnp.linalg.norm(backward_reprs, axis=-1, keepdims=True) * jnp.sqrt(repr_dim)
-            backward_reprs = np.asarray(backward_reprs)
-            null_basis = scipy.linalg.null_space(backward_reprs.T)
-            num_null_basis = null_basis.shape[-1]
-            if num_null_basis > 0:
-                # null reward can also be linear combination of null basis
-                rewards = null_reward_scale * null_basis
-            else:
-                rewards = null_reward_scale * np.random.uniform(size=(FLAGS.num_observations * FLAGS.num_actions, 10))
-            reward_latents = ((backward_reprs * srs['emp_marg_sa_beta'].reshape(-1)[..., None]).T @ rewards).T
-            if FLAGS.normalized_latent:
-                reward_latents = reward_latents / np.linalg.norm(reward_latents, axis=-1, keepdims=True) * np.sqrt(repr_dim)
-
-            reward_latents = jnp.asarray(reward_latents)
-            n_observations = jnp.repeat(
-                jnp.expand_dims(observations, axis=1),
-                reward_latents.shape[0],
-                axis=1
-            ).reshape(-1)
-            n_actions = jnp.repeat(
-                jnp.expand_dims(actions, axis=1),
-                reward_latents.shape[0],
-                axis=1
-            ).reshape(-1)
-            n_reward_latents = jnp.repeat(
-                jnp.expand_dims(reward_latents, axis=0),
-                FLAGS.num_observations * FLAGS.num_actions,
-                axis=0
-            ).reshape(-1, repr_dim)
-            forward_reprs = fb_critic.apply(
-                params, n_observations, n_actions, n_reward_latents,
-                method='forward_reprs'
-            )
-            forward_reprs = forward_reprs.reshape(-1, *reward_latents.shape)
-
-            q_latents = jnp.sum(forward_reprs * reward_latents[None], axis=-1).T
-            q_latents = np.asarray(q_latents).reshape([-1, FLAGS.num_observations, FLAGS.num_actions])
-            q_opts = compute_opt_qs(rewards.T)
-
-            q_error = jnp.mean(jnp.abs(q_latents - q_opts))
-
-            opt_q_abs_errors.append([repr_dim, q_error])
-            print("Optimal q abs error with repr_dim = {}, null reward scalar = {}: {}".format(repr_dim, null_reward_scale, q_error))
-        metrics['opt_q_abs_error'].append(opt_q_abs_errors)
-
-    for k, v in metrics.items():
-        metrics[k] = np.array(v)
-
-    f, ax = plt.subplots(nrows=1, ncols=1)
-    v = metrics['opt_q_abs_error']
-    for idx, null_reward_scale in enumerate(null_reward_scales):
-        x, y = v[idx, :, 0], v[idx, :, 1]
-        ax.plot(x, y, 'o', label='reward scale = {}'.format(null_reward_scale))
-    ax.set_xticks(repr_dims)
-    ax.yaxis.get_major_locator().set_params(integer=True)
-    ax.set_xlabel('repr dim')
-    ax.set_ylabel('Optimal Q absolute errors')
-    f.suptitle('Optimal Q absolute errors')
-
+    f, axes = plot_metrics(metrics, f_axes=None)
     f.tight_layout()
-    f.savefig("figures/mc_td_fb_counter_examples_opt_q_abs_error.png", dpi=300)
+    f.suptitle('repr_dim = {}'.format(FLAGS.repr_dim))
+    f.savefig("figures/mc_td_fb_counter_examples_no_latent_repr_dim={}_mono_net_gt_ratios.png".format(
+        FLAGS.repr_dim), dpi=300)
     print()
 
 
