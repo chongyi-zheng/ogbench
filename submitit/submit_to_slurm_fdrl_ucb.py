@@ -60,87 +60,86 @@ def main():
                                     for q_agg in ['min', 'mean']:
                                         for ensemble_weight_type in ['ret_std_jac_est']:
                                             for ensemble_weight_temp in [0.03, -0.1, 0.02, 0.3]:
-                                                for clip_flow_returns in [True]:
-                                                    for value_layer_norm in [True]:
-                                                        for actor_layer_norm in [True]:
-                                                            for seed in [10, 20]:
-                                                                exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_ucb={alpha_ucb}_next_a_extrac={next_action_extraction}_pi_extrac={policy_extraction}_ensem_w_type={ensemble_weight_type}_ensem_w_temp={ensemble_weight_temp}_clip_ret={clip_flow_returns}_value_ln={value_layer_norm}_actor_ln={actor_layer_norm}_ret_agg={ret_agg}_q_agg={q_agg}"
-                                                                log_dir = os.path.expanduser(
-                                                                    f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
-                                                                # change the log folder of slurm executor
-                                                                submitit_log_dir = os.path.join(os.path.dirname(log_dir), 'submitit')
-                                                                executor._executor.folder = Path(
-                                                                    submitit_log_dir).expanduser().absolute()
-                                                                cmds = f"""
-                                                                    unset PYTHONPATH;
-                                                                    source $HOME/.zshrc;
-                                                                    conda activate ogbench;
-                                                                    which python;
-                                                                    echo $CONDA_PREFIX;
-                                                                    echo job_id: $SLURM_ARRAY_JOB_ID;
-                                                                    echo task_id: $SLURM_ARRAY_TASK_ID;
-                                                                    squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
-                                                                    echo seed: {seed};
-        
-                                                                    export PROJECT_DIR=$PWD;
-                                                                    export PYTHONPATH=$HOME/research/ogbench;
-                                                                    export PATH="$PATH":"$CONDA_PREFIX"/bin;
-                                                                    export CUDA_VISIBLE_DEVICES=0;
-                                                                    export MUJOCO_GL=egl;
-                                                                    export PYOPENGL_PLATFORM=egl;
-                                                                    export EGL_DEVICE_ID=0;
-                                                                    source $HOME/env_vars.sh;
-                                                                    export D4RL_SUPPRESS_IMPORT_ERROR=1;
-                                                                    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
-                                                                    export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
-        
-                                                                    rm -rf {log_dir};
-                                                                    mkdir -p {log_dir};
-                                                                    python $PROJECT_DIR/main.py \
-                                                                        --enable_wandb=1 \
-                                                                        --env_name={env_name} \
-                                                                        --train_steps=1_000_000 \
-                                                                        --log_interval=5_000 \
-                                                                        --eval_interval=100_000 \
-                                                                        --save_interval=1_000_000 \
-                                                                        --eval_episodes=50 \
-                                                                        --agent=agents/fdrl.py \
-                                                                        --agent.discount={discount} \
-                                                                        --agent.num_samples=16 \
-                                                                        --agent.num_flow_steps=10 \
-                                                                        --agent.tau=0.005 \
-                                                                        --agent.ode_solver=euler \
-                                                                        --agent.alpha_critic={alpha_critic} \
-                                                                        --agent.alpha_actor=10 \
-                                                                        --agent.alpha_ucb={alpha_ucb} \
-                                                                        --agent.critic_loss_type=q-learning \
-                                                                        --agent.next_action_extraction={next_action_extraction} \
-                                                                        --agent.policy_extraction={policy_extraction} \
-                                                                        --agent.ensemble_weight_type={ensemble_weight_type} \
-                                                                        --agent.ensemble_weight_temp={ensemble_weight_temp} \
-                                                                        --agent.clip_flow_returns={clip_flow_returns} \
-                                                                        --agent.value_dropout_rate=0.0 \
-                                                                        --agent.value_layer_norm={value_layer_norm} \
-                                                                        --agent.actor_layer_norm={actor_layer_norm} \
-                                                                        --agent.ret_agg={ret_agg} \
-                                                                        --agent.q_agg={q_agg} \
-                                                                        --seed={seed} \
-                                                                        --save_dir={log_dir} \
-                                                                    2>&1 | tee {log_dir}/stream.log;
-        
-                                                                    export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
-                                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
-                                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
-                                                                    echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
-                                                                """
+                                                for value_layer_norm in [True]:
+                                                    for actor_layer_norm in [True]:
+                                                        for seed in [10, 20]:
+                                                            exp_name = f"{datetime.today().strftime('%Y%m%d')}_fdrl_{env_name}_discount={discount}_alpha_critic={alpha_critic}_alpha_ucb={alpha_ucb}_next_a_extrac={next_action_extraction}_pi_extrac={policy_extraction}_ensem_w_type={ensemble_weight_type}_ensem_w_temp={ensemble_weight_temp}_value_ln={value_layer_norm}_actor_ln={actor_layer_norm}_ret_agg={ret_agg}_q_agg={q_agg}"
+                                                            log_dir = os.path.expanduser(
+                                                                f"{log_root_dir}/exp_logs/fdrl_logs/fdrl/{exp_name}/{seed}")
+                                                            # change the log folder of slurm executor
+                                                            submitit_log_dir = os.path.join(os.path.dirname(log_dir), 'submitit')
+                                                            executor._executor.folder = Path(
+                                                                submitit_log_dir).expanduser().absolute()
+                                                            cmds = f"""
+                                                                unset PYTHONPATH;
+                                                                source $HOME/.zshrc;
+                                                                conda activate ogbench;
+                                                                which python;
+                                                                echo $CONDA_PREFIX;
+                                                                echo job_id: $SLURM_ARRAY_JOB_ID;
+                                                                echo task_id: $SLURM_ARRAY_TASK_ID;
+                                                                squeue -j $SLURM_JOB_ID -o "%.18i %.9P %.8j %.8u %.2t %.6D %.5C %.11m %.11l %.12N";
+                                                                echo seed: {seed};
+    
+                                                                export PROJECT_DIR=$PWD;
+                                                                export PYTHONPATH=$HOME/research/ogbench;
+                                                                export PATH="$PATH":"$CONDA_PREFIX"/bin;
+                                                                export CUDA_VISIBLE_DEVICES=0;
+                                                                export MUJOCO_GL=egl;
+                                                                export PYOPENGL_PLATFORM=egl;
+                                                                export EGL_DEVICE_ID=0;
+                                                                source $HOME/env_vars.sh;
+                                                                export D4RL_SUPPRESS_IMPORT_ERROR=1;
+                                                                export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin:/usr/lib/nvidia;
+                                                                export XLA_FLAGS=--xla_gpu_triton_gemm_any=true;
+    
+                                                                rm -rf {log_dir};
+                                                                mkdir -p {log_dir};
+                                                                python $PROJECT_DIR/main.py \
+                                                                    --enable_wandb=1 \
+                                                                    --env_name={env_name} \
+                                                                    --train_steps=1_000_000 \
+                                                                    --log_interval=5_000 \
+                                                                    --eval_interval=100_000 \
+                                                                    --save_interval=1_000_000 \
+                                                                    --eval_episodes=50 \
+                                                                    --agent=agents/fdrl.py \
+                                                                    --agent.discount={discount} \
+                                                                    --agent.num_samples=16 \
+                                                                    --agent.num_flow_steps=10 \
+                                                                    --agent.tau=0.005 \
+                                                                    --agent.ode_solver=euler \
+                                                                    --agent.alpha_critic={alpha_critic} \
+                                                                    --agent.alpha_actor=10 \
+                                                                    --agent.alpha_ucb={alpha_ucb} \
+                                                                    --agent.critic_loss_type=q-learning \
+                                                                    --agent.next_action_extraction={next_action_extraction} \
+                                                                    --agent.policy_extraction={policy_extraction} \
+                                                                    --agent.ensemble_weight_type={ensemble_weight_type} \
+                                                                    --agent.ensemble_weight_temp={ensemble_weight_temp} \
+                                                                    --agent.clip_flow_returns=True \
+                                                                    --agent.value_dropout_rate=0.0 \
+                                                                    --agent.value_layer_norm={value_layer_norm} \
+                                                                    --agent.actor_layer_norm={actor_layer_norm} \
+                                                                    --agent.ret_agg={ret_agg} \
+                                                                    --agent.q_agg={q_agg} \
+                                                                    --seed={seed} \
+                                                                    --save_dir={log_dir} \
+                                                                2>&1 | tee {log_dir}/stream.log;
+    
+                                                                export SUBMITIT_RECORD_FILENAME={log_dir}/submitit_"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID".txt;
+                                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_submitted.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_submission.sh" >> "$SUBMITIT_RECORD_FILENAME";
+                                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_log.out" >> "$SUBMITIT_RECORD_FILENAME";
+                                                                echo "{submitit_log_dir}/"$SLURM_ARRAY_JOB_ID"_"$SLURM_ARRAY_TASK_ID"_0_result.pkl" >> "$SUBMITIT_RECORD_FILENAME";
+                                                            """
 
-                                                                cmd_func = submitit.helpers.CommandFunction([
-                                                                    "/bin/zsh", "-c",
-                                                                    cmds,
-                                                                ], verbose=True)
+                                                            cmd_func = submitit.helpers.CommandFunction([
+                                                                "/bin/zsh", "-c",
+                                                                cmds,
+                                                            ], verbose=True)
 
-                                                                executor.submit(cmd_func)
+                                                            executor.submit(cmd_func)
 
 
 if __name__ == "__main__":
