@@ -95,18 +95,13 @@ class FDRLAgent(flax.struct.PyTreeNode):
             critic_loss = vector_field_loss + self.config['alpha_critic'] * bootstrapped_vector_field_loss
         elif self.config['critic_loss_type'] == 'q-learning':
             batch_size = batch['actions'].shape[0]
-            rng, actor_rng, next_q_rng, noise_rng, time_rng, q_rng, ret_rng = jax.random.split(rng, 7)
+            rng, actor_rng, next_q_rng, next_ret_rng, noise_rng, time_rng, q_rng, ret_rng = jax.random.split(rng, 8)
 
             if 'sfbc' in self.config['next_action_extraction']:
                 next_actor_noises = jax.random.normal(
                     actor_rng,
                     (batch_size, self.config['num_samples'], self.config['action_dim'])
                 )
-                next_q_noises = jax.random.normal(
-                    next_q_rng,
-                    (batch_size, self.config['num_samples'], 1)
-                )
-
                 next_observations = jnp.repeat(
                     jnp.expand_dims(batch['next_observations'], 1),
                     self.config['num_samples'],
@@ -114,18 +109,53 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 )
                 flow_next_actions = self.compute_flow_actions(next_actor_noises, next_observations)
 
-                # Pick the action with the highest Q-value.
-                next_q1 = (next_q_noises + self.network.select('critic_flow1')(
-                    next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
-                next_q2 = (next_q_noises + self.network.select('critic_flow2')(
-                    next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
+                if self.config['next_action_extraction'] == 'sfbc':
+                    # Pick the action with the highest Q-value.
+                    next_q_noises = jax.random.normal(
+                        next_q_rng,
+                        (batch_size, self.config['num_samples'], 1)
+                    )
 
-                if self.config['q_agg'] == 'min':
-                    next_q = jnp.minimum(next_q1, next_q2)
-                else:
-                    next_q = (next_q1 + next_q2) / 2
+                    next_q1 = (next_q_noises + self.network.select('critic_flow1')(
+                        next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
+                    next_q2 = (next_q_noises + self.network.select('critic_flow2')(
+                        next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
 
-                next_actions = flow_next_actions[jnp.arange(batch_size), jnp.argmax(next_q, axis=-1)]
+                    if self.config['q_agg'] == 'min':
+                        next_q = jnp.minimum(next_q1, next_q2)
+                    else:
+                        next_q = (next_q1 + next_q2) / 2
+
+                    next_actions = flow_next_actions[jnp.arange(batch_size), jnp.argmax(next_q, axis=-1)]
+                elif self.config['next_action_extraction'] == 'sfbc_ucb':
+                    next_q_noises = jax.random.normal(
+                        next_q_rng,
+                        (batch_size, self.config['num_samples'], 1)
+                    )
+                    next_q1 = (next_q_noises + self.network.select('critic_flow1')(
+                        next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
+                    next_q2 = (next_q_noises + self.network.select('critic_flow2')(
+                        next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
+
+                    next_ret_noises = jax.random.normal(next_ret_rng, (batch_size, self.config['num_samples'], 1))
+                    _, next_ret_vars1 = self.compute_flow_returns(
+                        next_ret_noises, next_observations, flow_next_actions,
+                        flow_network_name='critic_flow1', return_jac_eps_prod=True)
+                    _, next_ret_vars2 = self.compute_flow_returns(
+                        next_ret_noises, next_observations, flow_next_actions,
+                        flow_network_name='critic_flow2', return_jac_eps_prod=True)
+                    next_ret_vars1 = jnp.nan_to_num(next_ret_vars1.squeeze(-1), nan=jnp.finfo(next_ret_vars1.dtype).max)
+                    next_ret_vars2 = jnp.nan_to_num(next_ret_vars2.squeeze(-1), nan=jnp.finfo(next_ret_vars2.dtype).max)
+                    if self.config['q_agg'] == 'min':
+                        next_q = jnp.minimum(next_q1, next_q2)
+                        next_ret_vars = jnp.minimum(next_ret_vars1, next_ret_vars2)
+                    else:
+                        next_q = (next_q1 + next_q2) / 2
+                        next_ret_vars = (next_ret_vars1 + next_ret_vars2) / 2
+                    next_ret_stds = jnp.sqrt(next_ret_vars)
+
+                    next_q_ucb = next_q + self.config['alpha_ucb'] * next_ret_stds
+                    next_actions = flow_next_actions[jnp.arange(batch_size), jnp.argmax(next_q_ucb, axis=-1)]
             else:
                 next_actor_noises = jax.random.normal(actor_rng, (batch_size, self.config['action_dim']))
                 next_actions = self.network.select('actor_onestep_flow')(batch['next_observations'], next_actor_noises)
@@ -176,12 +206,13 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 _, ret_vars2 = self.compute_flow_returns(
                     ret_noises, batch['observations'], batch['actions'],
                     flow_network_name='critic_flow2', return_jac_eps_prod=True)
+                ret_vars1 = jnp.nan_to_num(ret_vars1.squeeze(-1), nan=jnp.finfo(ret_vars1.dtype).max)
+                ret_vars2 = jnp.nan_to_num(ret_vars2.squeeze(-1), nan=jnp.finfo(ret_vars2.dtype).max)
                 if self.config['q_agg'] == 'min':
                     ret_vars = jnp.minimum(ret_vars1, ret_vars2)
                 else:
                     ret_vars = (ret_vars1 + ret_vars2) / 2
-                ret_stds = jnp.sqrt(ret_vars + 1e-12).squeeze(-1)
-                ret_stds = jnp.nan_to_num(ret_stds, nan=jnp.finfo(ret_stds.dtype).max)
+                ret_stds = jnp.sqrt(ret_vars)
                 q_stds = ret_stds  # for logging
                 weights = jax.nn.sigmoid(-self.config['ensemble_weight_temp'] * ret_stds) + 0.5
                 weights = jax.lax.stop_gradient(weights)
@@ -278,7 +309,7 @@ class FDRLAgent(flax.struct.PyTreeNode):
         pred = self.network.select('actor_flow')(batch['observations'], x_t, t, params=grad_params)
         bc_flow_loss = jnp.mean((pred - vel) ** 2)
 
-        if self.config['policy_extraction'] == 'ddpgbc':
+        if 'ddpgbc' in self.config['policy_extraction']:
             # Distillation loss.
             rng, noise_rng = jax.random.split(rng)
             noises = jax.random.normal(noise_rng, (batch_size, action_dim))
@@ -552,34 +583,65 @@ class FDRLAgent(flax.struct.PyTreeNode):
 
             actions = actions[jnp.argmax(q)]
         elif 'sfbc' in self.config['policy_extraction']:
-            action_seed, q_seed = jax.random.split(seed)
+            action_seed, q_seed, ret_seed = jax.random.split(seed, 3)
             actor_noises = jax.random.normal(
                 action_seed,
                 (*observations.shape[:-1], self.config['num_samples'], self.config['action_dim'])
             )
-            q_noises = jax.random.normal(
-                q_seed,
-                (*observations.shape[:-1], self.config['num_samples'], 1)
-            )
-
-            observations = jnp.repeat(
+            n_observations = jnp.repeat(
                 jnp.expand_dims(observations, -2),
                 self.config['num_samples'],
                 axis=-2
             )
-            flow_actions = self.compute_flow_actions(actor_noises, observations)
+            flow_actions = self.compute_flow_actions(actor_noises, n_observations)
 
-            q1 = (q_noises + self.network.select('critic_flow1')(
-                q_noises, jnp.zeros_like(q_noises), observations, flow_actions)).squeeze(-1)
-            q2 = (q_noises + self.network.select('critic_flow2')(
-                q_noises, jnp.zeros_like(q_noises), observations, flow_actions)).squeeze(-1)
+            if self.config['policy_extraction'] == 'sfbc':
+                q_noises = jax.random.normal(
+                    q_seed,
+                    (*observations.shape[:-1], self.config['num_samples'], 1)
+                )
 
-            if self.config['q_agg'] == 'min':
-                q = jnp.minimum(q1, q2)
-            else:
-                q = (q1 + q2) / 2
+                q1 = (q_noises + self.network.select('critic_flow1')(
+                    q_noises, jnp.zeros_like(q_noises), n_observations, flow_actions)).squeeze(-1)
+                q2 = (q_noises + self.network.select('critic_flow2')(
+                    q_noises, jnp.zeros_like(q_noises), n_observations, flow_actions)).squeeze(-1)
 
-            actions = flow_actions[jnp.argmax(q)]
+                if self.config['q_agg'] == 'min':
+                    q = jnp.minimum(q1, q2)
+                else:
+                    q = (q1 + q2) / 2
+
+                actions = flow_actions[jnp.argmax(q)]
+            elif self.config['policy_extraction'] == 'sfbc_ucb':
+                q_noises = jax.random.normal(
+                    q_seed,
+                    (*observations.shape[:-1], self.config['num_samples'], 1)
+                )
+
+                q1 = (q_noises + self.network.select('critic_flow1')(
+                    q_noises, jnp.zeros_like(q_noises), n_observations, flow_actions)).squeeze(-1)
+                q2 = (q_noises + self.network.select('critic_flow2')(
+                    q_noises, jnp.zeros_like(q_noises), n_observations, flow_actions)).squeeze(-1)
+
+                ret_noises = jax.random.normal(ret_seed, (*observations.shape[:-1], self.config['num_samples'], 1))
+                _, ret_vars1 = self.compute_flow_returns(
+                    ret_noises, n_observations, flow_actions,
+                    flow_network_name='critic_flow1', return_jac_eps_prod=True)
+                _, ret_vars2 = self.compute_flow_returns(
+                    ret_noises, n_observations, flow_actions,
+                    flow_network_name='critic_flow2', return_jac_eps_prod=True)
+                ret_vars1 = jnp.nan_to_num(ret_vars1.squeeze(-1), nan=jnp.finfo(ret_vars1.dtype).max)
+                ret_vars2 = jnp.nan_to_num(ret_vars2.squeeze(-1), nan=jnp.finfo(ret_vars2.dtype).max)
+                if self.config['q_agg'] == 'min':
+                    q = jnp.minimum(q1, q2)
+                    ret_vars = jnp.minimum(ret_vars1, ret_vars2)
+                else:
+                    q = (q1 + q2) / 2
+                    ret_vars = (ret_vars1 + ret_vars2) / 2
+                ret_stds = jnp.sqrt(ret_vars)
+
+                q_ucb = q + self.config['alpha_ucb'] * ret_stds
+                actions = flow_actions[jnp.argmax(q_ucb)]
         else:
             raise NotImplementedError
 
@@ -718,7 +780,8 @@ def get_config():
             critic_loss_type='q-learning',  # Type of the critic loss ('sarsa', 'q-learning').
             alpha_critic=1.0,  # vector field bootstrapped regularization coefficient.
             alpha_actor=1.0,  # BC coefficient.
-            num_samples=32,  # Number of action samples for rejection sampling.
+            alpha_ucb=0.0,  # UCB coefficient.
+            num_samples=16,  # Number of action samples for rejection sampling.
             ode_solver='euler',  # Type of the ODE solver ('euler', 'midpoint').
             vector_field_alpha=1.0,
             num_flow_steps=10,  # Number of flow steps.
