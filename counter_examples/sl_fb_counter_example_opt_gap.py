@@ -1,4 +1,4 @@
-from collections import Counter, defaultdict
+from collections import defaultdict
 import tqdm
 import copy
 import matplotlib.pyplot as plt
@@ -27,10 +27,8 @@ flags.DEFINE_integer('max_episode_length', 11, 'The maximum length of an episode
 
 flags.DEFINE_integer('num_training_steps', 10_000, 'Number of training steps.')
 flags.DEFINE_integer('eval_interval', 1_000, 'Evaluation interval.')
-flags.DEFINE_float('tau', 0.005, 'Target network update rate.')
 flags.DEFINE_integer('batch_size', 256, 'The batch size.')
-flags.DEFINE_integer('repr_dim', 4, 'Forward backward representation dimensions.')
-flags.DEFINE_integer('hidden_dim', 32, 'Forward backward network hidden dimensions.')
+flags.DEFINE_integer('hidden_dim', 128, 'Forward backward network hidden dimensions.')
 flags.DEFINE_integer('log_linear', 0, 'Whether to use the log linear parameterization for FB networks.')
 flags.DEFINE_integer('normalized_latent', 0, 'Whether to normalize the latents and backward representations.')
 flags.DEFINE_integer('num_eval_latents', 16, 'Number of evaluation latents.')
@@ -162,8 +160,6 @@ def collect_dataset(behavioral_policy):
 
 
 def compute_successor_reprs(dataset, policy):
-    # beta = np.ones([num_observations, num_actions])
-    # beta /= num_actions
     assert policy.shape == (FLAGS.num_observations, FLAGS.num_actions)
 
     transition_probs_sa = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations])
@@ -172,9 +168,7 @@ def compute_successor_reprs(dataset, policy):
             next_obs = step(obs, action)
             transition_probs_sa[obs, action, next_obs] += 1
     transition_probs_sa = transition_probs_sa / np.sum(transition_probs_sa, axis=-1, keepdims=True)
-    transition_probs_s = np.sum(transition_probs_sa * policy[..., None], axis=-1)
-    # transition_probs_sa = jnp.array(transition_probs_sa)
-    # transition_probs_s = jnp.array(transition_probs_s)
+    transition_probs_s = np.sum(transition_probs_sa * policy[..., None], axis=1)
 
     # ground truth successor representations
     gt_sr_sa_s = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations])
@@ -196,8 +190,6 @@ def compute_successor_reprs(dataset, policy):
                 np.sum(policy[..., None] * gt_sr_sa_s, axis=1)
             )
         )
-    gt_sr_s_sa = gt_sr_s_s[..., None] * policy[None]
-    # gt_sr_sa_sa = gt_sr_sa_s[..., None] * policy[None, None]
 
     gt_sr_sa_sa = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions])
     for _ in tqdm.trange(1000):
@@ -211,10 +203,6 @@ def compute_successor_reprs(dataset, policy):
         )
 
     # empirical state marginal
-    # counts = Counter(dataset['observations'])
-    # emp_marg_s_beta = np.array([counts[obs] for obs in range(FLAGS.num_observations)])
-    # emp_marg_s_beta = emp_marg_s_beta / np.sum(emp_marg_s_beta)
-    # marginal_s_beta = jnp.array(marginal_s_beta)
     emp_marg_s_beta = np.zeros(FLAGS.num_observations)
     for s in range(FLAGS.num_observations):
         emp_marg_s_beta[s] = np.sum(dataset['observations'] == s)
@@ -228,7 +216,7 @@ def compute_successor_reprs(dataset, policy):
 
     srs = dict(transition_probs_sa=transition_probs_sa, transition_probs_s=transition_probs_s,
                gt_sr_sa_s=gt_sr_sa_s, gt_sr_s_s=gt_sr_s_s,
-               gt_sr_s_sa=gt_sr_s_sa, gt_sr_sa_sa=gt_sr_sa_sa,
+               gt_sr_sa_sa=gt_sr_sa_sa,
                emp_marg_s_beta=emp_marg_s_beta, emp_marg_sa_beta=emp_marg_sa_beta)
 
     return srs
@@ -261,18 +249,6 @@ def compute_opt_qs(batch_rewards):
     return q_opts
 
 
-def compute_null_basis(matrix, atol=0.0, rtol=None):
-    num_rows, num_cols = matrix.shape
-    u, s, v_transpose = jnp.linalg.svd(matrix, full_matrices=True)
-    if rtol is None:
-        # heuristic like NumPy: eps * max(m, n)
-        rtol = jnp.finfo(matrix.dtype).eps * max(num_rows, num_cols)
-    tol = jnp.maximum(atol, rtol * s[0])
-    rank = jnp.sum(s > tol)  # columns of V corresponding to zero singular values
-
-    return v_transpose[rank:].T  # shape (n, n - rank)
-
-
 def sample_batch(dataset, batch_size, repr_dim):
     idxs = np.random.randint(FLAGS.dataset_size, size=(batch_size,))
     rand_idxs = np.random.randint(FLAGS.dataset_size, size=(batch_size,))
@@ -283,7 +259,7 @@ def sample_batch(dataset, batch_size, repr_dim):
 
     latents = np.random.normal(size=(batch_size, repr_dim))
     if FLAGS.normalized_latent:
-        latents = latents / np.linalg.norm(latents, axis=-1, keepdims=True) * np.sqrt(repr_dim)
+        latents = latents / jnp.linalg.norm(latents, axis=-1, keepdims=True) * np.sqrt(repr_dim)
 
     batch = dict(
         observations=dataset['observations'][idxs],
@@ -348,7 +324,6 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
         example_batch['observations'], example_batch['actions'], example_batch['latents'],
         example_batch['future_observations'], example_batch['future_actions']
     )
-    target_params = copy.deepcopy(params)
 
     behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
     srs = compute_successor_reprs(dataset, behavioral_policy)
@@ -356,78 +331,85 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
     emp_marg_sa_beta = jnp.asarray(srs['emp_marg_sa_beta'])
 
     @jax.jit
-    def fb_loss_fn(params, target_params, batch, rng):
+    def fb_loss_fn(params, batch, rng):
         observations = batch['observations']
         actions = batch['actions']
-        next_observations = batch['next_observations']
+        # next_observations = batch['next_observations']
         random_observations = batch['random_observations']
         random_actions = batch['random_actions']
         latents = batch['latents']
 
-        n_next_observations = jnp.repeat(
-            jnp.expand_dims(next_observations, axis=1),
-            FLAGS.num_actions,
-            axis=1
-        ).reshape(-1)
-        n_next_actions = jnp.repeat(
-            jnp.expand_dims(jnp.arange(FLAGS.num_actions), axis=0),
+        n_observations = jnp.repeat(
+            jnp.repeat(
+                np.arange(FLAGS.num_observations)[:, None, None],
+                FLAGS.num_actions,
+                axis=1,
+            ),
             FLAGS.batch_size,
-            axis=0
+            axis=2,
+        ).reshape(-1)
+        n_actions = jnp.repeat(
+            jnp.repeat(
+                jnp.arange(FLAGS.num_actions)[None, :, None],
+                FLAGS.num_observations,
+                axis=0,
+            ),
+            FLAGS.batch_size,
+            axis=2,
         ).reshape(-1)
         n_latents = jnp.repeat(
-            jnp.expand_dims(latents, axis=1),
+            jnp.repeat(
+                latents[None, None],
+                FLAGS.num_observations,
+                axis=0,
+            ),
             FLAGS.num_actions,
-            axis=1
+            axis=1,
         ).reshape(-1, repr_dim)
-        next_forward_reprs = fb_critic.apply(
-            params, n_next_observations, n_next_actions, n_latents,
+
+        forward_reprs = fb_critic.apply(
+            params, n_observations, n_actions, n_latents,
             method='forward_reprs'
         )
-        if fb_critic.log_linear:
-            next_prob_ratios = jnp.sum(jnp.exp(next_forward_reprs * n_latents), axis=-1)
+        if FLAGS.log_linear:
+            forward_latent_inner_prods = jnp.sum(jnp.exp(forward_reprs * n_latents), axis=-1)
         else:
-            next_prob_ratios = jnp.sum(next_forward_reprs * n_latents, axis=-1)
-        next_prob_ratios = next_prob_ratios.reshape(FLAGS.batch_size, FLAGS.num_actions)
-        next_actions = jnp.argmax(next_prob_ratios, axis=-1)
-        next_actions = jax.lax.stop_gradient(next_actions)
+            forward_latent_inner_prods = jnp.sum(forward_reprs * n_latents, axis=-1)
+        forward_latent_inner_prods = forward_latent_inner_prods.reshape(
+            FLAGS.num_observations, FLAGS.num_actions, FLAGS.batch_size)
+        policy = jax.nn.one_hot(jnp.argmax(forward_latent_inner_prods, axis=1), FLAGS.num_actions, axis=1)
+        policy = jnp.transpose(policy, [2, 0, 1])
 
-        target_next_prob_ratios = fb_critic.apply(
-            target_params, next_observations, next_actions, latents,
-            random_observations, random_actions
-        )
-        target_next_prob_ratios = jax.lax.stop_gradient(target_next_prob_ratios)
+        def compute_gt_ratios(policy):
+            gt_sr_sa_sa = jnp.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions])
+            for _ in range(1000):
+                gt_sr_sa_sa = (
+                    (1 - FLAGS.discount) * jnp.eye(FLAGS.num_observations * FLAGS.num_actions).reshape(
+                        FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions)
+                    + FLAGS.discount * jnp.einsum(
+                        'ijk,klm->ijlm',
+                        transition_probs_sa,
+                        jnp.sum(policy[..., None, None] * gt_sr_sa_sa, axis=1)
+                )
+            )
+
+            gt_ratios = gt_sr_sa_sa / emp_marg_sa_beta[None, None]
+
+            return gt_ratios
+
+        gt_ratios = jax.vmap(compute_gt_ratios)(policy)
+        ratio_labels = gt_ratios[jnp.arange(FLAGS.batch_size), observations, actions][:, random_observations, random_actions]
+        ratio_labels = jax.lax.stop_gradient(ratio_labels)
 
         random_prob_ratios = fb_critic.apply(
             params, observations, actions, latents,
-            random_observations, random_actions
+            random_observations, random_actions,
         )
-        current_prob_ratios = fb_critic.apply(
-            params, observations, actions, latents,
-            observations, actions
-        )
-        fb_loss = (
-            0.5 * jnp.sum((random_prob_ratios - FLAGS.discount * target_next_prob_ratios) ** 2) / (FLAGS.batch_size * FLAGS.batch_size)
-            - (1 - FLAGS.discount) * jnp.sum(jnp.diag(current_prob_ratios)) / FLAGS.batch_size
-        )
-
-        I = jnp.eye(FLAGS.batch_size)
-        current_backward_reprs = fb_critic.apply(
-            params, observations, actions, method='backward_reprs')
-        covariance = jnp.matmul(current_backward_reprs, current_backward_reprs.T)
-        ortho_loss = (
-            -2 * jnp.sum(jnp.diag(covariance)) / FLAGS.batch_size
-            + jnp.sum(((1 - I) * covariance) ** 2) / (FLAGS.batch_size - 1)
-        )
-
-        loss = fb_loss + FLAGS.orthonorm_coef * ortho_loss
+        loss = jnp.mean((random_prob_ratios - ratio_labels) ** 2)
 
         info = dict(
             loss=loss,
-            fb_loss=fb_loss,
-            ortho_loss=ortho_loss,
-            current_prob_ratios=jnp.mean(jnp.diag(current_prob_ratios)),
             random_prob_ratios=jnp.mean(jnp.diag(random_prob_ratios)),
-            target_next_prob_ratios=jnp.mean(jnp.diag(target_next_prob_ratios)),
         )
 
         return loss, info
@@ -437,21 +419,16 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
     grad_fn = jax.value_and_grad(fb_loss_fn, has_aux=True)
 
     @jax.jit
-    def update_fn(params, target_params, opt_state, batch, rng):
-        rng, loss_rng = jax.random.split(rng, 2)
+    def update_fn(params, opt_state, batch, rng):
+        rng, loss_rng = jax.random.split(rng)
 
-        (_, info), grad = grad_fn(params, target_params, batch, loss_rng)
-        updates, opt_state = optimizer.update(grad, opt_state, params)
+        (_, info), grads = grad_fn(params, batch, loss_rng)
+        updates, opt_state = optimizer.update(grads, opt_state, params)
         params = optax.apply_updates(params, updates)
 
-        target_params = jax.tree_util.tree_map(
-            lambda p, tp: p * FLAGS.tau + tp * (1 - FLAGS.tau),
-            params, target_params,
-        )
+        return params, opt_state, rng, info
 
-        return params, target_params, opt_state, rng, info
-
-    def evaluate_fn(params, dataset, rng):
+    def evaluate_fn(params, rng):
         # compute the error of the discounted state occupancy measure
         # note that the discounted state occupancy measure is the same for any policy because we have a single-step MDP.
         observations = jnp.repeat(
@@ -535,10 +512,6 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
             return gt_ratios
 
         # TODO (chongyi): the ground truth ratios should depend on the policy because of the future actions.
-        # gt_ratios = srs['gt_sr_sa_s'][..., None] * policy[None, None] / srs['emp_marg_sa_beta'][None, None]
-        # behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
-        # srs = compute_successor_reprs(dataset, policy)  # (Chongyi): There is a bug here. We need fix it.
-        # gt_ratios = srs['gt_sr_sa_sa'] / srs['emp_marg_sa_beta'][None, None]
         gt_ratios = jax.vmap(compute_gt_ratios)(policy)
         prob_ratios = prob_ratios.reshape(FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_eval_latents,
                                           FLAGS.num_observations, FLAGS.num_actions)
@@ -567,8 +540,8 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
     for step in tqdm.trange(num_training_steps):
         rng, update_rng = jax.random.split(rng)
         batch = sample_batch(dataset, FLAGS.batch_size, repr_dim)
-        params, target_params, opt_state, rng, info = update_fn(
-            params, target_params, opt_state, batch, update_rng)
+        params, opt_state, rng, info = update_fn(
+            params, opt_state, batch, update_rng)
 
         for k, v in info.items():
             metrics['train/' + k].append(
@@ -577,7 +550,7 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
 
         if step == 1 or step % eval_interval == 0:
             rng, eval_rng = jax.random.split(rng)
-            eval_info = evaluate_fn(params, dataset, eval_rng)
+            eval_info = evaluate_fn(params, eval_rng)
             for k, v in eval_info.items():
                 metrics['eval/' + k].append(
                     np.array([step, v])
@@ -596,7 +569,6 @@ def main(_):
         [1., 2., 3.],
         [2., 4., 6.]
     ], dtype=jnp.float32)
-    # null_basis = compute_null_basis(A)
     scipy_null_basis = scipy.linalg.null_space(A)
     assert np.allclose(np.abs(A @ scipy_null_basis), 0.0, atol=1e-6)
 
@@ -605,7 +577,6 @@ def main(_):
         [2., 1.],
         [5., 3.],
     ])
-    # null_basis = compute_null_basis(A)
     scipy_null_basis = scipy.linalg.null_space(A)
     assert scipy_null_basis.shape[-1] == 0
 
@@ -617,7 +588,7 @@ def main(_):
     # loss_types = ['mc_lsif', 'td_lsif']
     metrics = defaultdict(list)
     null_reward_scales = [1.0]
-    repr_dims = [4, 8, 12, 16, 32, 64]
+    repr_dims = [32]
     for null_reward_scale in null_reward_scales:
         opt_q_abs_errors = []
         for repr_dim in repr_dims:
@@ -645,8 +616,6 @@ def main(_):
                 params, observations, actions,
                 method='backward_reprs'
             )
-            # if FLAGS.normalized_latent:
-            #     backward_reprs = backward_reprs / jnp.linalg.norm(backward_reprs, axis=-1, keepdims=True) * jnp.sqrt(repr_dim)
             backward_reprs = np.asarray(backward_reprs)
             null_basis = scipy.linalg.null_space(backward_reprs.T)
             num_null_basis = null_basis.shape[-1]
@@ -706,7 +675,7 @@ def main(_):
     f.suptitle('Optimal Q absolute errors')
 
     f.tight_layout()
-    f.savefig("figures/mc_td_fb_counter_examples_opt_q_abs_error.png", dpi=300)
+    f.savefig("figures/sl_fb_counter_examples_opt_q_abs_error.png", dpi=300)
     print()
 
 

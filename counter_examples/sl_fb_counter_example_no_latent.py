@@ -224,7 +224,7 @@ def compute_successor_reprs(dataset, policy):
                 np.sum(policy[..., None] * gt_sr_sa_s, axis=1)
             )
         )
-    gt_sr_s_sa = gt_sr_s_s[..., None] * policy[None]
+    # gt_sr_s_sa = gt_sr_s_s[..., None] * policy[None]
     # gt_sr_sa_sa_tmp = gt_sr_sa_s[..., None] * policy[None, None]
 
     gt_sr_sa_sa = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions])
@@ -346,7 +346,6 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
 
     behavioral_policy = np.ones([FLAGS.num_observations, FLAGS.num_actions]) / FLAGS.num_actions
     srs = compute_successor_reprs(dataset, behavioral_policy)
-    behavioral_policy = jnp.asarray(behavioral_policy)
     gt_ratios = jnp.asarray(srs['gt_sr_sa_sa'] / srs['emp_marg_sa_beta'][None, None])
 
     @jax.jit
@@ -371,7 +370,7 @@ def train_and_eval(dataset, num_training_steps=10_000, eval_interval=1_000):
 
         return loss, info
 
-    optimizer = optax.adam(learning_rate=3e-3)
+    optimizer = optax.adam(learning_rate=1e-3)
     opt_state = optimizer.init(params)
     grad_fn = jax.value_and_grad(fb_loss_fn, has_aux=True)
 
