@@ -144,8 +144,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
                     _, next_ret_vars2 = self.compute_flow_returns(
                         next_ret_noises, next_observations, flow_next_actions,
                         flow_network_name='critic_flow2', return_jac_eps_prod=True)
-                    next_ret_vars1 = jnp.nan_to_num(next_ret_vars1.squeeze(-1), nan=jnp.finfo(next_ret_vars1.dtype).max)
-                    next_ret_vars2 = jnp.nan_to_num(next_ret_vars2.squeeze(-1), nan=jnp.finfo(next_ret_vars2.dtype).max)
+                    next_ret_vars1 = jnp.nan_to_num(next_ret_vars1.squeeze(-1), nan=0.0)
+                    next_ret_vars2 = jnp.nan_to_num(next_ret_vars2.squeeze(-1), nan=0.0)
                     if self.config['q_agg'] == 'min':
                         next_q = jnp.minimum(next_q1, next_q2)
                         next_ret_vars = jnp.minimum(next_ret_vars1, next_ret_vars2)
@@ -206,8 +206,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 _, ret_vars2 = self.compute_flow_returns(
                     ret_noises, batch['observations'], batch['actions'],
                     flow_network_name='critic_flow2', return_jac_eps_prod=True)
-                ret_vars1 = jnp.nan_to_num(ret_vars1.squeeze(-1), nan=jnp.finfo(ret_vars1.dtype).max)
-                ret_vars2 = jnp.nan_to_num(ret_vars2.squeeze(-1), nan=jnp.finfo(ret_vars2.dtype).max)
+                ret_vars1 = jnp.nan_to_num(ret_vars1.squeeze(-1), nan=0.0)
+                ret_vars2 = jnp.nan_to_num(ret_vars2.squeeze(-1), nan=0.0)
                 if self.config['q_agg'] == 'min':
                     ret_vars = jnp.minimum(ret_vars1, ret_vars2)
                 else:
@@ -630,8 +630,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 _, ret_vars2 = self.compute_flow_returns(
                     ret_noises, n_observations, flow_actions,
                     flow_network_name='critic_flow2', return_jac_eps_prod=True)
-                ret_vars1 = jnp.nan_to_num(ret_vars1.squeeze(-1), nan=jnp.finfo(ret_vars1.dtype).max)
-                ret_vars2 = jnp.nan_to_num(ret_vars2.squeeze(-1), nan=jnp.finfo(ret_vars2.dtype).max)
+                ret_vars1 = jnp.nan_to_num(ret_vars1.squeeze(-1), nan=0.0)
+                ret_vars2 = jnp.nan_to_num(ret_vars2.squeeze(-1), nan=0.0)
                 if self.config['q_agg'] == 'min':
                     q = jnp.minimum(q1, q2)
                     ret_vars = jnp.minimum(ret_vars1, ret_vars2)
