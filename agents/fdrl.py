@@ -88,6 +88,17 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
             q2 = (q_noises + self.network.select('critic_flow2')(
                 q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
+            if self.config['clip_flow_returns']:
+                q1 = jnp.clip(
+                    q1,
+                    self.config['min_reward'] / (1 - self.config['discount']),
+                    self.config['max_reward'] / (1 - self.config['discount']),
+                )
+                q2 = jnp.clip(
+                    q2,
+                    self.config['min_reward'] / (1 - self.config['discount']),
+                    self.config['max_reward'] / (1 - self.config['discount']),
+                )
             if self.config['q_agg'] == 'min':
                 q = jnp.minimum(q1, q2)
             else:
@@ -120,6 +131,17 @@ class FDRLAgent(flax.struct.PyTreeNode):
                         next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
                     next_q2 = (next_q_noises + self.network.select('critic_flow2')(
                         next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
+                    if self.config['clip_flow_returns']:
+                        next_q1 = jnp.clip(
+                            next_q1,
+                            self.config['min_reward'] / (1 - self.config['discount']),
+                            self.config['max_reward'] / (1 - self.config['discount']),
+                        )
+                        next_q2 = jnp.clip(
+                            next_q2,
+                            self.config['min_reward'] / (1 - self.config['discount']),
+                            self.config['max_reward'] / (1 - self.config['discount']),
+                        )
 
                     if self.config['q_agg'] == 'min':
                         next_q = jnp.minimum(next_q1, next_q2)
@@ -155,6 +177,13 @@ class FDRLAgent(flax.struct.PyTreeNode):
                     next_ret_stds = jnp.sqrt(next_ret_vars)
 
                     next_q_ucb = next_q + self.config['alpha_ucb'] * next_ret_stds
+                    if self.config['clip_flow_returns']:
+                        next_q_ucb = jnp.clip(
+                            next_q_ucb,
+                            self.config['min_reward'] / (1 - self.config['discount']),
+                            self.config['max_reward'] / (1 - self.config['discount']),
+                        )
+
                     next_actions = flow_next_actions[jnp.arange(batch_size), jnp.argmax(next_q_ucb, axis=-1)]
             else:
                 next_actor_noises = jax.random.normal(actor_rng, (batch_size, self.config['action_dim']))
@@ -179,6 +208,17 @@ class FDRLAgent(flax.struct.PyTreeNode):
                     q_noises, jnp.zeros_like(q_noises), n_observations, n_actions)).squeeze(-1)
                 q2 = (q_noises + self.network.select('critic_flow2')(
                     q_noises, jnp.zeros_like(q_noises), n_observations, n_actions)).squeeze(-1)
+                if self.config['clip_flow_returns']:
+                    q1 = jnp.clip(
+                        q1,
+                        self.config['min_reward'] / (1 - self.config['discount']),
+                        self.config['max_reward'] / (1 - self.config['discount']),
+                    )
+                    q2 = jnp.clip(
+                        q2,
+                        self.config['min_reward'] / (1 - self.config['discount']),
+                        self.config['max_reward'] / (1 - self.config['discount']),
+                    )
                 if self.config['q_agg'] == 'min':
                     q = jnp.minimum(q1, q2)
                 else:
@@ -194,6 +234,17 @@ class FDRLAgent(flax.struct.PyTreeNode):
                     q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
                 q2 = (q_noises + self.network.select('critic_flow2')(
                     q_noises, jnp.zeros_like(q_noises), batch['observations'], batch['actions'])).squeeze(-1)
+                if self.config['clip_flow_returns']:
+                    q1 = jnp.clip(
+                        q1,
+                        self.config['min_reward'] / (1 - self.config['discount']),
+                        self.config['max_reward'] / (1 - self.config['discount']),
+                    )
+                    q2 = jnp.clip(
+                        q2,
+                        self.config['min_reward'] / (1 - self.config['discount']),
+                        self.config['max_reward'] / (1 - self.config['discount']),
+                    )
                 if self.config['q_agg'] == 'min':
                     q = jnp.minimum(q1, q2)
                 else:
@@ -325,6 +376,17 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 q_noises, jnp.zeros_like(q_noises), batch['observations'], actor_actions)).squeeze(-1)
             q2 = (q_noises + self.network.select('critic_flow2')(
                 q_noises, jnp.zeros_like(q_noises), batch['observations'], actor_actions)).squeeze(-1)
+            if self.config['clip_flow_returns']:
+                q1 = jnp.clip(
+                    q1,
+                    self.config['min_reward'] / (1 - self.config['discount']),
+                    self.config['max_reward'] / (1 - self.config['discount']),
+                )
+                q2 = jnp.clip(
+                    q2,
+                    self.config['min_reward'] / (1 - self.config['discount']),
+                    self.config['max_reward'] / (1 - self.config['discount']),
+                )
             if self.config['q_agg'] == 'min':
                 q = jnp.minimum(q1, q2)
             else:
@@ -577,6 +639,17 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 q_noises, jnp.zeros_like(q_noises), n_orig_observations, actions)).squeeze(-1)
             q2 = (q_noises + self.network.select('critic_flow2')(
                 q_noises, jnp.zeros_like(q_noises), n_orig_observations, actions)).squeeze(-1)
+            if self.config['clip_flow_returns']:
+                q1 = jnp.clip(
+                    q1,
+                    self.config['min_reward'] / (1 - self.config['discount']),
+                    self.config['max_reward'] / (1 - self.config['discount']),
+                )
+                q2 = jnp.clip(
+                    q2,
+                    self.config['min_reward'] / (1 - self.config['discount']),
+                    self.config['max_reward'] / (1 - self.config['discount']),
+                )
 
             if self.config['q_agg'] == 'min':
                 q = jnp.minimum(q1, q2)
@@ -607,6 +680,17 @@ class FDRLAgent(flax.struct.PyTreeNode):
                     q_noises, jnp.zeros_like(q_noises), n_observations, flow_actions)).squeeze(-1)
                 q2 = (q_noises + self.network.select('critic_flow2')(
                     q_noises, jnp.zeros_like(q_noises), n_observations, flow_actions)).squeeze(-1)
+                if self.config['clip_flow_returns']:
+                    q1 = jnp.clip(
+                        q1,
+                        self.config['min_reward'] / (1 - self.config['discount']),
+                        self.config['max_reward'] / (1 - self.config['discount']),
+                    )
+                    q2 = jnp.clip(
+                        q2,
+                        self.config['min_reward'] / (1 - self.config['discount']),
+                        self.config['max_reward'] / (1 - self.config['discount']),
+                    )
 
                 if self.config['q_agg'] == 'min':
                     q = jnp.minimum(q1, q2)
@@ -643,6 +727,13 @@ class FDRLAgent(flax.struct.PyTreeNode):
                 ret_stds = jnp.sqrt(ret_vars)
 
                 q_ucb = q + self.config['alpha_ucb'] * ret_stds
+                if self.config['clip_flow_returns']:
+                    q_ucb = jnp.clip(
+                        q_ucb,
+                        self.config['min_reward'] / (1 - self.config['discount']),
+                        self.config['max_reward'] / (1 - self.config['discount']),
+                    )
+
                 actions = flow_actions[jnp.argmax(q_ucb)]
         else:
             raise NotImplementedError
