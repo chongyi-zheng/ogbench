@@ -332,16 +332,18 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
 
     @jax.jit
     def fb_loss_fn(params, batch, rng):
-        observations = batch['observations']
-        actions = batch['actions']
+        # observations = batch['observations']
+        # actions = batch['actions']
         # next_observations = batch['next_observations']
-        random_observations = batch['random_observations']
-        random_actions = batch['random_actions']
+        # random_observations = batch['random_observations']
+        # random_actions = batch['random_actions']
         latents = batch['latents']
 
+        observations = jnp.arange(FLAGS.num_observations)
+        actions = jnp.arange(FLAGS.num_actions)
         n_observations = jnp.repeat(
             jnp.repeat(
-                np.arange(FLAGS.num_observations)[:, None, None],
+                observations[:, None, None],
                 FLAGS.num_actions,
                 axis=1,
             ),
@@ -350,7 +352,7 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
         ).reshape(-1)
         n_actions = jnp.repeat(
             jnp.repeat(
-                jnp.arange(FLAGS.num_actions)[None, :, None],
+                actions[None, :, None],
                 FLAGS.num_observations,
                 axis=0,
             ),
@@ -398,18 +400,41 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
             return gt_ratios
 
         gt_ratios = jax.vmap(compute_gt_ratios)(policy)
-        ratio_labels = gt_ratios[jnp.arange(FLAGS.batch_size), observations, actions][:, random_observations, random_actions]
-        ratio_labels = jax.lax.stop_gradient(ratio_labels)
+        # ratio_labels = gt_ratios[jnp.arange(FLAGS.batch_size), observations, actions][:, random_observations, random_actions]
+        ratio_labels = jax.lax.stop_gradient(gt_ratios)
 
+        n_observations = jnp.repeat(
+            jnp.repeat(
+                observations[:, None, None],
+                FLAGS.num_actions,
+                axis=1,
+            ),
+            FLAGS.batch_size,
+            axis=2,
+        ).reshape(-1)
+        n_actions = jnp.repeat(
+            jnp.repeat(
+                actions[None, :, None],
+                FLAGS.num_observations,
+                axis=0,
+            ),
+            FLAGS.batch_size,
+            axis=2,
+        ).reshape(-1)
         random_prob_ratios = fb_critic.apply(
-            params, observations, actions, latents,
-            random_observations, random_actions,
+            params, n_observations, n_actions, n_latents,
+            jnp.repeat(observations[:, None], FLAGS.num_actions, axis=1).reshape(-1),
+            jnp.repeat(actions[None, :], FLAGS.num_observations, axis=0).reshape(-1),
         )
+        random_prob_ratios = random_prob_ratios.reshape(
+            FLAGS.num_observations, FLAGS.num_actions, FLAGS.batch_size,
+            FLAGS.num_observations, FLAGS.num_actions)
+        random_prob_ratios = jnp.transpose(random_prob_ratios, axes=[2, 0, 1, 3, 4])
         loss = jnp.mean((random_prob_ratios - ratio_labels) ** 2)
 
         info = dict(
             loss=loss,
-            random_prob_ratios=jnp.mean(jnp.diag(random_prob_ratios)),
+            random_prob_ratios=jnp.mean(random_prob_ratios),
         )
 
         return loss, info
