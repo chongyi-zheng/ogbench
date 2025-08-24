@@ -513,7 +513,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
             vector_field = self.network.select('actor_flow')(
                 observations, noisy_actions, times)
             new_noisy_actions = noisy_actions + vector_field * step_size
-            new_noisy_actions = jnp.clip(new_noisy_actions, -1, 1)
+            if self.config['clip_flow_actions']:
+                new_noisy_actions = jnp.clip(new_noisy_actions, -1, 1)
 
             return (new_noisy_actions,), None
 
@@ -521,7 +522,8 @@ class FDRLAgent(flax.struct.PyTreeNode):
         (noisy_actions,), _ = jax.lax.scan(
             func, (noisy_actions,), jnp.arange(self.config['num_flow_steps']))
 
-        # noisy_actions = jnp.clip(noisy_actions, -1, 1)
+        if not self.config['clip_flow_actions']:
+            noisy_actions = jnp.clip(noisy_actions, -1, 1)
 
         return noisy_actions
 
@@ -772,6 +774,7 @@ def get_config():
             expectile=0.9,  # IQL expectile.
             ret_agg='min',  # Aggregation method for return values.
             q_agg='min',  # Aggregation method for Q values.
+            clip_flow_actions=True,  # Whether to clip the intermediate flow actions.
             clip_flow_returns=True,  # Whether to clip flow returns.
             ensemble_weight_type='q_std',  # Type of ensemble weights ('q_std', 'ret_std').
             ensemble_weight_temp=10.0,  # Temperature for the Q ensemble weights.
