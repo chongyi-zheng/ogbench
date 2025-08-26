@@ -159,23 +159,6 @@ class FDRLAgent(flax.struct.PyTreeNode):
                     next_q2 = (next_q_noises + self.network.select('critic_flow2')(
                         next_q_noises, jnp.zeros_like(next_q_noises), next_observations, flow_next_actions)).squeeze(-1)
 
-                    ret_noises = jax.random.normal(ret_rng, (batch_size, 1))
-                    _, ret_jac_eps_prods1 = self.compute_flow_returns(
-                        ret_noises, batch['observations'], batch['actions'],
-                        flow_network_name='critic_flow1', return_jac_eps_prod=True)
-                    _, ret_jac_eps_prods2 = self.compute_flow_returns(
-                        ret_noises, batch['observations'], batch['actions'],
-                        flow_network_name='critic_flow2', return_jac_eps_prod=True)
-                    # ret_vars1 = jnp.nan_to_num(ret_vars1.squeeze(-1), nan=0.0)
-                    # ret_vars2 = jnp.nan_to_num(ret_vars2.squeeze(-1), nan=0.0)
-                    ret_stds1 = jnp.sqrt(ret_jac_eps_prods1.squeeze(-1) ** 2)
-                    ret_stds2 = jnp.sqrt(ret_jac_eps_prods2.squeeze(-1) ** 2)
-                    if self.config['q_agg'] == 'min':
-                        ret_stds = jnp.minimum(ret_stds1, ret_stds2)
-                    else:
-                        ret_stds = (ret_stds1 + ret_stds2) / 2
-                    # ret_stds = jnp.sqrt(ret_vars)
-
                     next_ret_noises = jax.random.normal(next_ret_rng, (batch_size, self.config['num_samples'], 1))
                     _, next_ret_jac_eps_prods1 = self.compute_flow_returns(
                         next_ret_noises, next_observations, flow_next_actions,
