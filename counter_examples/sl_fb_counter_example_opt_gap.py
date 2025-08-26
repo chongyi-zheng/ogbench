@@ -28,7 +28,7 @@ flags.DEFINE_integer('max_episode_length', 11, 'The maximum length of an episode
 flags.DEFINE_integer('num_training_steps', 10_000, 'Number of training steps.')
 flags.DEFINE_integer('eval_interval', 1_000, 'Evaluation interval.')
 flags.DEFINE_integer('batch_size', 256, 'The batch size.')
-flags.DEFINE_integer('hidden_dim', 128, 'Forward backward network hidden dimensions.')
+flags.DEFINE_integer('hidden_dim', 32, 'Forward backward network hidden dimensions.')
 flags.DEFINE_integer('log_linear', 0, 'Whether to use the log linear parameterization for FB networks.')
 flags.DEFINE_integer('normalized_latent', 0, 'Whether to normalize the latents and backward representations.')
 flags.DEFINE_integer('num_eval_latents', 16, 'Number of evaluation latents.')
@@ -368,6 +368,7 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
             FLAGS.num_actions,
             axis=1,
         ).reshape(-1, repr_dim)
+        n_latents = jnp.ones_like(n_latents)
 
         forward_reprs = fb_critic.apply(
             params, n_observations, n_actions, n_latents,
@@ -496,6 +497,7 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
             FLAGS.num_actions,
             axis=1
         ).reshape(-1, repr_dim)
+        n_latents = jnp.ones_like(n_latents)
 
         forward_reprs = fb_critic.apply(
             params, n_observations, n_actions, n_latents,
@@ -521,7 +523,7 @@ def train_and_eval(dataset, repr_dim=16, num_training_steps=10_000, eval_interva
 
         def compute_gt_ratios(policy):
             gt_sr_sa_sa = jnp.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions])
-            for _ in range(500):
+            for _ in range(1000):
                 gt_sr_sa_sa = (
                     (1 - FLAGS.discount) * jnp.eye(FLAGS.num_observations * FLAGS.num_actions).reshape(
                         FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions)
