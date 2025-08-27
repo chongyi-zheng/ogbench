@@ -36,82 +36,69 @@ def step(observation, action):
     return next_observation
 
 
-def compute_gt_fb_reprs(latents):
+def compute_gt_fb_reprs(behavioral_policy):
     transition_probs_sa = np.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations])
     for obs in range(FLAGS.num_observations):
         for action in range(FLAGS.num_actions):
             next_obs = step(obs, action)
             transition_probs_sa[obs, action, next_obs] += 1
     transition_probs_sa = transition_probs_sa / np.sum(transition_probs_sa, axis=-1, keepdims=True)
-    transition_probs_sa = jnp.asarray(transition_probs_sa)
+    transition_probs_sa = jnp.asarray(transition_probs_sa, dtype=behavioral_policy.dtype)
 
-    neg_marg_sa = jnp.ones([FLAGS.num_observations, FLAGS.num_actions]) / (FLAGS.num_observations * FLAGS.num_actions)
+    neg_marg_sa = jnp.ones(
+        [FLAGS.num_observations, FLAGS.num_actions],
+        dtype=behavioral_policy.dtype
+    ) / (FLAGS.num_observations * FLAGS.num_actions)
 
-    # sample the fixed forward representation for each latents
-    # rng, forward_repr_rng = jax.random.split(rng)
-    # forward_reprs = jax.random.normal(
-    #     forward_repr_rng,
-    #     (FLAGS.num_eval_latents, FLAGS.num_observations, FLAGS.num_actions, FLAGS.repr_dim)
-    # )
-    # forward_latent_inners = jnp.einsum('ijkl,il->ijk', forward_reprs, latents)
-    #
-    # policies = jax.nn.one_hot(forward_latent_inners.argmax(2), FLAGS.num_actions, axis=2)
+    # value iteration
+    # Build T_pi: [S, A, S, A] with T_pi[s, a, s', a'] = P(s'|s,a) * pi[a'|s']
+    # T_pi = jnp.einsum('ijk,kl->ijkl', transition_probs_sa, policy)  # [S, A, S, A]
+    T_pi = transition_probs_sa[..., None] * behavioral_policy[None, None]  # [S, A, S, A]
+    T_flat = T_pi.reshape(FLAGS.num_observations * FLAGS.num_actions,
+                          FLAGS.num_observations * FLAGS.num_actions)
+    I = jnp.eye(FLAGS.num_observations * FLAGS.num_actions, dtype=behavioral_policy.dtype)
+    # solve (I - discount * T) X = (1-discount) * I for X
+    gt_sr_sa_sa = (1.0 - FLAGS.discount) * jnp.linalg.inv(I - FLAGS.discount * T_flat)  # [S * A, S * A]
+    # gt_sr_sa_sa = gt_sr_sa_sa_flat.reshape(FLAGS.num_observations, FLAGS.num_actions,
+    #                                        FLAGS.num_observations, FLAGS.num_actions)
 
-    I = jnp.eye(FLAGS.num_observations * FLAGS.num_actions).reshape(
-        FLAGS.num_observations, FLAGS.num_actions,
-        FLAGS.num_observations, FLAGS.num_actions)
-    I = jnp.repeat(I[None], FLAGS.num_eval_latents, axis=0)
-    gt_sr_sa_sa = jnp.zeros([
-        FLAGS.num_eval_latents, FLAGS.num_observations, FLAGS.num_actions,
-        FLAGS.num_observations, FLAGS.num_actions
-    ])
-    for _ in range(10000):
-        ratios = gt_sr_sa_sa / neg_marg_sa[None, None, None]
-        ratios = jnp.reshape(
-            ratios,
-            [FLAGS.num_eval_latents * FLAGS.num_observations * FLAGS.num_actions,
-             FLAGS.num_observations * FLAGS.num_actions]
-        )
+    gt_ratios = gt_sr_sa_sa / neg_marg_sa.reshape(-1)[None]  # [S * A, S * A]
 
-        # TODO (chongyi): do we specify the rank here?
-        #     Given the SVD, ``x`` can be reconstructed via matrix multiplication:
-        #
-        #     >>> x_reconstructed = u @ jnp.diag(s) @ vt
-        #     >>> jnp.allclose(x_reconstructed, x)
-        #     Array(True, dtype=bool)
+    def compute_gt_occ_measure(policy):
+        gt_sr_sa_sa = jnp.zeros([FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions])
+        for _ in range(1000):
+            gt_sr_sa_sa_new = (
+                (1 - FLAGS.discount) * jnp.eye(FLAGS.num_observations * FLAGS.num_actions).reshape(
+            FLAGS.num_observations, FLAGS.num_actions, FLAGS.num_observations, FLAGS.num_actions)
+                + FLAGS.discount * jnp.einsum('ijk,klm->ijlm', transition_probs_sa,
+                                              jnp.sum(policy[..., None, None] * gt_sr_sa_sa, axis=1))
+            )
 
-        u, s, vt = jnp.linalg.svd(ratios, full_matrices=False)
-        forward_reprs = u @ jnp.diag(s)
-        backward_reprs = vt
-        forward_reprs = jnp.reshape(
-            forward_reprs,
-            [FLAGS.num_eval_latents, FLAGS.num_observations, FLAGS.num_actions,
-             FLAGS.num_observations * FLAGS.num_actions]
-        )
-        forward_latent_inners = jnp.einsum('ijkl,il->ijk', forward_reprs, latents)
-
-        policies = jax.nn.one_hot(forward_latent_inners.argmax(2), FLAGS.num_actions, axis=2)
-
-        gt_sr_sa_sa_new = (
-            (1 - FLAGS.discount) * I
-            + FLAGS.discount * jnp.einsum('ijk,lkmn->lijmn', transition_probs_sa,
-                                          jnp.sum(policies[..., None, None] * gt_sr_sa_sa, axis=2))
-        )
-
-        if np.max(np.abs(gt_sr_sa_sa_new - gt_sr_sa_sa)) < 1e-10:
+            if jnp.max(jnp.abs(gt_sr_sa_sa_new - gt_sr_sa_sa)) < 1e-10:
+                gt_sr_sa_sa = gt_sr_sa_sa_new
+                break
             gt_sr_sa_sa = gt_sr_sa_sa_new
-            break
-        gt_sr_sa_sa = gt_sr_sa_sa_new
 
-    forward_reprs = jnp.reshape(
-        forward_reprs,
-        [FLAGS.num_eval_latents, FLAGS.num_observations, FLAGS.num_actions,
-         FLAGS.num_observations * FLAGS.num_actions]
+        return gt_sr_sa_sa
+
+    # gt_sr_sa_sa_tmp = compute_gt_occ_measure(behavioral_policy)
+    # gt_sr_sa_sa_tmp = gt_sr_sa_sa_tmp.reshape(FLAGS.num_observations * FLAGS.num_actions,
+    #                                           FLAGS.num_observations * FLAGS.num_actions)
+
+    u, s, vt = jnp.linalg.svd(gt_ratios, full_matrices=False)
+    assert jnp.allclose(u @ jnp.diag(s) @ vt, gt_ratios)  # only works with float64
+    recon_err = jnp.sum(jnp.abs(u @ jnp.diag(s) @ vt - gt_ratios))
+
+    forward_reprs = (u @ jnp.diag(s))[:, :FLAGS.repr_dim]
+    backward_reprs = vt[:FLAGS.repr_dim].T
+
+    forward_reprs = forward_reprs.reshape(
+        FLAGS.num_observations, FLAGS.num_actions,
+        FLAGS.repr_dim
     )
-    backward_reprs = jnp.reshape(
-        backward_reprs,
-        [FLAGS.num_observations, FLAGS.num_actions,
-         FLAGS.num_observations * FLAGS.num_actions]
+    backward_reprs = backward_reprs.reshape(
+        FLAGS.num_observations, FLAGS.num_actions,
+        FLAGS.repr_dim
     )
 
     info = {
@@ -119,26 +106,30 @@ def compute_gt_fb_reprs(latents):
         'backward_reprs': backward_reprs,
         'gt_sr_sa_sa': gt_sr_sa_sa,
         'neg_marg_sa': neg_marg_sa,
+        'recon_err': recon_err,
     }
 
     return info
 
 
 def main(_):
-    rng = jax.random.key(np.random.randint(2 ** 32))
-    rng, latent_rng = jax.random.split(rng, 2)
-    latents = jax.random.normal(latent_rng, shape=(FLAGS.num_eval_latents, FLAGS.repr_dim))
-    latents = latents / jnp.linalg.norm(latents, axis=-1, keepdims=True)
-    gt_fb_reprs = compute_gt_fb_reprs(latents)
+    # we use jnp.float64 to enable accurate SVD.
+    jax.config.update('jax_enable_x64', True)
+
+    # rng = jax.random.key(np.random.randint(2 ** 32))
+    # rng, latent_rng = jax.random.split(rng, 2)
+    # latents = jax.random.normal(latent_rng, shape=(FLAGS.num_eval_latents, FLAGS.repr_dim))
+    # latents = latents / jnp.linalg.norm(latents, axis=-1, keepdims=True)
+    behavioral_policy = jnp.ones([FLAGS.num_observations, FLAGS.num_actions], dtype=jnp.float64) / FLAGS.num_actions
+    gt_fb_reprs = compute_gt_fb_reprs(behavioral_policy)
 
     backward_reprs = gt_fb_reprs['backward_reprs']
-    backward_reprs = jnp.reshape(backward_reprs,
-                                 [FLAGS.num_observations * FLAGS.num_actions,
-                                  FLAGS.num_observations * FLAGS.num_actions])
+    backward_reprs = backward_reprs.reshape(
+        FLAGS.num_observations * FLAGS.num_actions, FLAGS.repr_dim)
 
     backward_reprs = np.asarray(backward_reprs)
-    null_basis = scipy.linalg.null_space(backward_reprs.T)
-    num_null_basis = null_basis.shape[-1]
+    null_basis = scipy.linalg.null_space(backward_reprs.T).T
+    num_null_basis = null_basis.shape[0]
 
     print(num_null_basis)
 
