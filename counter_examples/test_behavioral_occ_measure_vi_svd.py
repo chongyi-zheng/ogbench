@@ -112,6 +112,7 @@ def compute_qs(policy, rewards, transition_probs_sa):
 def main(_):
     # we use jnp.float64 to enable accurate SVD.
     jax.config.update('jax_enable_x64', True)
+    rng = jax.random.PRNGKey(np.random.randint(2 ** 32))
 
     transition_probs_sa = get_transition_probs(jnp.float64)
     behavioral_policy = jnp.ones([FLAGS.num_observations, FLAGS.num_actions], dtype=jnp.float64) / FLAGS.num_actions
@@ -129,27 +130,35 @@ def main(_):
     print("num_null_basis = {}".format(num_null_basis))
     if num_null_basis > 0:
         adversarial_rewards_flat = FLAGS.reward_scale * null_basis
-        adversarial_rewards = adversarial_rewards_flat.reshape(
-            num_null_basis, FLAGS.num_observations, FLAGS.num_actions)
-        reward_latents_flat = jnp.einsum(
-            'ij,ki->kj',
-            backward_reprs_flat * neg_marg_sa.reshape(-1)[..., None],
-            adversarial_rewards_flat,
-        )
-        reward_latents = reward_latents_flat.reshape(
-            num_null_basis, FLAGS.repr_dim
-        )
-        q_beta_ests = jnp.einsum('ijk,lk->lij', forward_reprs, reward_latents)
-        q_beta_gts = jax.vmap(compute_qs, in_axes=(None, 0, None))(
-            behavioral_policy, adversarial_rewards, transition_probs_sa)
-
-        avg_abs_err = jnp.mean(jnp.abs(q_beta_gts - q_beta_ests))
-
-        print("avg_abs_err = {}".format(avg_abs_err))
     else:
-        pass
+        rng, zero_reward_rng = jax.random.split(rng)
+        near_zero_rewards = jax.random.uniform(
+            zero_reward_rng,
+            shape=(1, FLAGS.num_observations * FLAGS.num_actions),
+            minval=-jnp.finfo(jnp.float64).tiny * 10,
+            maxval=jnp.finfo(jnp.float64).tiny * 10,
+            dtype=jnp.float64
+        )
+        adversarial_rewards_flat = FLAGS.reward_scale * near_zero_rewards
+        num_null_basis = 1
 
-    print("end")
+    adversarial_rewards = adversarial_rewards_flat.reshape(
+        num_null_basis, FLAGS.num_observations, FLAGS.num_actions)
+    reward_latents_flat = jnp.einsum(
+        'ij,ki->kj',
+        backward_reprs_flat * neg_marg_sa.reshape(-1)[..., None],
+        adversarial_rewards_flat,
+    )
+    reward_latents = reward_latents_flat.reshape(
+        num_null_basis, FLAGS.repr_dim
+    )
+    q_beta_ests = jnp.einsum('ijk,lk->lij', forward_reprs, reward_latents)
+    q_beta_gts = jax.vmap(compute_qs, in_axes=(None, 0, None))(
+        behavioral_policy, adversarial_rewards, transition_probs_sa)
+
+    avg_abs_err = jnp.mean(jnp.abs(q_beta_gts - q_beta_ests))
+
+    print("avg_abs_err = {}".format(avg_abs_err))
 
 
 if __name__ == "__main__":
