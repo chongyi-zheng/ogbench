@@ -47,7 +47,8 @@ def get_transition_probs(dtype):
     return transition_probs_sa
     
 
-def compute_fb_reprs(policy, transition_probs_sa):
+def compute_fb_reprs(policy, transition_probs_sa, repr_dim=16):
+    repr_dim = min(repr_dim, FLAGS.num_observations * FLAGS.num_actions)
     neg_marg_sa = jnp.ones(
         [FLAGS.num_observations, FLAGS.num_actions],
         dtype=policy.dtype
@@ -71,16 +72,16 @@ def compute_fb_reprs(policy, transition_probs_sa):
     assert jnp.allclose(u @ jnp.diag(s) @ vt, gt_ratios)  # only works with float64
     recon_err = jnp.sum(jnp.abs(u @ jnp.diag(s) @ vt - gt_ratios))
 
-    forward_reprs = (u @ jnp.diag(s))[:, :FLAGS.repr_dim]
-    backward_reprs = vt[:FLAGS.repr_dim].T
+    forward_reprs = (u @ jnp.diag(s))[:, :repr_dim]
+    backward_reprs = vt[:repr_dim].T
 
     forward_reprs = forward_reprs.reshape(
         FLAGS.num_observations, FLAGS.num_actions,
-        FLAGS.repr_dim
+        repr_dim
     )
     backward_reprs = backward_reprs.reshape(
         FLAGS.num_observations, FLAGS.num_actions,
-        FLAGS.repr_dim
+        repr_dim
     )
 
     info = {
@@ -116,49 +117,95 @@ def main(_):
 
     transition_probs_sa = get_transition_probs(jnp.float64)
     behavioral_policy = jnp.ones([FLAGS.num_observations, FLAGS.num_actions], dtype=jnp.float64) / FLAGS.num_actions
-    gt_fb_reprs = compute_fb_reprs(behavioral_policy, transition_probs_sa)
 
-    neg_marg_sa = gt_fb_reprs['neg_marg_sa']
-    forward_reprs = gt_fb_reprs['forward_reprs']
-    backward_reprs = gt_fb_reprs['backward_reprs']
-    backward_reprs_flat = backward_reprs.reshape(
-        FLAGS.num_observations * FLAGS.num_actions, FLAGS.repr_dim)
+    metrics = defaultdict(list)
+    for repr_dim in list(range(1, 20 + 1)):  # Do we need to consider repr_dim > |S||A|
+        gt_fb_reprs = compute_fb_reprs(behavioral_policy, transition_probs_sa, repr_dim)
 
-    null_basis = scipy.linalg.null_space(np.asarray(backward_reprs_flat).T).T
-    num_null_basis = null_basis.shape[0]
-
-    print("num_null_basis = {}".format(num_null_basis))
-    if num_null_basis > 0:
-        adversarial_rewards_flat = FLAGS.reward_scale * null_basis
-    else:
-        rng, zero_reward_rng = jax.random.split(rng)
-        near_zero_rewards = jax.random.uniform(
-            zero_reward_rng,
-            shape=(1, FLAGS.num_observations * FLAGS.num_actions),
-            minval=-jnp.finfo(jnp.float64).tiny * 10,
-            maxval=jnp.finfo(jnp.float64).tiny * 10,
-            dtype=jnp.float64
+        neg_marg_sa = gt_fb_reprs['neg_marg_sa']
+        forward_reprs = gt_fb_reprs['forward_reprs']
+        backward_reprs = gt_fb_reprs['backward_reprs']
+        backward_reprs_flat = backward_reprs.reshape(
+            FLAGS.num_observations * FLAGS.num_actions,
+            min(repr_dim, FLAGS.num_observations * FLAGS.num_actions),
         )
-        adversarial_rewards_flat = FLAGS.reward_scale * near_zero_rewards
-        num_null_basis = 1
 
-    adversarial_rewards = adversarial_rewards_flat.reshape(
-        num_null_basis, FLAGS.num_observations, FLAGS.num_actions)
-    reward_latents_flat = jnp.einsum(
-        'ij,ki->kj',
-        backward_reprs_flat * neg_marg_sa.reshape(-1)[..., None],
-        adversarial_rewards_flat,
-    )
-    reward_latents = reward_latents_flat.reshape(
-        num_null_basis, FLAGS.repr_dim
-    )
-    q_beta_ests = jnp.einsum('ijk,lk->lij', forward_reprs, reward_latents)
-    q_beta_gts = jax.vmap(compute_qs, in_axes=(None, 0, None))(
-        behavioral_policy, adversarial_rewards, transition_probs_sa)
+        null_basis = scipy.linalg.null_space(np.asarray(backward_reprs_flat).T).T
+        num_null_basis = null_basis.shape[0]
 
-    avg_abs_err = jnp.mean(jnp.abs(q_beta_gts - q_beta_ests))
+        print("num_null_basis = {}".format(num_null_basis))
+        if num_null_basis > 0:
+            adversarial_rewards_flat = FLAGS.reward_scale * null_basis
+        else:
+            rng, zero_reward_rng = jax.random.split(rng)
+            near_zero_rewards = jax.random.uniform(
+                zero_reward_rng,
+                shape=(1, FLAGS.num_observations * FLAGS.num_actions),
+                minval=-jnp.finfo(jnp.float64).tiny * 10,
+                maxval=jnp.finfo(jnp.float64).tiny * 10,
+                dtype=jnp.float64
+            )
+            adversarial_rewards_flat = FLAGS.reward_scale * near_zero_rewards
+            num_null_basis = 1
 
-    print("avg_abs_err = {}".format(avg_abs_err))
+        adversarial_rewards = adversarial_rewards_flat.reshape(
+            num_null_basis, FLAGS.num_observations, FLAGS.num_actions)
+        reward_latents_flat = jnp.einsum(
+            'ij,ki->kj',
+            backward_reprs_flat * neg_marg_sa.reshape(-1)[..., None],
+            adversarial_rewards_flat,
+        )
+        reward_latents = reward_latents_flat.reshape(
+            num_null_basis,
+            min(repr_dim, FLAGS.num_observations * FLAGS.num_actions),
+        )
+        q_beta_ests = jnp.einsum('ijk,lk->lij', forward_reprs, reward_latents)
+        q_beta_gts = jax.vmap(compute_qs, in_axes=(None, 0, None))(
+            behavioral_policy, adversarial_rewards, transition_probs_sa)
+
+        ret_beta_ests = jnp.einsum('ij,j->i', q_beta_ests[:, FLAGS.initial_obs], behavioral_policy[FLAGS.initial_obs])
+        ret_beta_gts = jnp.einsum('ij,j->i', q_beta_gts[:, FLAGS.initial_obs], behavioral_policy[FLAGS.initial_obs])
+
+        avg_q_beta_abs_err = jnp.mean(jnp.abs(q_beta_gts - q_beta_ests))
+        ret_beta_abs_err = jnp.mean(jnp.abs(ret_beta_ests - ret_beta_gts))
+
+        if avg_q_beta_abs_err < 1e-12:
+            avg_q_beta_abs_err = 0.0
+        if ret_beta_abs_err < 1e-12:
+            ret_beta_abs_err = 0.0
+
+        print("repr_dim = {}, avg_q_beta_abs_err = {}, ret_beta_abs_err = {}".format(
+            repr_dim, avg_q_beta_abs_err, ret_beta_abs_err))
+
+        metrics['avg_q_beta_abs_err'].append([repr_dim, avg_q_beta_abs_err])
+        metrics['ret_beta_abs_err'].append([repr_dim, ret_beta_abs_err])
+
+    for k, v in metrics.items():
+        metrics[k] = np.array(v)
+
+    # plot figure: avg_q_beta_abs_err vs repr_dim
+    f, ax = plt.subplots(nrows=1, ncols=1)
+    v = metrics['avg_q_beta_abs_err']
+    ax.plot(v[:, 0], v[:, 1], 'o')
+    ax.set_xticks(v[:, 0])
+    ax.set_xlabel('representation dimensions')
+    ax.set_ylabel('absolute error of Q beta')
+    f.suptitle('absolute error of Q beta')
+
+    f.tight_layout()
+    f.savefig("figures/svd/beta_pi_vi_svd_q_abs_error.png", dpi=300)
+
+    # plot figure: ret_beta_abs_err vs repr_dim
+    f, ax = plt.subplots(nrows=1, ncols=1)
+    v = metrics['ret_beta_abs_err']
+    ax.plot(v[:, 0], v[:, 1], 'o')
+    ax.set_xticks(v[:, 0])
+    ax.set_xlabel('representation dimensions')
+    ax.set_ylabel('absolute error of returns')
+    f.suptitle('absolute error of returns')
+
+    f.tight_layout()
+    f.savefig("figures/svd/beta_pi_vi_svd_ret_abs_error.png", dpi=300)
 
 
 if __name__ == "__main__":
